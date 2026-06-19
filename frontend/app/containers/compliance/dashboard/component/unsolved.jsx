@@ -3,6 +3,7 @@ import { Card } from 'antd';
 import { chartUtils } from 'components/charts-cfg';
 import { UpPointIcon, DownPointIcon } from 'components/iconfont';
 import styles from '../style.less';
+import { numberOrZero, toPercent } from '../utils';
 
 const Index = ({ summaryData = {} }) => {
 
@@ -26,9 +27,7 @@ const Index = ({ summaryData = {} }) => {
 
   const resizeHelper = chartUtils.resizeEvent(CHART);
 
-  const valueToPercent = (value) => {
-    return Math.round(parseFloat(value) * 10000) / 100;
-  };
+  const changes = numberOrZero(summaryData.changes);
 
   return <Card bodyStyle={{
     padding: '52px 16px 0'
@@ -39,20 +38,19 @@ const Index = ({ summaryData = {} }) => {
         未解决错误策略
       </div>
       <div className={styles.titleContext}>
-        {summaryData.total}
+        {summaryData.total || 0}
       </div>
       <div className={styles.titleFooter}>
         <div className={styles.values}>最近15天</div>
         <div className={styles.icon}>
-          {summaryData.changes != 0 && <span>{summaryData.changes > 0 ? <UpPointIcon style={{ padding: '0 5px' }}/> : <DownPointIcon style={{ padding: '0 5px' }}/>}</span>}
-          {summaryData.changes != 0 && <span>{`${valueToPercent(summaryData.changes)}%`}</span>} </div>
+          {changes !== 0 && <span>{changes > 0 ? <UpPointIcon style={{ padding: '0 5px' }}/> : <DownPointIcon style={{ padding: '0 5px' }}/>}</span>}
+          {changes !== 0 && <span>{`${toPercent(changes)}%`}</span>} </div>
       </div>
     </div>
-    {CHART.current.map(chart => <div>
+    {CHART.current.map(chart => <div key={chart.key}>
       <div ref={chart.domRef} style={{ width: '100%', height: 279 }}></div>
     </div>)}
   </Card>;
 };
 
 export default Index;
-

@@ -430,6 +430,7 @@ const VarFormTable = (props) => {
                     <Space>
                       {!!canImportVar && <Button onClick={() => setImportModalVisible(true)}>导入</Button>}
                       <Dropdown 
+                        trigger={['click']}
                         overlay={
                           <Menu>
                             <Menu.Item onClick={() => pushVar()}>添加普通变量</Menu.Item>

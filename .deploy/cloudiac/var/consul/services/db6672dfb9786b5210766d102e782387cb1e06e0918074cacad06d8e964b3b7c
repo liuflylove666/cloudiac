@@ -1,0 +1,1 @@
+{"Token":"","Service":{"ID":"iac-portal-01","Service":"IaC-Portal","Tags":["iac-portal","portal-01"],"Address":"iac-portal","Meta":null,"Port":9030,"Weights":{"Passing":1,"Warning":1},"EnableTagOverride":false,"Proxy":{"Mode":"","MeshGateway":{},"Expose":{}},"Connect":{},"PeerName":"","CreateIndex":0,"ModifyIndex":0},"Source":"remote"}

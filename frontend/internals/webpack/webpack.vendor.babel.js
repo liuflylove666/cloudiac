@@ -8,8 +8,10 @@ module.exports = {
   output: {
     filename: 'vendors.js',
     path: path.resolve(process.cwd(), 'vendor/react/'),
-    library: '[name]',
-    libraryTarget: 'window'
+    library: {
+      name: '[name]',
+      type: 'window'
+    }
   },
   module: {
     rules: [
@@ -28,20 +30,17 @@ module.exports = {
     minimizer: [
       new TerserPlugin({
         terserOptions: {
-          warnings: false,
           compress: {
             comparisons: false
           },
-          parse: {},
           mangle: true,
-          output: {
+          format: {
             comments: false,
             ascii_only: true
           }
         },
         parallel: true,
-        cache: true,
-        sourceMap: true
+        extractComments: false
       })
     ]
   },
@@ -49,7 +48,7 @@ module.exports = {
     modules: [ 'app', 'node_modules' ],
     aliasFields: ['main'],
     descriptionFiles: ['package.json'],
-    mainFields: [ 'main', 'browser', 'module' ],
+    mainFields: [ 'browser', 'module', 'main' ],
     extensions: [ '.js', '.jsx' ]
   }
 };

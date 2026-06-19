@@ -1,5 +1,7 @@
 import React from 'react';
-import { Drawer, Form, Input, Spin } from 'antd';
+import { Link } from 'react-router-dom';
+import { Button, Drawer, Form, Input, Space, Spin } from 'antd';
+import { DatabaseOutlined } from '@ant-design/icons';
 import moment from 'moment';
 import { useRequest } from 'ahooks';
 import { requestWrapper } from 'utils/request';
@@ -27,6 +29,13 @@ export default ({ visible, id, onClose, orgId, projectId, envId, type }) => {
       getContainer={false}
     >
       <Spin spinning={loading}>
+        {data.cmdbAssetId && (
+          <Space style={{ marginBottom: 16 }}>
+            <Link to={`/org/${orgId}/m-other-resource?assetId=${data.cmdbAssetId}`}>
+              <Button type='primary' icon={<DatabaseOutlined />}>查看 CMDB 资产</Button>
+            </Link>
+          </Space>
+        )}
         <Form layout="vertical" className='idcos-exhibition-form'>
           <Form.Item label='ID：'>
             <Input value={data.id} disabled/>

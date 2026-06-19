@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { Modal, Form, Input, Button, Space, Checkbox, Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { v4 as uuidv4 } from 'uuid';
 import { useRequest } from 'ahooks';
 import { requestWrapper } from 'utils/request';
 import varGroupAPI from 'services/var-group';
@@ -10,6 +9,26 @@ import varGroupAPI from 'services/var-group';
 const FL = {
   labelCol: { span: 4 },
   wrapperCol: { span: 20 }
+};
+
+const createVariableId = () => {
+  const cryptoObj = typeof window !== 'undefined' && window.crypto;
+
+  if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+    return cryptoObj.randomUUID();
+  }
+
+  if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    cryptoObj.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+    return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
 export default ({ orgId, event$ }) => {
@@ -89,7 +108,7 @@ export default ({ orgId, event$ }) => {
     const { name, variables } = await form.validateFields();
     const params = {
       name,
-      variables: variables.filter((it) => !!it).map(({ id, ...variable }) => ({ ...variable, id: id || uuidv4(), description: name }))
+      variables: variables.filter((it) => !!it).map(({ id, ...variable }) => ({ ...variable, id: id || createVariableId(), description: name }))
     };
     id ? updateResourceAccount(params) : createResourceAccount(params);
   };

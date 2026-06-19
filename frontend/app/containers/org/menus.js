@@ -73,7 +73,7 @@ const getMenus = (userInfo, { projectList }) => {
       emptyMenuList: [],
       menuList: [
         {
-          name: '资源查询',
+          name: '资产 CMDB',
           key: 'm-other-resource',
           icon: <SearchOutlined />
         }

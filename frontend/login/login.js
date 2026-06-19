@@ -1,8 +1,6 @@
-import 'react-app-polyfill/ie11';
-import 'react-app-polyfill/stable';
-
-import ReactDOM from 'react-dom';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
 
 import LoginPage from './page/loginPage';
 
-ReactDOM.render(<LoginPage/>, document.getElementById('app'));
+createRoot(document.getElementById('app')).render(<LoginPage />);

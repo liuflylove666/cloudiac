@@ -56,7 +56,7 @@ func Create(tx *db.Session, o Modeler) error {
 	return err
 }
 
-//CreateBatch 注意: 目前切片 Modeler 类型无法与批量插入公用
+// CreateBatch 注意: 目前切片 Modeler 类型无法与批量插入公用
 func CreateBatch(tx *db.Session, o interface{}) error {
 	_, err := withTx(tx, func(x *db.Session) (int64, error) {
 		if err := x.Insert(o); err != nil {
@@ -207,6 +207,11 @@ func Init(migrate bool) {
 	autoMigrate(&Template{}, sess)
 	autoMigrate(&Env{}, sess)
 	autoMigrate(&Resource{}, sess)
+	autoMigrate(&CmdbAsset{}, sess)
+	autoMigrate(&CmdbAssetRelation{}, sess)
+	autoMigrate(&CmdbApplicationRelation{}, sess)
+	autoMigrate(&CmdbAssetChange{}, sess)
+	autoMigrate(&CmdbSyncTask{}, sess)
 
 	autoMigrate(&Variable{}, sess)
 

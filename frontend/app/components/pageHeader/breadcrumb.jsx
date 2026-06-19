@@ -17,7 +17,7 @@ const breadcrumbNameMap = {
   'm-project-ct': { text: '项目信息：云模板' },
   'm-project-variable': { text: '项目信息：变量' },
   'm-project-setting': { text: '项目信息：设置' },
-  'm-other-resource': { text: '资源查询' },
+  'm-other-resource': { text: '资产 CMDB' },
   'createCT': { text: '新建云模板' },
   'updateCT': { text: '编辑云模板' },
   'deploy': { 

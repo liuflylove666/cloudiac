@@ -1518,6 +1518,7 @@ type Resource struct {
 	DriftDetail string       `json:"driftDetail"`
 	DriftAt     *models.Time `json:"driftAt"`
 	IsDrift     bool         `json:"isDrift" form:"isDrift" `
+	CmdbAssetId models.Id    `json:"cmdbAssetId" gorm:"column:cmdb_asset_id"`
 }
 
 func GetTaskResourceToTaskId(dbSess *db.Session, task *models.Task) ([]Resource, e.Error) {
@@ -1526,9 +1527,10 @@ func GetTaskResourceToTaskId(dbSess *db.Session, task *models.Task) ([]Resource,
 	rs := make([]Resource, 0)
 	if err := dbSess.Table("iac_resource as r").
 		Joins("left join iac_resource_drift as rd on rd.res_id =  r.id ").
+		Joins("left join iac_cmdb_asset as ca on ca.iac_resource_id = r.id and ca.org_id = r.org_id and ca.source = ?", models.CmdbAssetSourceIacResource).
 		Where("r.org_id = ? AND r.project_id = ? AND r.env_id = ? AND r.task_id = ?",
 			task.OrgId, task.ProjectId, task.EnvId, task.Id).
-		LazySelectAppend("r.*, rd.drift_detail, rd.updated_at, rd.created_at").
+		LazySelectAppend("r.*, rd.drift_detail, rd.updated_at, rd.created_at, ca.id as cmdb_asset_id").
 		Find(&rs); err != nil {
 		return nil, e.New(e.DBError, err)
 	}

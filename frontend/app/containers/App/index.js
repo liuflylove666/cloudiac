@@ -4,6 +4,7 @@ import routes from 'routes';
 import reducer from './reducer';
 import saga from './saga';
 import { useInjectReducer, useInjectSaga } from "redux-injectors";
+import { useDispatch } from 'react-redux';
 
 import { withRouter } from 'react-router-dom';
 
@@ -16,11 +17,25 @@ const KEY = 'global';
 function App(props) {
   const { location } = props;
   const { pathname, search } = location;
+  const dispatch = useDispatch();
   useInjectReducer({ key: KEY, reducer });
   useInjectSaga({ key: KEY, saga });
   
   useEffect(() => {
-    freeLoginCheck();
+    if (freeLoginCheck()) {
+      return;
+    }
+    if (!window.__POWERED_BY_QIANKUN__) {
+      dispatch({
+        type: 'global/getOrgs',
+        payload: {
+          status: 'enable'
+        }
+      });
+      dispatch({
+        type: 'global/getUserInfo'
+      });
+    }
   }, []);
 
   // 免登检查
@@ -29,7 +44,9 @@ function App(props) {
     if (token) {
       localStorage.accessToken = token;
       window.location.search = '';
+      return true;
     }
+    return false;
   };
 
   return (

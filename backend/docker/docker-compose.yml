@@ -2,6 +2,13 @@ services:
   iac-portal:
     container_name: iac-portal
     image: "${DOCKER_REGISTRY}cloudiac/iac-portal:latest"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+    build:
+      context: ..
+      dockerfile: docker/portal/Dockerfile
+      args:
+        VERSION: "${CLOUDIAC_VERSION:-}"
+        COMMIT: "${CLOUDIAC_COMMIT:-docker-compose}"
     volumes:
       - type: bind
         source: ${CLOUDIAC_DEPLOY_ROOT:-/usr/yunji/cloudiac}/var
@@ -12,13 +19,28 @@ services:
     ports:
       - "9030:9030"
     depends_on:
-      - mysql
-      - consul
+      mysql:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9030/api/v1/check >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     restart: always
 
   ct-runner:
     container_name: ct-runner
     image: "${DOCKER_REGISTRY}cloudiac/ct-runner:latest"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+    build:
+      context: ..
+      dockerfile: docker/runner/Dockerfile
+      args:
+        VERSION: "${CLOUDIAC_VERSION:-}"
+        COMMIT: "${CLOUDIAC_COMMIT:-docker-compose}"
+        WORKER_IMAGE: "${DOCKER_REGISTRY}cloudiac/ct-worker:latest"
     volumes:
       - type: bind
         source: ${CLOUDIAC_DEPLOY_ROOT:-/usr/yunji/cloudiac}/var
@@ -32,21 +54,42 @@ services:
     ports:
       - "19030:19030"
     depends_on:
-      - consul
+      consul:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19030/api/v1/check >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     restart: always
 
   iac-web:
     container_name: iac-web
     image: "${DOCKER_REGISTRY}cloudiac/iac-web:latest"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
     ports:
       - 80:80
     restart: always
     depends_on:
-      - iac-portal
+      iac-portal:
+        condition: service_healthy
+
+  ct-worker:
+    profiles:
+      - image-build
+    image: "${DOCKER_REGISTRY}cloudiac/ct-worker:latest"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+    build:
+      context: ..
+      dockerfile: docker/worker/Dockerfile
 
   mysql:
     container_name: mysql
     image: "mysql:8.0"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
     command: [
         "--character-set-server=utf8mb4",
         "--collation-server=utf8mb4_unicode_ci",
@@ -61,11 +104,17 @@ services:
       - MYSQL_USER
       - MYSQL_PASSWORD
       - MYSQL_DATABASE
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$${MYSQL_USER}\" -p\"$${MYSQL_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
     restart: always
 
   consul:
     container_name: consul
     image: "hashicorp/consul:1.22"
+    platform: "${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
     volumes:
       - type: bind
         source: ${CLOUDIAC_DEPLOY_ROOT:-/usr/yunji/cloudiac}/var/consul
@@ -75,5 +124,9 @@ services:
     command: >
       consul agent -server -bootstrap-expect=1 -ui -bind=0.0.0.0
       -client=0.0.0.0 -enable-script-checks=true -data-dir=/consul/data
+    healthcheck:
+      test: ["CMD-SHELL", "consul members >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     restart: always
-

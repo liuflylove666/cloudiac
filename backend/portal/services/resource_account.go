@@ -114,9 +114,10 @@ func GetResourceDetail(tx *db.Session, orgId, projectId, envId, resourceId model
 	r := &Resource{}
 	if err := tx.Table("iac_resource as r").
 		Joins("left join iac_resource_drift as rd on rd.res_id = r.id ").
+		Joins("left join iac_cmdb_asset as ca on ca.iac_resource_id = r.id and ca.org_id = r.org_id and ca.source = ?", models.CmdbAssetSourceIacResource).
 		Where("r.org_id = ? AND r.project_id = ? AND r.env_id = ? AND r.id = ?",
 			orgId, projectId, envId, resourceId).
-		LazySelectAppend("r.*, rd.drift_detail, rd.created_at as drift_at").
+		LazySelectAppend("r.*, rd.drift_detail, rd.created_at as drift_at, ca.id as cmdb_asset_id").
 		First(r); err != nil {
 		return nil, e.New(e.DBError, err)
 	}

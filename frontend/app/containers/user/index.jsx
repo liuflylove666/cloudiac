@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Menu, Tabs } from 'antd';
+import { Spin, Tabs } from 'antd';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
 
@@ -19,6 +19,15 @@ const subNavs = {
 const User = ({ userInfo, dispatch }) => {
 
   const [ panel, setPanel ] = useState('basic');
+  const hasUserInfo = !!(userInfo && (userInfo.id || userInfo.email));
+
+  useEffect(() => {
+    if (!hasUserInfo) {
+      dispatch({
+        type: 'global/getUserInfo'
+      });
+    }
+  }, [ hasUserInfo ]);
 
   const updateUserInfo = ({ payload, cb }) => {
     dispatch({
@@ -32,16 +41,24 @@ const User = ({ userInfo, dispatch }) => {
   };
 
   const renderByPanel = useCallback(() => {
+    if (!hasUserInfo) {
+      return (
+        <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spin tip='加载用户信息...' />
+        </div>
+      );
+    }
     const PAGES = {
-      basic: (props) => userInfo.name && <Basic {...props}/>,
-      pwd: (props) => userInfo.name && <Pwd {...props}/>
+      basic: Basic,
+      pwd: Pwd
     };
-    return PAGES[panel]({
-      title: subNavs[panel],
-      userInfo,
-      updateUserInfo
-    });
-  }, [ panel, userInfo ]);
+    const Page = PAGES[panel] || Basic;
+    return <Page
+      title={subNavs[panel]}
+      userInfo={userInfo}
+      updateUserInfo={updateUserInfo}
+    />;
+  }, [ panel, userInfo, hasUserInfo ]);
 
   return <Layout
     extraHeader={<PageHeader

@@ -1,0 +1,7 @@
+build
+.cloudiac-deploy
+coverage.out
+dumpdb
+repos
+*.tar.gz
+*.log

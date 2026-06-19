@@ -182,6 +182,21 @@ func Register(g *gin.RouterGroup) {
 	// 列出项目下资源搜索得到的相关环境名称以及provider名称
 	g.GET("/projects/resources/filters", ac("projects", "read"), w(handlers.Project{}.SearchProjectResourcesFilters))
 
+	// CMDB 资产中心
+	g.GET("/cmdb/assets", ac("orgs", "read"), w(handlers.Cmdb{}.SearchAssets))
+	g.GET("/cmdb/assets/filters", ac("orgs", "read"), w(handlers.Cmdb{}.AssetFilters))
+	g.GET("/cmdb/assets/export", ac("orgs", "read"), w(handlers.Cmdb{}.ExportAssets))
+	g.POST("/cmdb/assets/import", ac("orgs", "read"), w(handlers.Cmdb{}.ImportAssets))
+	g.GET("/cmdb/applications", ac("orgs", "read"), w(handlers.Cmdb{}.SearchApplications))
+	g.GET("/cmdb/applications/detail", ac("orgs", "read"), w(handlers.Cmdb{}.ApplicationDetail))
+	g.PUT("/cmdb/applications/relations", ac("orgs", "read"), w(handlers.Cmdb{}.UpdateApplicationRelations))
+	g.GET("/cmdb/assets/:id", ac("orgs", "read"), w(handlers.Cmdb{}.AssetDetail))
+	g.PUT("/cmdb/assets/:id/ownership", ac("orgs", "read"), w(handlers.Cmdb{}.UpdateAssetOwnership))
+	g.POST("/cmdb/backfill/iac-resources", ac("orgs", "read"), w(handlers.Cmdb{}.BackfillIacResources))
+	g.GET("/cmdb/cloud/accounts", ac("orgs", "read"), w(handlers.Cmdb{}.CloudAccounts))
+	g.GET("/cmdb/sync-tasks", ac("orgs", "read"), w(handlers.Cmdb{}.SearchSyncTasks))
+	g.POST("/cmdb/sync-tasks", ac("orgs", "read"), w(handlers.Cmdb{}.StartSyncTask))
+
 	// 组织概览统计数据
 	g.GET("/orgs/projects/statistics", ac(), w(handlers.Organization{}.OrgProjectsStat))
 

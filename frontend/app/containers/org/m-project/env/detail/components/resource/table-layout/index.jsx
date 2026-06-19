@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
+import { Link } from 'react-router-dom';
 import { Table, Input, Space, Button, Row, Tag } from 'antd';
 import { useRequest } from 'ahooks';
-import { FundViewOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, FundViewOutlined } from "@ant-design/icons";
 import { requestWrapper } from 'utils/request';
 import envAPI from 'services/env';
 import taskAPI from 'services/task';
@@ -129,6 +130,16 @@ const TableLayout = ({ setMode }) => {
       ellipsis: true,
       width: 120,
       render: T => T ? <Tag color='green'>是</Tag> : <Tag>否</Tag>
+    },
+    {
+      dataIndex: 'cmdbAssetId',
+      title: 'CMDB',
+      width: 90,
+      render: (cmdbAssetId) => cmdbAssetId ? (
+        <Link to={`/org/${orgId}/m-other-resource?assetId=${cmdbAssetId}`}>
+          <Button type='link' size='small' icon={<DatabaseOutlined />}>资产</Button>
+        </Link>
+      ) : '-'
     }
   ];
 

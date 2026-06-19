@@ -9,34 +9,15 @@ module.exports = {
     '@babel/preset-react'
   ],
   plugins: [
-    'react-hot-loader/babel',
     'styled-components',
-    '@babel/plugin-proposal-class-properties',
-    '@babel/plugin-syntax-dynamic-import',
+    '@babel/plugin-transform-class-properties',
     [
       'import',
       {
         libraryName: 'antd',
         libraryDirectory: 'es',
-        style: true
+        style: 'css'
       }
     ]
-  ],
-  env: {
-    production: {
-      only: [ 'app', 'login' ],
-      plugins: [
-        'lodash',
-        'transform-react-remove-prop-types',
-        '@babel/plugin-transform-react-inline-elements',
-        '@babel/plugin-transform-react-constant-elements'
-      ]
-    },
-    test: {
-      plugins: [
-        '@babel/plugin-transform-modules-commonjs',
-        'dynamic-import-node'
-      ]
-    }
-  }
+  ]
 };

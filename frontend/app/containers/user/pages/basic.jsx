@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { Form, Button, Input } from 'antd';
 
@@ -13,6 +13,15 @@ const layout = {
 
 const Basic = ({ title, userInfo, updateUserInfo }) => {
   const [ submitLoading, setSubmitLoading ] = useState(false);
+  const [ form ] = Form.useForm();
+
+  useEffect(() => {
+    form.setFieldsValue({
+      name: userInfo.name,
+      email: userInfo.email,
+      phone: userInfo.phone
+    });
+  }, [ userInfo, form ]);
 
   const onFinish = (values) => {
     setSubmitLoading(true);
@@ -26,6 +35,7 @@ const Basic = ({ title, userInfo, updateUserInfo }) => {
 
   return <div style={{ width: 600, margin: '40px auto' }}>
     <Form
+      form={form}
       {...layout}
       onFinish={onFinish}
       initialValues={{

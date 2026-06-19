@@ -117,7 +117,7 @@ export default function createRoutes() {
       routes: [
         {
           path: '/org/:orgId/m-other-resource',
-          name: '资源发现',
+          name: '资产 CMDB',
           component: loadable(() => import('containers/org/resource-query'), asyncLoadFallback),
           exact: true
         },

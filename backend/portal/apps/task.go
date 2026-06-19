@@ -337,7 +337,9 @@ func SearchTaskResources(c *ctx.ServiceContext, form *forms.SearchTaskResourceFo
 
 	query := c.DB().Table("iac_resource as r").Where("r.org_id = ? AND r.project_id = ? AND r.env_id = ? AND r.task_id = ?",
 		c.OrgId, c.ProjectId, task.EnvId, task.Id)
-	query = query.Joins("left join iac_resource_drift as rd on rd.res_id = r.id").LazySelectAppend("r.*, !ISNULL(rd.drift_detail) as is_drift")
+	query = query.Joins("left join iac_resource_drift as rd on rd.res_id = r.id").
+		Joins("left join iac_cmdb_asset as ca on ca.iac_resource_id = r.id and ca.org_id = r.org_id and ca.source = ?", models.CmdbAssetSourceIacResource).
+		LazySelectAppend("r.*, !ISNULL(rd.drift_detail) as is_drift, ca.id as cmdb_asset_id")
 	if form.HasKey("q") {
 		q := fmt.Sprintf("%%%s%%", form.Q)
 		// 支持对 provider / type / name 进行模糊查询
@@ -496,6 +498,7 @@ type ResourceInfo struct {
 	ResourceName string      `json:"resourceName" form:"resourceName" `
 	NodeName     string      `json:"nodeName" form:"nodeName" `
 	IsDrift      bool        `json:"isDrift"`
+	CmdbAssetId  models.Id   `json:"cmdbAssetId"`
 }
 
 func genNodesFromResource(resource services.Resource, parentChildNode map[string][]string, resourceAttr map[string][]ResourceInfo, nodeNameAttr map[string]string) {
@@ -543,6 +546,7 @@ func genNodesFromResource(resource services.Resource, parentChildNode map[string
 		ResourceId:   resource.Id.String(),
 		ResourceName: GetResShowName(resource.Attrs, resource.Address),
 		NodeName:     lastAddr,
+		CmdbAssetId:  resource.CmdbAssetId,
 	}
 
 	if res.ResourceName == "" {
@@ -678,9 +682,10 @@ func getTree(parents []*ResourcesGraphModule, parentChildNode map[string][]strin
 }
 
 type ProviderTypeResource struct {
-	Id      models.Id `json:"id" ` //ID
-	Name    string    `json:"name"`
-	IsDrift bool      `json:"isDrift"`
+	Id          models.Id `json:"id" ` //ID
+	Name        string    `json:"name"`
+	IsDrift     bool      `json:"isDrift"`
+	CmdbAssetId models.Id `json:"cmdbAssetId"`
 }
 
 type ResourcesGraphProvider struct {
@@ -693,8 +698,9 @@ func GetResourcesGraphProvider(rs []services.Resource) interface{} {
 	rgtAttr := make(map[string][]ProviderTypeResource)
 	for _, v := range rs {
 		ptr := ProviderTypeResource{
-			Id:   v.Id,
-			Name: v.Name,
+			Id:          v.Id,
+			Name:        v.Name,
+			CmdbAssetId: v.CmdbAssetId,
 		}
 		if v.DriftDetail != "" {
 			ptr.IsDrift = true
@@ -726,8 +732,9 @@ func GetResourcesGraphType(rs []services.Resource) interface{} {
 	rgtAttr := make(map[string][]ProviderTypeResource)
 	for _, v := range rs {
 		ptr := ProviderTypeResource{
-			Id:   v.Id,
-			Name: v.Name,
+			Id:          v.Id,
+			Name:        v.Name,
+			CmdbAssetId: v.CmdbAssetId,
 		}
 		if v.DriftDetail != "" {
 			ptr.IsDrift = true

@@ -195,6 +195,8 @@ func (t Time) Value() (driver.Value, error) {
 // Scan 转换为 time.Time
 func (t *Time) Scan(v interface{}) error {
 	switch value := v.(type) {
+	case nil:
+		*t = Time(time.Time{})
 	case []byte:
 		tv, err := time.Parse("2006-01-02 15:04:05", string(value))
 		if err != nil {

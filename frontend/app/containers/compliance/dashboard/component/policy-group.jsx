@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Progress, Card, Empty } from 'antd';
 import { DashboardOutlined } from '@ant-design/icons';
 import styles from '../style.less';
+import { ratioToPercent } from '../utils';
 
 const Index = ({ summaryData = [] }) => {
 
@@ -14,14 +15,10 @@ const Index = ({ summaryData = [] }) => {
 
   };
 
-  const formatPercent = (value) => {
-    return Math.round(parseFloat(value) * 10000) / 100;
-  };
-
   const data = useMemo(() => {
     const allNumbers = summaryData.reduce((sum, e) => sum + Number(e.value || 0), 0);
     let datas = summaryData.map(d => ({
-      name: d.name, value: d.value, percent: formatPercent(d.value / allNumbers)
+      name: d.name, value: d.value, percent: ratioToPercent(d.value, allNumbers)
     }));
     if (datas.length < 5 && datas.length !== 0) {
       let count = 5 - datas.length;
@@ -34,7 +31,6 @@ const Index = ({ summaryData = [] }) => {
     return datas;
   }, [summaryData]);
 
-  const list = [ 1, 2, 3, 4, 5 ];
   return <Card className={styles.card}>
     <div className='top5'>策略组TOP5</div>
     <span className='title'>策略组检测不通过</span>
@@ -52,7 +48,7 @@ const Index = ({ summaryData = [] }) => {
         </span>
       }
     /> : <>{data.map((item, index) => {
-      return <div className={styles.lineProgress} style={{ width: '90%' }}>
+      return <div className={styles.lineProgress} style={{ width: '90%' }} key={`${item.name}-${index}`}>
         <span className={styles.nameTitle}>{item.name || ''}</span>
         <div style={{ display: 'flex' }}>
           <Progress strokeColor={{

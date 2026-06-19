@@ -1,6 +1,8 @@
 module cloudiac
 
-go 1.17
+go 1.26
+
+toolchain go1.26.4
 
 replace github.com/google/flatbuffers v1.12.0 => github.com/google/flatbuffers v1.12.1
 

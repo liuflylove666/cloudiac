@@ -1,0 +1,129 @@
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+
+  .idcos-app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* FullScreen Center-Middle Container */
+  .idcos-fullscreen-center {
+    display: flex;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Card with Legend */
+  .idcos-legend-card {
+    border: 1px solid #ebebeb;
+    background: #ffffff;
+    padding: 16px 14px 0 14px;
+    margin-bottom: 16px;
+
+    >h2 {
+      font-size: 16px;
+      height: 16px;
+      line-height: 16px;
+      padding-left: 12px;
+      border-left: 2px solid @primary-color;
+    }
+  }
+
+  .idcos-alert-info {
+    background: #ffffff;
+    margin-bottom: 16px;
+    padding: 10px 16px;
+    position: relative;
+    border-radius: 2px;
+    border-left: 2px solid #00bcd4;
+    box-shadow: 0px 6px 14px 3px rgba(0, 0, 0, 0.02),
+      0px 3px 8px 0px rgba(0, 0, 0, 0.05), 0px 1px 3px -6px rgba(0, 0, 0, 0.08);
+  }
+
+  .idcos-ellipsis-text {
+    width: 100%;
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+
+  .ant-popover-arrow {
+    border-left-color: rgba(0, 171, 157, 0.5);
+    border-bottom-color: rgba(0, 171, 157, 0.5);
+    border-width: 1px;
+    background-color: #fff;
+    width: 12px;
+    height: 12px;
+  }
+
+  .ant-popover-placement-right>.ant-popover-content>.ant-popover-arrow {
+    left: 5px ;
+  }
+
+  .ant-popover-inner-content {
+    padding: 0;
+    margin: 0;
+
+    .popoverform-box {
+      border: 1px solid rgba(0, 171, 157, 0.5);
+      background: #fff;
+    }
+
+    .popoverform-header {
+      padding: 16px 24px;
+      color: #575757;
+      background: #FFF;
+      border-bottom: 1px solid #ebebeb;
+      border-radius: 2px 2px 0 0;
+    }
+
+    .popoverform-header-title {
+      margin: 0;
+      color: #232323;
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 22px;
+      word-wrap: break-word;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .popoverform-body {
+      padding: 24px;
+      font-size: 14px;
+      line-height: 1.5715;
+      word-wrap: break-word;
+      padding-bottom: 10px;
+    }
+
+    .popoverform-foot {
+      padding: 10px 16px;
+      text-align: right;
+      background: transparent;
+      border-top: 1px solid #ebebeb;
+      border-radius: 0 0 2px 2px;
+    }
+  }
+}
+
+// 斜体展示时间
+.UbuntuMonoOblique {
+  font-family: 'enNubFont';
+  font-style: oblique;
+  margin-left: 8px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+// 去掉斜体展示时间
+.UbuntuMonoUnOblique {
+  font-family: 'enNubFont';
+  margin-left: 8px;
+  color: rgba(0, 0, 0, 0.6);
+}

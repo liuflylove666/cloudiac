@@ -1,0 +1,99 @@
+# 平台管理员账号密码(均为必填)
+# 该账号密码只在系统初始化时使用，后续修改不影响己创建的账号
+IAC_ADMIN_EMAIL="admin@example.com"
+# 密码要求长度大于 8 且包含字母、数字、特殊字符
+IAC_ADMIN_PASSWORD=""
+
+# 加密密钥配置(必填)
+# 敏感数据使用该密钥进行加密
+SECRET_KEY=""
+
+# IaC 对外提供服务的地址(必填), 示例: http://cloudiac.example.com
+# 该地址需要带协议(http/https)，结尾不可以加 "/"
+PORTAL_ADDRESS=""
+
+# consul 地址(必填)，示例: private.host.ip:8500
+# 需要配置为机器的内网 ip:port，不可使用 127.0.0.1
+CONSUL_ADDRESS=""
+
+# cloudiac registry 服务地址(选填)，示例：http://registry.cloudiac.org
+REGISTRY_ADDRESS=""
+
+# 使用 https 向外（比如runner）发送请求的时候是否允许使用不安全证书
+HTTP_CLIENT_INSECURE=false
+
+# mysql 配置(必填)
+MYSQL_HOST=mysql
+MYSQL_PORT=3306
+MYSQL_DATABASE=cloudiac
+MYSQL_USER=cloudiac
+MYSQL_PASSWORD="mysqlpass"
+
+# portal 服务注册信息配置 (均为必填)
+## portal 服务的 IP 地址， 容器化部署时无需修改, 手动部署时配置为内网 IP
+SERVICE_IP=iac-portal
+## portal 服务注册的 id(需要保证唯一)
+SERVICE_ID=iac-portal-01
+## portal 服务注册的 tags
+SERVICE_TAGS="iac-portal;portal-01"
+
+# docker reigstry 地址，默认为空(使用 docker hub)
+DOCKER_REGISTRY=""
+
+# logger 配置
+LOG_DEVEL="info"
+
+# SMTP 配置(该配置只影响邮件通知的发送)
+SMTP_ADDRESS=smtp.example.com:25
+SMTP_USERNAME=user@example.com
+SMTP_PASSWORD=""
+SMTP_FROM_NAME=IaC
+SMTP_FROM=support@example.com
+
+# KAFKA配置，配置后每次执行部署任务都会将环境的最新全量资源详情通过 kafka 消息发送
+KAFKA_DISABLED=false
+KAFKA_TOPIC="IAC_TASK_REPLY"
+KAFKA_GROUP_ID=""
+KAFKA_PARTITION=0
+## example: KAFKA_BROKERS: ["kafka.example.com:9092", "..."]
+KAFKA_BROKERS=[]
+KAFKA_SASL_USERNAME=""
+KAFKA_SASL_PASSWORD=""
+
+# LDAP 配置(用于接入 ldap 认证，可选配置)
+LDAP_ADMIN_DN="cn=manager,dc=example,dc=com" # (必填)
+LDAP_ADMIN_PASSWORD="password" # (必填)
+LDAP_SERVER="ldap.example.com" # (必填)
+LDAP_SEARCH_BASE="dc=example,dc=com" # (必填)
+LDAP_OU_SEARCH_BASE="ou=People,dc=example,dc=com" # (必填)
+LDAP_SEARCH_FILTER=""
+LDAP_EMAIL_ATTRIBUTE="mail"
+LDAP_ACCOUNT_ATTRIBUTE="uid"
+
+
+######### 以下为 runner 配置 #############
+# runner 服务注册配置(均为必填)
+## runner 服务的 IP 地址， 容器化部署时无需修改, 手动部署时配置为内网 IP
+RUNNER_SERVICE_IP=ct-runner
+## runner 服务注册的 id(需要保证唯一)
+RUNNER_SERVICE_ID=ct-runner-01
+RUNNER_SERVICE_TAGS="ct-runner;runner-01"
+
+## 是否开启 offline mode，默认为 false
+RUNNER_OFFLINE_MODE="false"
+
+# consul 配置
+## 是否开启consul acl认证
+CONSUL_ACL=false
+## consul token信息(开启acl认证必填)
+CONSUL_ACL_TOKEN=""
+## 是否开启consul tls认证
+CONSUL_TLS=false
+### tls证书地址(开始tls认证必填)
+CONSUL_CERT_PATH=""
+
+# 询价服务端地址
+COST_SERVE=""
+
+SWAGGER_ENABLE=true
+

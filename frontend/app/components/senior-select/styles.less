@@ -1,0 +1,50 @@
+@import 'containers/App/styles/variable.less';
+
+.senior_select {
+  :global {
+    .ant-select-selection-search-input {
+      color: #fff;
+    }
+  }
+}
+
+.seniorSelectList {
+
+  :global {
+
+    .senior-select-header {
+      padding: 8px;
+    }
+
+    .ant-select-item-option-selected {
+      background: none !important;
+    }
+
+    .ant-select-item-option:hover {
+      background-color: @backGroundIac !important;
+    }
+
+    .content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 38px;
+
+      .name {
+        line-height: 22px;
+        color: @gray-8;
+        flex: 1;
+        min-width: auto;
+        font-weight: normal;
+      }
+
+      .selected-icon {
+        color: @primary-color;
+        font-size: 16px;
+        margin-left: 8px;
+      }
+
+    }
+
+  }
+}

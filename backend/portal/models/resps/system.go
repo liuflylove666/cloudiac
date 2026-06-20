@@ -16,8 +16,14 @@ func (m *SearchSystemConfigResp) TableName() string {
 }
 
 type RegistryAddrResp struct {
-	RegistryAddrFromDB  string `json:"registryAddrDB"`
-	RegistryAddrFromCfg string `json:"registryAddrCfg"`
+	RegistryAddrFromDB    string `json:"registryAddrDB"`
+	RegistryAddrFromCfg   string `json:"registryAddrCfg"`
+	ImageRegistryType     string `json:"imageRegistryType"`
+	ImageRegistryAddr     string `json:"imageRegistryAddr"`
+	EcrAccountId          string `json:"ecrAccountId"`
+	EcrRegion             string `json:"ecrRegion"`
+	EcrEndpoint           string `json:"ecrEndpoint"`
+	ImageRepositoryPrefix string `json:"imageRepositoryPrefix"`
 }
 
 type SystemStatusResp struct {

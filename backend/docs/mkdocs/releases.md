@@ -16,7 +16,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.3.5](https://github.com/idcos/cloudiac/releases/tag/v1.3.5)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.3.5。
 
 
 ------
@@ -29,7 +29,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.3.4](https://github.com/idcos/cloudiac/releases/tag/v1.3.4)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.3.4。
 
 
 ------
@@ -41,7 +41,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.3.3](https://github.com/idcos/cloudiac/releases/tag/v1.3.3)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.3.3。
 
 
 ------
@@ -57,7 +57,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.3.2](https://github.com/idcos/cloudiac/releases/tag/v1.3.2)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.3.2。
 
 
 ------
@@ -68,7 +68,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.2.2](https://github.com/idcos/cloudiac/releases/tag/v1.2.2)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.2.2。
 
 
 ------
@@ -82,7 +82,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.2.1](https://github.com/idcos/cloudiac/releases/tag/v1.2.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.2.1。
 
 
 ------
@@ -102,7 +102,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.2.0](https://github.com/idcos/cloudiac/releases/tag/v1.2.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.2.0。
 
 
 ------
@@ -117,7 +117,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.1.0](https://github.com/idcos/cloudiac/releases/tag/v1.1.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.1.0。
 
 
 ------
@@ -147,7 +147,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v1.0.0](https://github.com/idcos/cloudiac/releases/tag/v1.0.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v1.0.0。
 
 
 ------
@@ -158,7 +158,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.12.1](https://github.com/idcos/cloudiac/releases/tag/v0.12.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.12.1。
 
 
 ------
@@ -190,7 +190,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.12.0](https://github.com/idcos/cloudiac/releases/tag/v0.12.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.12.0。
 
 
 ------
@@ -222,7 +222,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.11.0](https://github.com/idcos/cloudiac/releases/tag/v0.11.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.11.0。
 
 
 ------
@@ -234,7 +234,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.9.4](https://github.com/idcos/cloudiac/releases/tag/v0.9.4)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.9.4。
 
 
 ------
@@ -246,7 +246,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.9.1](https://github.com/idcos/cloudiac/releases/tag/v0.9.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.9.1。
 
 
 ------
@@ -278,7 +278,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.9.0](https://github.com/idcos/cloudiac/releases/tag/v0.9.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.9.0。
 
 
 ------
@@ -291,7 +291,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.8.1](https://github.com/idcos/cloudiac/releases/tag/v0.8.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.8.1。
 
 
 ------
@@ -317,7 +317,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.8.0](https://github.com/idcos/cloudiac/releases/tag/v0.8.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.8.0。
 
 
 ------
@@ -332,7 +332,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.7.1](https://github.com/idcos/cloudiac/releases/tag/v0.7.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.7.1。
 
 
 ------
@@ -356,7 +356,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.7.0](https://github.com/idcos/cloudiac/releases/tag/v0.7.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.7.0。
 
 
 ------
@@ -379,7 +379,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.6.0](https://github.com/idcos/cloudiac/releases/tag/v0.6.0)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.6.0。
 
 
 ------
@@ -390,7 +390,7 @@
 
 
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v0.5.1](https://github.com/idcos/cloudiac/releases/tag/v0.5.1)
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v0.5.1。
 
 
 

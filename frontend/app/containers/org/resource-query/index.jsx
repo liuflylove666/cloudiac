@@ -11,7 +11,9 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   notification,
+  Progress,
   Select,
   Space,
   Table,
@@ -29,6 +31,7 @@ import PageHeader from 'components/pageHeader';
 import Layout from 'components/common/layout';
 import EllipsisText from 'components/EllipsisText';
 import cmdbAPI from 'services/cmdb';
+import cloudAssetAPI from 'services/cloud-asset';
 import styles from './styles.less';
 
 const { Option } = Select;
@@ -60,6 +63,13 @@ const sourceMap = {
   import: '导入'
 };
 
+const managedByMap = {
+  iac: 'IaC纳管',
+  cloud_linked: '云采集已关联',
+  cloud_only: '云上未纳管',
+  manual: '人工维护'
+};
+
 const relationTypeMap = {
   depends_on: '依赖',
   contains: '包含'
@@ -77,7 +87,8 @@ const changeTypeColorMap = {
 
 const accountSourceMap = {
   variable_group: '变量组',
-  resource_account: '资源账号'
+  resource_account: '资源账号',
+  cloud_account: '云账号'
 };
 
 const taskStatusMap = {
@@ -92,6 +103,18 @@ const taskStatusColorMap = {
   running: 'processing',
   complete: 'success',
   failed: 'error'
+};
+
+const syncLogLevelMap = {
+  info: '信息',
+  warn: '警告',
+  error: '错误'
+};
+
+const syncLogLevelColorMap = {
+  info: 'processing',
+  warn: 'warning',
+  error: 'error'
 };
 
 const lifecycleMap = {
@@ -133,6 +156,8 @@ const asCSV = (value) => Array.isArray(value) ? value.join(',') : value;
 const accountKey = (account) => `${account.source}:${account.id}`;
 const joinList = (value) => Array.isArray(value) && value.length ? value.join(', ') : '-';
 const renderTime = (value) => !value || String(value).indexOf('0001-01-01') === 0 ? '-' : value;
+const numberText = (value) => Number(value || 0).toLocaleString();
+const percent = (value) => Math.max(0, Math.min(100, Number(value || 0)));
 const renderLifecycle = (value) => lifecycleMap[value] || value || '-';
 const renderCost = (value) => {
   const cost = Number(value);
@@ -211,6 +236,27 @@ const renderRelationSources = (sources = []) => (
       ))}
     </Space>
   ) : '-'
+);
+
+const assetManagedBy = (asset = {}) => {
+  if (asset.managedBy) {
+    return asset.managedBy;
+  }
+  if (asset.source === 'iac_resource' || asset.iacResourceId) {
+    return 'iac';
+  }
+  if (asset.source === 'cloud_collect') {
+    return !asset.projectId && !asset.envId && !asset.iacResourceId ? 'cloud_only' : 'cloud_linked';
+  }
+  return 'manual';
+};
+
+const CoverageMetric = ({ title, value, description, tone }) => (
+  <div className={`${styles.coverageMetric} ${tone ? styles[tone] : ''}`}>
+    <Text type='secondary'>{title}</Text>
+    <div className={styles.coverageMetricValue}>{numberText(value)}</div>
+    <Text type='secondary'>{description}</Text>
+  </div>
 );
 
 const RelationGraph = ({ asset, relations = [], onOpenDetail }) => {
@@ -302,11 +348,18 @@ const ApplicationGraph = ({ application, onOpenApplication }) => {
 export default ({ match, location }) => {
   const { orgId } = match.params || {};
   const { assetId } = queryString.parse(location && location.search || '');
+  const isCloudAssets = (location && location.pathname || '').includes('/m-cloud-assets');
+  const pageTitle = isCloudAssets ? '云资产' : '资产 CMDB';
+  const assetAPI = isCloudAssets ? cloudAssetAPI : cmdbAPI;
+  const exportAssetsPath = isCloudAssets ? '/api/v1/cloud/assets/export' : '/api/v1/cmdb/assets/export';
   const [ownershipForm] = Form.useForm();
+  const [batchOwnershipForm] = Form.useForm();
   const [ activeTab, setActiveTab ] = useState('assets');
   const [ assetKeyword, setAssetKeyword ] = useState('');
   const [ detailVisible, setDetailVisible ] = useState(false);
   const [ applicationDetailVisible, setApplicationDetailVisible ] = useState(false);
+  const [ syncTaskDetailVisible, setSyncTaskDetailVisible ] = useState(false);
+  const [ batchOwnershipVisible, setBatchOwnershipVisible ] = useState(false);
   const [ applicationDetailTab, setApplicationDetailTab ] = useState('relations');
   const [ selectedAssetIds, setSelectedAssetIds ] = useState([]);
   const [ dslInput, setDslInput ] = useState('');
@@ -329,7 +382,7 @@ export default ({ match, location }) => {
     run: fetchList
   } = useRequest(
     (params = {}) => requestWrapper(
-      cmdbAPI.listAssets.bind(null, { orgId, ...params })
+      assetAPI.listAssets.bind(null, { orgId, ...params })
     ), {
       throttleInterval: 1000,
       manual: true
@@ -341,7 +394,19 @@ export default ({ match, location }) => {
     run: fetchFilters
   } = useRequest(
     (params = {}) => requestWrapper(
-      cmdbAPI.assetFilters.bind(null, { orgId, ...params })
+      assetAPI.assetFilters.bind(null, { orgId, ...params })
+    ), {
+      manual: true
+    }
+  );
+
+  const {
+    loading: coverageLoading,
+    data: coverage = {},
+    run: fetchCoverage
+  } = useRequest(
+    () => requestWrapper(
+      cloudAssetAPI.coverage.bind(null, { orgId })
     ), {
       manual: true
     }
@@ -398,7 +463,7 @@ export default ({ match, location }) => {
     run: fetchDetail
   } = useRequest(
     (id) => requestWrapper(
-      cmdbAPI.assetDetail.bind(null, { orgId, id })
+      assetAPI.assetDetail.bind(null, { orgId, id })
     ), {
       manual: true
     }
@@ -409,7 +474,7 @@ export default ({ match, location }) => {
     run: updateAssetOwnership
   } = useRequest(
     (params) => requestWrapper(
-      cmdbAPI.updateAssetOwnership.bind(null, { orgId, id: detail && detail.id, ...params }),
+      assetAPI.updateAssetOwnership.bind(null, { orgId, id: detail && detail.id, ...params }),
       {
         autoSuccess: true,
         successMessage: '资产归属已保存'
@@ -426,11 +491,41 @@ export default ({ match, location }) => {
   );
 
   const {
+    loading: batchOwnershipSaving,
+    run: batchUpdateAssetOwnership
+  } = useRequest(
+    (params) => requestWrapper(
+      assetAPI.batchUpdateAssetOwnership.bind(null, { orgId, ...params }),
+      {
+        successMessage: '资产治理信息已批量保存'
+      }
+    ), {
+      manual: true,
+      onSuccess: (resp = {}) => {
+        notification.success({
+          message: '批量治理完成',
+          description: `总数 ${resp.total || 0}，更新 ${resp.updated || 0}，跳过 ${resp.skipped || 0}`
+        });
+        if (Array.isArray(resp.errors) && resp.errors.length) {
+          notification.warning({
+            message: '部分资产未更新',
+            description: resp.errors.slice(0, 3).join('；')
+          });
+        }
+        setSelectedAssetIds([]);
+        setBatchOwnershipVisible(false);
+        batchOwnershipForm.resetFields();
+        refresh();
+      }
+    }
+  );
+
+  const {
     loading: importingAssets,
     run: importAssets
   } = useRequest(
     (params) => requestWrapper(
-      cmdbAPI.importAssets.bind(null, { orgId, ...params })
+      assetAPI.importAssets.bind(null, { orgId, ...params })
     ), {
       manual: true,
       onSuccess: (resp = {}) => {
@@ -454,13 +549,16 @@ export default ({ match, location }) => {
     run: backfillIacResources
   } = useRequest(
     () => requestWrapper(
-      cmdbAPI.backfillIacResources.bind(null, { orgId }),
+      assetAPI.backfillIacResources.bind(null, { orgId }),
       { autoSuccess: true }
     ), {
       manual: true,
       onSuccess: () => {
         fetchFilters();
         fetchList({ currentPage: 1, pageSize: 10 });
+        if (isCloudAssets) {
+          fetchCoverage();
+        }
       }
     }
   );
@@ -483,7 +581,19 @@ export default ({ match, location }) => {
     run: fetchSyncTasks
   } = useRequest(
     (params = {}) => requestWrapper(
-      cmdbAPI.syncTasks.bind(null, { orgId, currentPage: 1, pageSize: 10, ...params })
+      assetAPI.syncTasks.bind(null, { orgId, currentPage: 1, pageSize: 10, ...params })
+    ), {
+      manual: true
+    }
+  );
+
+  const {
+    loading: syncTaskDetailLoading,
+    data: syncTaskDetail,
+    run: fetchSyncTaskDetail
+  } = useRequest(
+    (id) => requestWrapper(
+      assetAPI.syncTaskDetail.bind(null, { orgId, id })
     ), {
       manual: true
     }
@@ -494,7 +604,7 @@ export default ({ match, location }) => {
     run: startCloudSync
   } = useRequest(
     (params) => requestWrapper(
-      cmdbAPI.startSyncTask.bind(null, { orgId, ...params }),
+      assetAPI.startSyncTask.bind(null, { orgId, ...params }),
       {
         autoSuccess: true,
         successMessage: '采集任务已启动，后台运行中'
@@ -505,6 +615,9 @@ export default ({ match, location }) => {
         fetchSyncTasks();
         fetchList({ currentPage: 1, pageSize: 10 });
         fetchFilters();
+        if (isCloudAssets) {
+          fetchCoverage();
+        }
       }
     }
   );
@@ -527,9 +640,11 @@ export default ({ match, location }) => {
         projectIds: asCSV(restParams.projectIds),
         envIds: asCSV(restParams.envIds),
         providers: asCSV(restParams.providers),
+        accountIds: asCSV(restParams.accountIds),
         assetTypes: asCSV(restParams.assetTypes),
         sources: asCSV(restParams.sources),
         statuses: asCSV(restParams.statuses),
+        managedBy: asCSV(restParams.managedBy),
         dsl: restParams.dsl
       };
       fetchList(requestParams);
@@ -542,7 +657,10 @@ export default ({ match, location }) => {
     fetchCloudAccounts();
     fetchSyncTasks();
     fetchApplications();
-  }, [orgId]);
+    if (isCloudAssets) {
+      fetchCoverage();
+    }
+  }, [orgId, isCloudAssets]);
 
   useEffect(() => {
     if (activeTab === 'applications') {
@@ -590,6 +708,13 @@ export default ({ match, location }) => {
     (cloudAccounts || []).find((account) => accountKey(account) === cloudForm.accountKey)
   ), [cloudAccounts, cloudForm.accountKey]);
 
+  const coverageMetrics = coverage.metrics || {};
+  const coverageProviders = coverage.providers || [];
+  const coverageAccounts = coverage.accounts || [];
+  const coverageAssetTypes = coverage.assetTypes || [];
+  const iacCoverageRate = percent(coverageMetrics.iacCoverageRate);
+  const cloudOnlyRate = percent(coverageMetrics.cloudOnlyRate);
+  const ownershipCoverageRate = percent(coverageMetrics.ownershipCoverageRate);
   const applicationList = (applicationsData && applicationsData.list) || [];
   const syncTaskList = (syncTasksData && syncTasksData.list) || [];
   const applicationOptions = useMemo(() => {
@@ -636,6 +761,28 @@ export default ({ match, location }) => {
     setApplicationDetailTab('relations');
   };
 
+  const openSyncTaskDetail = (record) => {
+    setSyncTaskDetailVisible(true);
+    fetchSyncTaskDetail(record.id);
+  };
+
+  const closeSyncTaskDetail = () => {
+    setSyncTaskDetailVisible(false);
+  };
+
+  const openBatchOwnership = () => {
+    if (!selectedAssetIds.length) {
+      notification.warning({ message: '请先选择资产' });
+      return;
+    }
+    setBatchOwnershipVisible(true);
+  };
+
+  const closeBatchOwnership = () => {
+    setBatchOwnershipVisible(false);
+    batchOwnershipForm.resetFields();
+  };
+
   const onSearch = (_, keyword) => {
     setSearchParams((preSearchParams) => ({
       ...preSearchParams,
@@ -646,6 +793,18 @@ export default ({ match, location }) => {
 
   const onFilterChange = (key, value) => {
     onChangeFormParams({ [key]: value });
+  };
+
+  const applyAssetFilters = (filters) => {
+    setActiveTab('assets');
+    setSearchParams((preSearchParams) => ({
+      ...preSearchParams,
+      form: {
+        ...preSearchParams.form,
+        ...filters
+      },
+      paginate: { ...preSearchParams.paginate, current: 1 }
+    }));
   };
 
   const buildAssetQueryParams = (options = {}) => {
@@ -659,9 +818,11 @@ export default ({ match, location }) => {
       projectIds: asCSV(form.projectIds),
       envIds: asCSV(form.envIds),
       providers: asCSV(form.providers),
+      accountIds: asCSV(form.accountIds),
       assetTypes: asCSV(form.assetTypes),
       sources: asCSV(form.sources),
       statuses: asCSV(form.statuses),
+      managedBy: asCSV(form.managedBy),
       dsl: form.dsl
     };
   };
@@ -670,6 +831,9 @@ export default ({ match, location }) => {
     const queryParams = buildAssetQueryParams();
     fetchList(queryParams);
     fetchFilters(queryParams);
+    if (isCloudAssets) {
+      fetchCoverage();
+    }
   };
 
   const refreshApplications = (options = {}) => {
@@ -689,14 +853,16 @@ export default ({ match, location }) => {
     appendQueryParam(params, 'projectIds', queryParams.projectIds);
     appendQueryParam(params, 'envIds', queryParams.envIds);
     appendQueryParam(params, 'providers', queryParams.providers);
+    appendQueryParam(params, 'accountIds', queryParams.accountIds);
     appendQueryParam(params, 'assetTypes', queryParams.assetTypes);
     appendQueryParam(params, 'sources', queryParams.sources);
     appendQueryParam(params, 'statuses', queryParams.statuses);
+    appendQueryParam(params, 'managedBy', queryParams.managedBy);
     appendQueryParam(params, 'dsl', queryParams.dsl);
     selectedAssetIds.forEach((id) => appendQueryParam(params, 'ids', id));
 
     try {
-      await downloadImportTemplate(`/api/v1/cmdb/assets/export?${params.join('&')}`, { orgId });
+      await downloadImportTemplate(`${exportAssetsPath}?${params.join('&')}`, { orgId });
       if (selectedAssetIds.length) {
         setSelectedAssetIds([]);
       }
@@ -757,9 +923,12 @@ export default ({ match, location }) => {
     const timer = setInterval(() => {
       fetchSyncTasks();
       refresh();
+      if (isCloudAssets) {
+        fetchCoverage();
+      }
     }, 3000);
     return () => clearInterval(timer);
-  }, [hasRunningSyncTask, searchParams]);
+  }, [hasRunningSyncTask, searchParams, isCloudAssets]);
 
   const syncIac = async () => {
     try {
@@ -827,6 +996,31 @@ export default ({ match, location }) => {
     }
   };
 
+  const onSaveBatchOwnership = async () => {
+    try {
+      const values = await batchOwnershipForm.validateFields();
+      const payload = { ids: selectedAssetIds };
+      ['owner', 'application', 'businessLine', 'lifecycle', 'complianceRisk'].forEach((key) => {
+        if (values[key] !== undefined && values[key] !== '') {
+          payload[key] = values[key];
+        }
+      });
+      if (Object.keys(payload).length <= 1) {
+        notification.warning({ message: '请至少填写一个治理字段' });
+        return;
+      }
+      await batchUpdateAssetOwnership(payload);
+    } catch (err) {
+      if (err && err.errorFields) {
+        return;
+      }
+      notification.error({
+        message: '批量治理保存失败',
+        description: err.message
+      });
+    }
+  };
+
   const onSaveApplicationRelations = async () => {
     if (!applicationDetail) {
       return;
@@ -875,6 +1069,27 @@ export default ({ match, location }) => {
       title: '云厂商',
       width: 120,
       render: (text) => text ? <Tag color='blue'>{text}</Tag> : '-'
+    },
+    {
+      dataIndex: 'accountId',
+      title: '账号',
+      width: 190,
+      ellipsis: true,
+      render: (text, record) => (
+        <Space direction='vertical' size={0}>
+          <span>{text || '-'}</span>
+          {record.cloudAccountId && <Text type='secondary'>云账号 {record.cloudAccountId}</Text>}
+        </Space>
+      )
+    },
+    {
+      title: '纳管状态',
+      width: 130,
+      render: (_, record) => {
+        const managedBy = assetManagedBy(record);
+        const color = managedBy === 'cloud_only' ? 'warning' : managedBy === 'iac' ? 'success' : 'processing';
+        return <Tag color={color}>{managedByMap[managedBy] || managedBy}</Tag>;
+      }
     },
     {
       dataIndex: 'assetType',
@@ -949,6 +1164,124 @@ export default ({ match, location }) => {
       render: renderTime
     }
   ], [orgId]);
+
+  const coverageProviderColumns = useMemo(() => [
+    {
+      dataIndex: 'provider',
+      title: '云厂商',
+      width: 110,
+      render: (text) => text ? <a onClick={() => applyAssetFilters({ providers: [text] })}>{text}</a> : '-'
+    },
+    {
+      dataIndex: 'assetCount',
+      title: '资产',
+      width: 90,
+      render: numberText
+    },
+    {
+      dataIndex: 'iacManagedAssetCount',
+      title: 'IaC',
+      width: 80,
+      render: numberText
+    },
+    {
+      dataIndex: 'cloudOnlyAssetCount',
+      title: '未纳管',
+      width: 90,
+      render: (value, record) => value ? <a onClick={() => applyAssetFilters({ providers: [record.provider], managedBy: ['cloud_only'] })}><Tag color='warning'>{numberText(value)}</Tag></a> : 0
+    },
+    {
+      dataIndex: 'unownedAssetCount',
+      title: '无负责人',
+      width: 100,
+      render: (value) => value ? <Tag color='warning'>{numberText(value)}</Tag> : 0
+    },
+    {
+      dataIndex: 'highRiskAssetCount',
+      title: '高风险',
+      width: 90,
+      render: (value) => value ? <Tag color='error'>{numberText(value)}</Tag> : 0
+    }
+  ], [searchParams]);
+
+  const coverageAccountColumns = useMemo(() => [
+    {
+      dataIndex: 'accountName',
+      title: '账号',
+      width: 180,
+      ellipsis: true,
+      render: (text, record) => (
+        <Space direction='vertical' size={0}>
+          <a onClick={() => applyAssetFilters({
+            providers: record.provider ? [record.provider] : undefined,
+            accountIds: record.accountId ? [record.accountId] : undefined
+          })}>{text || record.accountId || '-'}</a>
+          <Text type='secondary'>{record.provider || '-'} / {record.accountId || '-'}</Text>
+        </Space>
+      )
+    },
+    {
+      dataIndex: 'validationStatus',
+      title: '验证',
+      width: 90,
+      render: (text) => text ? <Tag>{text}</Tag> : '-'
+    },
+    {
+      dataIndex: 'assetCount',
+      title: '资产',
+      width: 80,
+      render: numberText
+    },
+    {
+      dataIndex: 'cloudOnlyAssetCount',
+      title: '未纳管',
+      width: 90,
+      render: (value, record) => value ? <a onClick={() => applyAssetFilters({
+        providers: record.provider ? [record.provider] : undefined,
+        accountIds: record.accountId ? [record.accountId] : undefined,
+        managedBy: ['cloud_only']
+      })}><Tag color='warning'>{numberText(value)}</Tag></a> : 0
+    },
+    {
+      dataIndex: 'unownedAssetCount',
+      title: '无负责人',
+      width: 100,
+      render: (value) => value ? <Tag color='warning'>{numberText(value)}</Tag> : 0
+    }
+  ], [searchParams]);
+
+  const coverageTypeColumns = useMemo(() => [
+    {
+      dataIndex: 'assetType',
+      title: '资产类型',
+      width: 160,
+      render: (text) => <a onClick={() => applyAssetFilters({ assetTypes: [text] })}>{assetTypeMap[text] || text || '-'}</a>
+    },
+    {
+      dataIndex: 'assetCount',
+      title: '资产',
+      width: 80,
+      render: numberText
+    },
+    {
+      dataIndex: 'cloudCollectedAssetCount',
+      title: '云采集',
+      width: 90,
+      render: numberText
+    },
+    {
+      dataIndex: 'cloudOnlyAssetCount',
+      title: '未纳管',
+      width: 90,
+      render: (value, record) => value ? <a onClick={() => applyAssetFilters({ assetTypes: [record.assetType], managedBy: ['cloud_only'] })}><Tag color='warning'>{numberText(value)}</Tag></a> : 0
+    },
+    {
+      dataIndex: 'highRiskAssetCount',
+      title: '高风险',
+      width: 90,
+      render: (value) => value ? <Tag color='error'>{numberText(value)}</Tag> : 0
+    }
+  ], [searchParams]);
 
   const applicationColumns = useMemo(() => [
     {
@@ -1189,6 +1522,12 @@ export default ({ match, location }) => {
       ellipsis: true
     },
     {
+      dataIndex: 'accountSource',
+      title: '来源',
+      width: 110,
+      render: (text) => accountSourceMap[text] || text || '-'
+    },
+    {
       dataIndex: 'provider',
       title: '云厂商',
       width: 100,
@@ -1246,6 +1585,49 @@ export default ({ match, location }) => {
       title: '结束时间',
       width: 180,
       render: renderTime
+    },
+    {
+      title: '操作',
+      width: 90,
+      fixed: 'right',
+      render: (_, record) => (
+        <Button type='link' size='small' onClick={() => openSyncTaskDetail(record)}>
+          详情
+        </Button>
+      )
+    }
+  ], []);
+
+  const syncTaskLogColumns = useMemo(() => [
+    {
+      dataIndex: 'createdAt',
+      title: '时间',
+      width: 180,
+      render: renderTime
+    },
+    {
+      dataIndex: 'level',
+      title: '级别',
+      width: 90,
+      render: (text) => <Tag color={syncLogLevelColorMap[text]}>{syncLogLevelMap[text] || text || '-'}</Tag>
+    },
+    {
+      dataIndex: 'stage',
+      title: '阶段',
+      width: 120,
+      render: (text) => text || '-'
+    },
+    {
+      dataIndex: 'message',
+      title: '消息',
+      width: 240,
+      render: (text) => text || '-'
+    },
+    {
+      dataIndex: 'data',
+      title: '数据',
+      width: 320,
+      render: renderJSON
     }
   ], []);
 
@@ -1343,7 +1725,7 @@ export default ({ match, location }) => {
     <Layout
       extraHeader={
         <PageHeader
-          title='资产 CMDB'
+          title={pageTitle}
           breadcrumb={true}
         />
       }
@@ -1352,6 +1734,99 @@ export default ({ match, location }) => {
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
           <TabPane tab='资产列表' key='assets'>
             <Space size='middle' direction='vertical' style={{ width: '100%', display: 'flex' }}>
+              {isCloudAssets && (
+                <div className={styles.coveragePanel}>
+                  <div className={styles.coverageHeader}>
+                    <div>
+                      <Text strong={true}>资产覆盖率</Text>
+                      <div className={styles.coverageDesc}>
+                        多云资产按账号、云厂商和资源类型统计 IaC 纳管、云采集、未纳管和归属缺口
+                      </div>
+                    </div>
+                    <Button icon={<ReloadOutlined />} loading={coverageLoading} onClick={fetchCoverage}>
+                      刷新覆盖率
+                    </Button>
+                  </div>
+                  <div className={styles.coverageMetricGrid}>
+                    <CoverageMetric
+                      title='资产总数'
+                      value={coverageMetrics.totalAssets}
+                      description={`Provider ${numberText(coverageMetrics.providerCount)}，账号 ${numberText(coverageMetrics.accountCount)}`}
+                    />
+                    <CoverageMetric
+                      title='IaC 纳管'
+                      value={coverageMetrics.iacManagedAssets}
+                      description={`覆盖率 ${iacCoverageRate.toFixed(1)}%`}
+                    />
+                    <CoverageMetric
+                      title='未纳管资产'
+                      value={coverageMetrics.cloudOnlyAssets}
+                      description={`占比 ${cloudOnlyRate.toFixed(1)}%`}
+                      tone={coverageMetrics.cloudOnlyAssets ? 'coverageWarning' : ''}
+                    />
+                    <CoverageMetric
+                      title='无负责人'
+                      value={coverageMetrics.unownedAssets}
+                      description={`归属覆盖 ${ownershipCoverageRate.toFixed(1)}%`}
+                      tone={coverageMetrics.unownedAssets ? 'coverageWarning' : ''}
+                    />
+                  </div>
+                  <div className={styles.coverageProgressGrid}>
+                    <div>
+                      <div className={styles.coverageProgressMeta}>
+                        <Text>IaC 纳管覆盖率</Text>
+                        <Text type='secondary'>{iacCoverageRate.toFixed(1)}%</Text>
+                      </div>
+                      <Progress percent={iacCoverageRate} showInfo={false} strokeColor='#2f7de1'/>
+                    </div>
+                    <div>
+                      <div className={styles.coverageProgressMeta}>
+                        <Text>资产归属覆盖率</Text>
+                        <Text type='secondary'>{ownershipCoverageRate.toFixed(1)}%</Text>
+                      </div>
+                      <Progress percent={ownershipCoverageRate} showInfo={false} strokeColor='#2ca58d'/>
+                    </div>
+                  </div>
+                  <div className={styles.coverageTableGrid}>
+                    <div>
+                      <div className={styles.coverageTableTitle}>Provider 覆盖</div>
+                      <Table
+                        size='small'
+                        rowKey='provider'
+                        columns={coverageProviderColumns}
+                        dataSource={coverageProviders}
+                        loading={coverageLoading}
+                        pagination={false}
+                        scroll={{ x: 'max-content' }}
+                      />
+                    </div>
+                    <div>
+                      <div className={styles.coverageTableTitle}>账号覆盖</div>
+                      <Table
+                        size='small'
+                        rowKey={(record) => `${record.provider}-${record.accountId || record.accountRefId || record.accountName}`}
+                        columns={coverageAccountColumns}
+                        dataSource={coverageAccounts.slice(0, 8)}
+                        loading={coverageLoading}
+                        pagination={false}
+                        scroll={{ x: 'max-content' }}
+                      />
+                    </div>
+                    <div>
+                      <div className={styles.coverageTableTitle}>资产类型覆盖</div>
+                      <Table
+                        size='small'
+                        rowKey='assetType'
+                        columns={coverageTypeColumns}
+                        dataSource={coverageAssetTypes.slice(0, 8)}
+                        loading={coverageLoading}
+                        pagination={false}
+                        scroll={{ x: 'max-content' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className={styles.toolbar}>
                 <Space className={styles.filterBar} size={[8, 8]} wrap={true}>
                   <InputSearch
@@ -1380,6 +1855,8 @@ export default ({ match, location }) => {
                     style={{ width: 320 }}
                   />
                   {selectFilter('providers', '云厂商', filters.providers)}
+                  {isCloudAssets && selectFilter('accountIds', '账号', filters.accountIds)}
+                  {isCloudAssets && selectFilter('managedBy', '纳管状态', filters.managedBy, (it) => managedByMap[it] || it)}
                   {selectFilter('assetTypes', '资产类型', filters.assetTypes, (it) => assetTypeMap[it] || it)}
                   {selectFilter('projectIds', '项目', filters.projects, (it) => it.projectName, (it) => it.projectId)}
                   {selectFilter('envIds', '环境', filters.envs, (it) => it.envName, (it) => it.envId)}
@@ -1406,6 +1883,11 @@ export default ({ match, location }) => {
                   <Button icon={<DownloadOutlined />} onClick={() => exportAssets('json')}>
                     {selectedAssetIds.length ? '导出选中 JSON' : '导出 JSON'}
                   </Button>
+                  {isCloudAssets && (
+                    <Button icon={<SaveOutlined />} disabled={!selectedAssetIds.length} onClick={openBatchOwnership}>
+                      {selectedAssetIds.length ? `批量治理(${selectedAssetIds.length})` : '批量治理'}
+                    </Button>
+                  )}
                   <Button icon={<ReloadOutlined />} onClick={refresh}>刷新</Button>
                   <Button type='primary' icon={<SyncOutlined />} loading={backfillLoading} onClick={syncIac}>
                     同步 IaC 资源
@@ -1555,6 +2037,91 @@ export default ({ match, location }) => {
           </TabPane>
         </Tabs>
       </div>
+      <Modal
+        title={`批量治理资产（${selectedAssetIds.length}）`}
+        visible={batchOwnershipVisible}
+        confirmLoading={batchOwnershipSaving}
+        okText='保存'
+        cancelText='取消'
+        destroyOnClose={true}
+        onOk={onSaveBatchOwnership}
+        onCancel={closeBatchOwnership}
+      >
+        <Form form={batchOwnershipForm} layout='vertical'>
+          <Form.Item name='owner' label='负责人'>
+            <Input maxLength={128} placeholder='负责人'/>
+          </Form.Item>
+          <Form.Item name='application' label='应用'>
+            <Input maxLength={128} placeholder='应用'/>
+          </Form.Item>
+          <Form.Item name='businessLine' label='业务线'>
+            <Input maxLength={128} placeholder='业务线'/>
+          </Form.Item>
+          <Form.Item name='lifecycle' label='生命周期'>
+            <Select allowClear={true} placeholder='生命周期'>
+              {Object.entries(lifecycleMap).map(([value, label]) => (
+                <Option key={value} value={value}>{label}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name='complianceRisk' label='合规风险'>
+            <Select allowClear={true} placeholder='合规风险'>
+              {Object.entries(complianceRiskMap).map(([value, label]) => (
+                <Option key={value} value={value}>{label}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Drawer
+        title='云采集任务详情'
+        width={860}
+        visible={syncTaskDetailVisible}
+        onClose={closeSyncTaskDetail}
+        destroyOnClose={true}
+      >
+        {syncTaskDetailLoading || !syncTaskDetail ? (
+          <Text type='secondary'>加载中...</Text>
+        ) : (
+          <Space direction='vertical' size='middle' style={{ width: '100%' }}>
+            <Descriptions column={2} size='small' bordered={true}>
+              <Descriptions.Item label='账号'>{syncTaskDetail.accountName || '-'}</Descriptions.Item>
+              <Descriptions.Item label='来源'>{accountSourceMap[syncTaskDetail.accountSource] || syncTaskDetail.accountSource || '-'}</Descriptions.Item>
+              <Descriptions.Item label='云厂商'>{syncTaskDetail.provider || '-'}</Descriptions.Item>
+              <Descriptions.Item label='状态'>
+                <Tag color={taskStatusColorMap[syncTaskDetail.status]}>
+                  {taskStatusMap[syncTaskDetail.status] || syncTaskDetail.status || '-'}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label='区域'>{joinList(syncTaskDetail.regions)}</Descriptions.Item>
+              <Descriptions.Item label='资产类型'>
+                {joinList((syncTaskDetail.assetTypes || []).map((it) => assetTypeMap[it] || it))}
+              </Descriptions.Item>
+              <Descriptions.Item label='开始时间'>{renderTime(syncTaskDetail.startedAt)}</Descriptions.Item>
+              <Descriptions.Item label='结束时间'>{renderTime(syncTaskDetail.endedAt)}</Descriptions.Item>
+              <Descriptions.Item label='错误日志' span={2}>{syncTaskDetail.errorMessage || '-'}</Descriptions.Item>
+            </Descriptions>
+            <Tabs defaultActiveKey='logs'>
+              <TabPane tab='阶段日志' key='logs'>
+                <Table
+                  size='small'
+                  rowKey='id'
+                  columns={syncTaskLogColumns}
+                  dataSource={syncTaskDetail.logs || []}
+                  pagination={false}
+                  scroll={{ x: 'max-content' }}
+                  locale={{
+                    emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description='暂无阶段日志'/>
+                  }}
+                />
+              </TabPane>
+              <TabPane tab='统计' key='stats'>
+                {renderJSON(syncTaskDetail.stats)}
+              </TabPane>
+            </Tabs>
+          </Space>
+        )}
+      </Drawer>
       <Drawer
         title='应用依赖详情'
         width={820}

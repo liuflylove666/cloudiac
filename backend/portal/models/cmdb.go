@@ -8,8 +8,14 @@ const (
 	CmdbAssetSourceIacResource  = "iac_resource"
 	CmdbAssetSourceCloudCollect = "cloud_collect"
 
+	CmdbManagedByIac         = "iac"
+	CmdbManagedByCloudOnly   = "cloud_only"
+	CmdbManagedByCloudLinked = "cloud_linked"
+	CmdbManagedByManual      = "manual"
+
 	CmdbCloudAccountSourceVariableGroup   = "variable_group"
 	CmdbCloudAccountSourceResourceAccount = "resource_account"
+	CmdbCloudAccountSourceCloudAccount    = "cloud_account"
 
 	CmdbRelationSourceIacDependency = "iac_dependency"
 	CmdbRelationSourceCloudInferred = "cloud_inferred"
@@ -18,8 +24,8 @@ const (
 	CmdbRelationTypeDependsOn       = "depends_on"
 	CmdbRelationTypeContains        = "contains"
 
-	CmdbAssetChangeTypeCreated = "created"
-	CmdbAssetChangeTypeUpdated = "updated"
+	CmdbAssetChangeTypeCreated  = "created"
+	CmdbAssetChangeTypeUpdated  = "updated"
 	CmdbAssetChangeSourceManual = "manual_edit"
 	CmdbAssetChangeSourceImport = "import"
 
@@ -27,6 +33,10 @@ const (
 	CmdbSyncTaskRunning  = "running"
 	CmdbSyncTaskComplete = "complete"
 	CmdbSyncTaskFailed   = "failed"
+
+	CmdbSyncLogLevelInfo  = "info"
+	CmdbSyncLogLevelWarn  = "warn"
+	CmdbSyncLogLevelError = "error"
 
 	CmdbAssetTypeComputeInstance      = "compute_instance"
 	CmdbAssetTypeKubernetesCluster    = "kubernetes_cluster"
@@ -77,6 +87,13 @@ type CmdbAsset struct {
 
 	IacResourceId Id     `json:"iacResourceId" gorm:"index;size:32;not null;default:''"`
 	IacAddress    string `json:"iacAddress" gorm:"size:255;not null;default:''"`
+
+	ManagedBy       string  `json:"managedBy" gorm:"index;size:32;not null;default:''"`
+	CloudAccountId  Id      `json:"cloudAccountId" gorm:"index;size:32;not null;default:''"`
+	SyncPolicyId    Id      `json:"syncPolicyId" gorm:"index;size:32;not null;default:''"`
+	LastOperationId Id      `json:"lastOperationId" gorm:"index;size:32;not null;default:''"`
+	RiskScore       float64 `json:"riskScore" gorm:"type:decimal(10,4);not null;default:0"`
+	CostCenter      string  `json:"costCenter" gorm:"index;size:128;not null;default:''"`
 
 	Tags       ResAttrs `json:"tags,omitempty" gorm:"type:json"`
 	Attributes ResAttrs `json:"attributes,omitempty" gorm:"type:json"`
@@ -168,4 +185,19 @@ type CmdbSyncTask struct {
 
 func (CmdbSyncTask) TableName() string {
 	return "iac_cmdb_sync_task"
+}
+
+type CmdbSyncTaskLog struct {
+	TimedModel
+
+	OrgId   Id       `json:"orgId" gorm:"index;size:32;not null"`
+	TaskId  Id       `json:"taskId" gorm:"index;size:32;not null"`
+	Level   string   `json:"level" gorm:"index;size:32;not null;default:'info'"`
+	Stage   string   `json:"stage" gorm:"index;size:64;not null;default:''"`
+	Message string   `json:"message" gorm:"type:text"`
+	Data    ResAttrs `json:"data,omitempty" gorm:"type:json"`
+}
+
+func (CmdbSyncTaskLog) TableName() string {
+	return "iac_cmdb_sync_task_log"
 }

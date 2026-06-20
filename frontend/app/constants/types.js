@@ -7,9 +7,6 @@ import { SeverityLowIcon, SeverityMediumIcon, SeverityHighIcon } from 'component
  */
 export const GLOBAL_SCROLL_DOM_ID = 'global_scroll_dom_id';
 
-// Terraform版本自动匹配值
-export const TFVERSION_AUTO_MATCH = 'tfversion_auto_match';
-
 export const ORG_USER = {
   role: {
     member: '成员',
@@ -106,7 +103,7 @@ export const DOCS = {
   project: '项目',
   variable: '变量',
   env: '环境',
-  vcs: 'VCS',
+  vcs: '代码仓库',
   role: '用户和角色'
 };
 

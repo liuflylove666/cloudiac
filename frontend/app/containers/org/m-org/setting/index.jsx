@@ -12,7 +12,7 @@ import ResourceAccount from './resource-account';
 const subNavs = {
   userRole: '用户角色',
   apiToken: 'API Token',
-  vcs: 'VCS',
+  vcs: '代码仓库',
   ssh: 'ssh密钥',
   notification: '通知',
   resourceAccount: '资源账号'

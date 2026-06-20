@@ -398,7 +398,7 @@ export default () => {
                 }
               }}
             >
-              <Radio value='vcs'>VCS</Radio>
+              <Radio value='vcs'>代码仓库</Radio>
               <Radio value='registry'>Registry</Radio>
             </Radio.Group>
           </Form.Item>
@@ -410,12 +410,12 @@ export default () => {
                 return (
                   <>
                     <Form.Item 
-                      label='VCS'
+                      label='代码仓库'
                       name='vcsId' 
                       rules={[{ required: true, message: '请选择' }]}
                     >
                       <Select 
-                        placeholder='请选择VCS'
+                        placeholder='请选择代码仓库'
                         optionFilterProp='label'
                         showSearch={true}
                         loading={vcsLoading}
@@ -540,7 +540,7 @@ export default () => {
                       />
                     </Form.Item>
                     <Form.Item 
-                      label='vcs'
+                      label='代码仓库'
                       name='vcsId'
                       hidden={true}
                     >
@@ -603,7 +603,7 @@ export default () => {
                         <div className='empty-text'>
                           {readmeText === undefined ? (
                             source === 'vcs' ? (
-                              <span>选择VCS、仓库、分支/标签查看策略组说明</span>
+                              <span>选择代码仓库、仓库、分支/标签查看策略组说明</span>
                             ) : (
                               <span>选择策略组、版本查看策略组说明</span>
                             )

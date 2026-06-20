@@ -34,6 +34,86 @@
   max-width: 100%;
 }
 
+.coveragePanel {
+  padding: 14px;
+  background: #f8fbff;
+  border: 1px solid #e3edf8;
+  border-radius: 4px;
+}
+
+.coverageHeader,
+.coverageProgressMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coverageHeader {
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.coverageDesc {
+  margin-top: 4px;
+  color: #6b778c;
+}
+
+.coverageMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+  background: #e6edf5;
+}
+
+.coverageMetric {
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+}
+
+.coverageMetricValue {
+  margin: 6px 0 4px;
+  color: #172b4d;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.coverageWarning {
+  background: #fffaf0;
+
+  .coverageMetricValue {
+    color: #ad6800;
+  }
+}
+
+.coverageProgressGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.coverageProgressMeta {
+  margin-bottom: 6px;
+}
+
+.coverageTableGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.coverageTableTitle {
+  margin-bottom: 8px;
+  color: #172b4d;
+  font-weight: 600;
+}
+
 .jsonBlock {
   max-height: 420px;
   margin: 0;
@@ -103,12 +183,28 @@
 
 @media (max-width: 760px) {
   .relationGraph,
-  .ownershipGrid {
+  .ownershipGrid,
+  .coverageMetricGrid,
+  .coverageProgressGrid,
+  .coverageTableGrid {
     display: flex;
     flex-direction: column;
   }
 
+  .coverageHeader,
+  .coverageProgressMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .actionBar {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1180px) {
+  .coverageMetricGrid,
+  .coverageTableGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -472,7 +472,7 @@ const Index = ({ configRef, data, orgId, tplInfo, envId, runnner, keys, tfvars, 
                         >
                           <Checkbox onChange={e => checkedChange(e, '推送到分支时重新部署')}>推送到分支时重新部署</Checkbox> 
                         </Form.Item>
-                        <Tooltip title='勾选该选项将自动调用VCS API设置webhook，请确保VCS配置中的token具有足够权限'><InfoCircleOutlined /></Tooltip>
+                        <Tooltip title='勾选该选项将自动调用代码仓库 API 设置 webhook，请确保代码仓库配置中的访问令牌具有足够权限'><InfoCircleOutlined /></Tooltip>
                       </Form.Item>
                     </Col>
                     <Col span={7}>
@@ -485,7 +485,7 @@ const Index = ({ configRef, data, orgId, tplInfo, envId, runnner, keys, tfvars, 
                         >
                           <Checkbox>PR/MR时执行PLAN</Checkbox> 
                         </Form.Item>
-                        <Tooltip title='勾选该选项将自动调用VCS API设置webhook，请确保VCS配置中的token具有足够权限'><InfoCircleOutlined /></Tooltip>
+                        <Tooltip title='勾选该选项将自动调用代码仓库 API 设置 webhook，请确保代码仓库配置中的访问令牌具有足够权限'><InfoCircleOutlined /></Tooltip>
                       </Form.Item>
                     </Col>
                     <Col span={7}>

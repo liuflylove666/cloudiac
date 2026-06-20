@@ -182,6 +182,26 @@ func Register(g *gin.RouterGroup) {
 	// 列出项目下资源搜索得到的相关环境名称以及provider名称
 	g.GET("/projects/resources/filters", ac("projects", "read"), w(handlers.Project{}.SearchProjectResourcesFilters))
 
+	// 多云账号中心
+	g.GET("/cloud/overview", ac("orgs", "read"), w(handlers.CloudOverview{}.Overview))
+	ctrl.Register(g.Group("cloud/accounts", ac()), &handlers.CloudAccount{})
+	g.POST("/cloud/accounts/:id/validate", ac(), w(handlers.CloudAccount{}.Validate))
+	g.GET("/cloud/accounts/:id/regions", ac("orgs", "read"), w(handlers.CloudAccount{}.Regions))
+	g.PUT("/cloud/accounts/:id/regions", ac("orgs", "read"), w(handlers.CloudAccount{}.UpdateRegions))
+	g.GET("/cloud/accounts/:id/permissions", ac("orgs", "read"), w(handlers.CloudAccount{}.Permissions))
+	g.GET("/cloud/assets", ac("orgs", "read"), w(handlers.CloudAsset{}.SearchAssets))
+	g.GET("/cloud/assets/filters", ac("orgs", "read"), w(handlers.CloudAsset{}.AssetFilters))
+	g.GET("/cloud/assets/coverage", ac("orgs", "read"), w(handlers.CloudAsset{}.Coverage))
+	g.GET("/cloud/assets/export", ac("orgs", "read"), w(handlers.CloudAsset{}.ExportAssets))
+	g.POST("/cloud/assets/import", ac("orgs", "read"), w(handlers.CloudAsset{}.ImportAssets))
+	g.PUT("/cloud/assets/ownership", ac("orgs", "read"), w(handlers.CloudAsset{}.BatchUpdateAssetOwnership))
+	g.GET("/cloud/assets/:id", ac("orgs", "read"), w(handlers.CloudAsset{}.AssetDetail))
+	g.PUT("/cloud/assets/:id/ownership", ac("orgs", "read"), w(handlers.CloudAsset{}.UpdateAssetOwnership))
+	g.POST("/cloud/backfill/iac-resources", ac("orgs", "read"), w(handlers.CloudAsset{}.BackfillIacResources))
+	g.GET("/cloud/sync-tasks", ac("orgs", "read"), w(handlers.CloudAsset{}.SearchSyncTasks))
+	g.GET("/cloud/sync-tasks/:id", ac("orgs", "read"), w(handlers.CloudAsset{}.SyncTaskDetail))
+	g.POST("/cloud/sync-tasks", ac("orgs", "read"), w(handlers.CloudAsset{}.StartSyncTask))
+
 	// CMDB 资产中心
 	g.GET("/cmdb/assets", ac("orgs", "read"), w(handlers.Cmdb{}.SearchAssets))
 	g.GET("/cmdb/assets/filters", ac("orgs", "read"), w(handlers.Cmdb{}.AssetFilters))
@@ -190,11 +210,13 @@ func Register(g *gin.RouterGroup) {
 	g.GET("/cmdb/applications", ac("orgs", "read"), w(handlers.Cmdb{}.SearchApplications))
 	g.GET("/cmdb/applications/detail", ac("orgs", "read"), w(handlers.Cmdb{}.ApplicationDetail))
 	g.PUT("/cmdb/applications/relations", ac("orgs", "read"), w(handlers.Cmdb{}.UpdateApplicationRelations))
+	g.PUT("/cmdb/assets/ownership", ac("orgs", "read"), w(handlers.Cmdb{}.BatchUpdateAssetOwnership))
 	g.GET("/cmdb/assets/:id", ac("orgs", "read"), w(handlers.Cmdb{}.AssetDetail))
 	g.PUT("/cmdb/assets/:id/ownership", ac("orgs", "read"), w(handlers.Cmdb{}.UpdateAssetOwnership))
 	g.POST("/cmdb/backfill/iac-resources", ac("orgs", "read"), w(handlers.Cmdb{}.BackfillIacResources))
 	g.GET("/cmdb/cloud/accounts", ac("orgs", "read"), w(handlers.Cmdb{}.CloudAccounts))
 	g.GET("/cmdb/sync-tasks", ac("orgs", "read"), w(handlers.Cmdb{}.SearchSyncTasks))
+	g.GET("/cmdb/sync-tasks/:id", ac("orgs", "read"), w(handlers.Cmdb{}.SyncTaskDetail))
 	g.POST("/cmdb/sync-tasks", ac("orgs", "read"), w(handlers.Cmdb{}.StartSyncTask))
 
 	// 组织概览统计数据

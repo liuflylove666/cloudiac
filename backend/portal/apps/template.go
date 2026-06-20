@@ -3,6 +3,7 @@
 package apps
 
 import (
+	"cloudiac/common"
 	"cloudiac/portal/consts"
 	"cloudiac/portal/consts/e"
 	"cloudiac/portal/libs/ctx"
@@ -18,6 +19,7 @@ import (
 	"cloudiac/utils/logs"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/lib/pq"
 )
@@ -43,8 +45,30 @@ func getRepo(vcsId models.Id, query *db.Session, repoId string) (*vcsrv.Projects
 	return p, nil
 }
 
+func normalizeTemplateTfVersion(tfVersion string) (string, e.Error) {
+	version := strings.TrimSpace(tfVersion)
+	if version == "" {
+		return consts.DefaultTerraformVersion, nil
+	}
+
+	if !utils.StrInArray(version, common.TerraformVersions...) {
+		return "", e.New(
+			e.InvalidTfVersion,
+			fmt.Errorf("unsupported terraform version %s; only %s is supported", version, consts.DefaultTerraformVersion),
+			http.StatusBadRequest,
+		)
+	}
+	return version, nil
+}
+
 func CreateTemplate(c *ctx.ServiceContext, form *forms.CreateTemplateForm) (*models.Template, e.Error) {
 	c.AddLogField("action", fmt.Sprintf("create template %s", form.Name))
+
+	tfVersion, er := normalizeTemplateTfVersion(form.TfVersion)
+	if er != nil {
+		return nil, er
+	}
+	form.TfVersion = tfVersion
 
 	tx := c.Tx()
 	defer func() {
@@ -261,6 +285,14 @@ func UpdateTemplate(c *ctx.ServiceContext, form *forms.UpdateTemplateForm) (*mod
 	if tpl.OrgId != c.OrgId {
 		return nil, e.New(e.TemplateNotExists, http.StatusForbidden, fmt.Errorf("the organization does not have permission to delete the current template"))
 	}
+	if form.HasKey("tfVersion") {
+		tfVersion, er := normalizeTemplateTfVersion(form.TfVersion)
+		if er != nil {
+			return nil, er
+		}
+		form.TfVersion = tfVersion
+	}
+
 	attrs := models.Attrs{}
 	setAttrsByFormKeys(attrs, form)
 	setAttrsVcsInfoByForm(attrs, form)

@@ -325,7 +325,7 @@ const Setting = () => {
                           <Checkbox onChange={e => checkedChange(e, '推送到分支时重新部署', 'commit')}>推送到分支时重新部署</Checkbox> 
                         </Form.Item>
                         <Space size={8}>
-                          <Tooltip title='勾选该选项将自动调用VCS API设置webhook，请确保VCS配置中的token具有足够权限'><InfoCircleOutlined /></Tooltip>
+                          <Tooltip title='勾选该选项将自动调用代码仓库 API 设置 webhook，请确保代码仓库配置中的访问令牌具有足够权限'><InfoCircleOutlined /></Tooltip>
                           <Copy disabled={!PROJECT_OPERATOR || !getFieldValue('commit')} copyRequest={() => copyRequest()}/>
                         </Space>
                       </>
@@ -347,7 +347,7 @@ const Setting = () => {
                           <Checkbox>PR/MR时执行PLAN</Checkbox> 
                         </Form.Item>
                         <Space size={8}>
-                          <Tooltip title='勾选该选项将自动调用VCS API设置webhook，请确保VCS配置中的token具有足够权限'><InfoCircleOutlined /></Tooltip>  
+                          <Tooltip title='勾选该选项将自动调用代码仓库 API 设置 webhook，请确保代码仓库配置中的访问令牌具有足够权限'><InfoCircleOutlined /></Tooltip>
                           <Copy disabled={!PROJECT_OPERATOR || !getFieldValue('prmr')} copyRequest={() => copyRequest()}/>
                         </Space>
                       </>

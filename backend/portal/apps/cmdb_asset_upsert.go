@@ -32,6 +32,9 @@ func upsertCmdbAsset(c *ctx.ServiceContext, asset *models.CmdbAsset, changeSourc
 		changeSource = asset.Source
 	}
 	normalizeCmdbAssetAttrs(asset)
+	if err := prepareCmdbAssetGovernance(c, asset); err != nil {
+		return cmdbAssetUpsertResult{}, err
+	}
 
 	existing := models.CmdbAsset{}
 	err := c.DB().Where("org_id = ? and source = ? and provider = ? and account_id = ? and region = ? and native_id = ?",
@@ -87,6 +90,93 @@ func normalizeCmdbAssetAttrs(asset *models.CmdbAsset) {
 	}
 }
 
+func prepareCmdbAssetGovernance(c *ctx.ServiceContext, asset *models.CmdbAsset) e.Error {
+	asset.ManagedBy = inferCmdbManagedBy(asset)
+	if asset.CloudAccountId != "" {
+		return nil
+	}
+	if attrString(asset.RawData, "accountSource") == models.CmdbCloudAccountSourceCloudAccount {
+		asset.CloudAccountId = models.Id(attrString(asset.RawData, "accountRefId"))
+		if asset.CloudAccountId != "" {
+			return nil
+		}
+	}
+	if asset.Provider == "" || asset.AccountId == "" {
+		return nil
+	}
+	account := models.CloudAccount{}
+	if err := c.DB().Model(&models.CloudAccount{}).
+		Where("org_id = ? and provider = ? and account_id = ?", asset.OrgId, normalizeProvider(asset.Provider), asset.AccountId).
+		First(&account); err != nil {
+		if e.IsRecordNotFound(err) {
+			return nil
+		}
+		return e.New(e.DBError, err)
+	}
+	asset.CloudAccountId = account.Id
+	return nil
+}
+
+func RefreshCmdbAssetGovernanceFields(c *ctx.ServiceContext) e.Error {
+	managedByExpr := cmdbInferredManagedByExpr("")
+	if _, err := c.DB().Exec(fmt.Sprintf(`update iac_cmdb_asset
+		set managed_by = %s
+		where org_id = ? and managed_by <> %s`, managedByExpr, managedByExpr), c.OrgId); err != nil {
+		return e.New(e.DBError, err)
+	}
+
+	accounts := make([]models.CloudAccount, 0)
+	if err := c.DB().Model(&models.CloudAccount{}).
+		Where("org_id = ? and provider <> '' and account_id <> ''", c.OrgId).
+		Find(&accounts); err != nil {
+		return e.New(e.DBError, err)
+	}
+	for _, account := range accounts {
+		if _, err := c.DB().Model(&models.CmdbAsset{}).
+			Where("org_id = ? and provider = ? and account_id = ? and cloud_account_id = ''", c.OrgId, normalizeProvider(account.Provider), account.AccountId).
+			UpdateAttrs(map[string]interface{}{"cloud_account_id": account.Id}); err != nil {
+			return e.New(e.DBError, err)
+		}
+	}
+	return nil
+}
+
+func cmdbManagedByExpr(prefix string) string {
+	return fmt.Sprintf(`case
+		when %[1]smanaged_by <> '' then %[1]smanaged_by
+		else %[2]s
+	end`, prefix, cmdbInferredManagedByExpr(prefix))
+}
+
+func cmdbInferredManagedByExpr(prefix string) string {
+	return fmt.Sprintf(`case
+		when %[1]ssource = '%[2]s' or %[1]siac_resource_id <> '' then '%[3]s'
+		when %[1]ssource = '%[4]s' and %[1]sproject_id = '' and %[1]senv_id = '' and %[1]siac_resource_id = '' then '%[5]s'
+		when %[1]ssource = '%[4]s' then '%[6]s'
+		else '%[7]s'
+	end`,
+		prefix,
+		models.CmdbAssetSourceIacResource,
+		models.CmdbManagedByIac,
+		models.CmdbAssetSourceCloudCollect,
+		models.CmdbManagedByCloudOnly,
+		models.CmdbManagedByCloudLinked,
+		models.CmdbManagedByManual)
+}
+
+func inferCmdbManagedBy(asset *models.CmdbAsset) string {
+	if asset.Source == models.CmdbAssetSourceIacResource || asset.IacResourceId != "" {
+		return models.CmdbManagedByIac
+	}
+	if asset.Source == models.CmdbAssetSourceCloudCollect {
+		if asset.ProjectId == "" && asset.EnvId == "" && asset.IacResourceId == "" {
+			return models.CmdbManagedByCloudOnly
+		}
+		return models.CmdbManagedByCloudLinked
+	}
+	return models.CmdbManagedByManual
+}
+
 func cmdbAssetUpdateAttrs(asset *models.CmdbAsset) map[string]interface{} {
 	return map[string]interface{}{
 		"project_id":      asset.ProjectId,
@@ -105,6 +195,12 @@ func cmdbAssetUpdateAttrs(asset *models.CmdbAsset) map[string]interface{} {
 		"private_ip":      asset.PrivateIp,
 		"iac_resource_id": asset.IacResourceId,
 		"iac_address":     asset.IacAddress,
+		"managed_by":      asset.ManagedBy,
+		"cloud_account_id": asset.CloudAccountId,
+		"sync_policy_id":   asset.SyncPolicyId,
+		"last_operation_id": asset.LastOperationId,
+		"risk_score":        asset.RiskScore,
+		"cost_center":       asset.CostCenter,
 		"tags":            asset.Tags,
 		"attributes":      asset.Attributes,
 		"raw_data":        asset.RawData,
@@ -133,6 +229,12 @@ func cmdbAssetSnapshot(asset *models.CmdbAsset) models.ResAttrs {
 		"privateIp":     asset.PrivateIp,
 		"iacResourceId": asset.IacResourceId.String(),
 		"iacAddress":    asset.IacAddress,
+		"managedBy":     asset.ManagedBy,
+		"cloudAccountId": asset.CloudAccountId.String(),
+		"syncPolicyId":   asset.SyncPolicyId.String(),
+		"lastOperationId": asset.LastOperationId.String(),
+		"riskScore":       asset.RiskScore,
+		"costCenter":      asset.CostCenter,
 		"tags":          asset.Tags,
 		"attributes":    asset.Attributes,
 		"rawData":       asset.RawData,
@@ -164,6 +266,12 @@ func cmdbAssetDiff(before models.CmdbAsset, after *models.CmdbAsset) models.ResA
 	appendCmdbScalarDiff(diff, "privateIp", before.PrivateIp, after.PrivateIp)
 	appendCmdbScalarDiff(diff, "iacResourceId", before.IacResourceId.String(), after.IacResourceId.String())
 	appendCmdbScalarDiff(diff, "iacAddress", before.IacAddress, after.IacAddress)
+	appendCmdbScalarDiff(diff, "managedBy", before.ManagedBy, after.ManagedBy)
+	appendCmdbScalarDiff(diff, "cloudAccountId", before.CloudAccountId.String(), after.CloudAccountId.String())
+	appendCmdbScalarDiff(diff, "syncPolicyId", before.SyncPolicyId.String(), after.SyncPolicyId.String())
+	appendCmdbScalarDiff(diff, "lastOperationId", before.LastOperationId.String(), after.LastOperationId.String())
+	appendCmdbScalarDiff(diff, "riskScore", before.RiskScore, after.RiskScore)
+	appendCmdbScalarDiff(diff, "costCenter", before.CostCenter, after.CostCenter)
 	appendCmdbJSONDiff(diff, "tags", before.Tags, after.Tags)
 	appendCmdbJSONDiff(diff, "attributes", before.Attributes, after.Attributes)
 	appendCmdbJSONDiff(diff, "rawData", before.RawData, after.RawData)

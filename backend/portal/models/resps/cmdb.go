@@ -31,9 +31,11 @@ type CmdbAssetFilterResp struct {
 	Projects   []OrgProjectResp `json:"projects"`
 	Envs       []EnvResp        `json:"envs"`
 	Providers  []string         `json:"providers"`
+	AccountIds []string         `json:"accountIds"`
 	AssetTypes []string         `json:"assetTypes"`
 	Sources    []string         `json:"sources"`
 	Statuses   []string         `json:"statuses"`
+	ManagedBy  []string         `json:"managedBy"`
 }
 
 type CmdbBackfillResp struct {
@@ -49,6 +51,13 @@ type CmdbImportResp struct {
 	Skipped          int      `json:"skipped"`
 	OwnershipUpdated int      `json:"ownershipUpdated"`
 	Errors           []string `json:"errors"`
+}
+
+type CmdbBatchOwnershipResp struct {
+	Total   int      `json:"total"`
+	Updated int      `json:"updated"`
+	Skipped int      `json:"skipped"`
+	Errors  []string `json:"errors"`
 }
 
 type CmdbApplicationResp struct {
@@ -121,6 +130,7 @@ type CmdbCloudAccountResp struct {
 	Name                  string      `json:"name"`
 	Description           string      `json:"description"`
 	Provider              string      `json:"provider"`
+	AccountId             string      `json:"accountId"`
 	Regions               []string    `json:"regions"`
 	Ready                 bool        `json:"ready"`
 	MissingCredentialKeys []string    `json:"missingCredentialKeys"`
@@ -130,4 +140,14 @@ type CmdbCloudAccountResp struct {
 
 type CmdbSyncTaskResp struct {
 	models.CmdbSyncTask
+}
+
+type CmdbSyncTaskLogResp struct {
+	models.CmdbSyncTaskLog
+}
+
+type CmdbSyncTaskDetailResp struct {
+	models.CmdbSyncTask
+
+	Logs []CmdbSyncTaskLogResp `json:"logs"`
 }

@@ -7,8 +7,8 @@
 # 3. 如果使用了 ansible 部署，需要配置 ssh 密钥，私钥编辑
 # cloudiac-runner.sh 修改 PRIVATE_KEY_FILE 指向私钥文件。
 # 4. 执行：
-#     部署: ./cloudiac-runner.sh
-#     销毁: ./cloudiac-runner.sh destroy
+#     部署: bash cloudiac-runner.sh
+#     销毁: bash cloudiac-runner.sh destroy
 
 # 参数解析
 if [ "$1" == "destroy" ]; then

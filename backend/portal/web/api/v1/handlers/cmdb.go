@@ -88,6 +88,15 @@ func (Cmdb) UpdateAssetOwnership(c *ctx.GinRequest) {
 	c.JSONResult(apps.UpdateCmdbAssetOwnership(c.Service(), &form))
 }
 
+// BatchUpdateAssetOwnership 批量更新 CMDB 资产归属信息
+func (Cmdb) BatchUpdateAssetOwnership(c *ctx.GinRequest) {
+	form := forms.BatchUpdateCmdbAssetOwnershipForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.BatchUpdateCmdbAssetOwnership(c.Service(), &form))
+}
+
 // AssetFilters 查询 CMDB 资产筛选项
 func (Cmdb) AssetFilters(c *ctx.GinRequest) {
 	form := forms.SearchCmdbAssetForm{}
@@ -114,6 +123,15 @@ func (Cmdb) SearchSyncTasks(c *ctx.GinRequest) {
 		return
 	}
 	c.JSONResult(apps.SearchCmdbSyncTasks(c.Service(), &form))
+}
+
+// SyncTaskDetail 查询 CMDB 云采集任务详情和日志
+func (Cmdb) SyncTaskDetail(c *ctx.GinRequest) {
+	form := forms.CmdbSyncTaskParam{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CmdbSyncTaskDetail(c.Service(), &form))
 }
 
 // StartSyncTask 启动一次 CMDB 云采集任务

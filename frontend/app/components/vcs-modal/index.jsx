@@ -38,7 +38,7 @@ export default ({ visible, opt, toggleVisible, curRecord = {}, operation }) => {
   };
 
   return <Modal
-    title={opt === 'add' ? '添加VCS' : '编辑VCS'}
+    title={opt === 'add' ? '添加代码仓库' : '编辑代码仓库'}
     visible={visible}
     onCancel={toggleVisible}
     okButtonProps={{
@@ -77,7 +77,7 @@ export default ({ visible, opt, toggleVisible, curRecord = {}, operation }) => {
       >
         <Select 
           getPopupContainer={triggerNode => triggerNode.parentNode}
-          placeholder='请选择VCS类型'
+          placeholder='请选择代码仓库类型'
           onChange={onChangeVcsType}
           disabled={opt === 'edit'}
         >
@@ -105,7 +105,7 @@ export default ({ visible, opt, toggleVisible, curRecord = {}, operation }) => {
         rules={[
           {
             required: opt === 'add',
-            message: '请输入Token密码'
+            message: '请输入访问令牌'
           }
         ]}
       >

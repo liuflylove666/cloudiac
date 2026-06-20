@@ -30,18 +30,10 @@ ENV TERRASCAN_VERSION=1.9.0
 RUN mkdir -p /root/.terrascan/pkg/policies/opa/rego && \
     curl -L https://github.com/accurics/terrascan/releases/download/v${TERRASCAN_VERSION}/terrascan_${TERRASCAN_VERSION}_Linux_x86_64.tar.gz | tar -xz terrascan && install terrascan /usr/local/bin && rm terrascan 
 
-RUN git clone https://github.com/jinxing-idcos/tfenv.git /root/.tfenv && cd /root/.tfenv && git checkout tags/v2.2.3
+RUN git clone --depth 1 https://github.com/tfutils/tfenv.git /root/.tfenv
 ENV PATH="/root/.tfenv/bin:${PATH}"
-RUN tfenv install "0.11.15" && \
-    tfenv install "0.12.31" && \
-    tfenv install "0.13.7" && \
-    tfenv install "0.14.11" && \
-    tfenv install "0.15.5" && \
-    tfenv install "1.0.6" && \
-    tfenv install "1.1.9" && \
-    tfenv install "1.2.4"
+RUN tfenv install "1.15.6"
 
-RUN tfenv use 1.2.4 && \
+RUN tfenv use 1.15.6 && \
   ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 COPY --from=cloudiac/base-ct-worker:v0.1.8 /cloudiac/terraform/plugins /cloudiac/terraform/plugins
-

@@ -27,6 +27,7 @@ type cmdbCloudAccount struct {
 	Name                  string
 	Description           string
 	Provider              string
+	AccountId             string
 	Regions               []string
 	Ready                 bool
 	MissingCredentialKeys []string
@@ -49,6 +50,7 @@ func SearchCmdbCloudAccounts(c *ctx.ServiceContext) ([]resps.CmdbCloudAccountRes
 			Name:                  account.Name,
 			Description:           account.Description,
 			Provider:              account.Provider,
+			AccountId:             account.AccountId,
 			Regions:               account.Regions,
 			Ready:                 account.Ready,
 			MissingCredentialKeys: account.MissingCredentialKeys,
@@ -92,6 +94,31 @@ func SearchCmdbSyncTasks(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskFo
 	}, nil
 }
 
+func CmdbSyncTaskDetail(c *ctx.ServiceContext, form *forms.CmdbSyncTaskParam) (*resps.CmdbSyncTaskDetailResp, e.Error) {
+	task := models.CmdbSyncTask{}
+	if err := c.DB().Model(&models.CmdbSyncTask{}).
+		Where("id = ? and org_id = ?", form.Id, c.OrgId).
+		First(&task); err != nil {
+		if e.IsRecordNotFound(err) {
+			return nil, e.New(e.ObjectNotExistsOrNoPerm, err, http.StatusNotFound)
+		}
+		return nil, e.New(e.DBError, err)
+	}
+
+	logs := make([]resps.CmdbSyncTaskLogResp, 0)
+	if err := c.DB().Model(&models.CmdbSyncTaskLog{}).
+		Where("org_id = ? and task_id = ?", c.OrgId, form.Id).
+		Order("created_at asc").
+		Scan(&logs); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+
+	return &resps.CmdbSyncTaskDetailResp{
+		CmdbSyncTask: task,
+		Logs:         logs,
+	}, nil
+}
+
 func StartCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskForm) (*resps.CmdbSyncTaskResp, e.Error) {
 	account, err := findCmdbCloudAccount(c, form.AccountSource, form.AccountId)
 	if err != nil {
@@ -130,6 +157,14 @@ func StartCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskForm
 	if err := models.Create(c.DB(), task); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
+	appendCmdbSyncTaskLog(c, task.Id, models.CmdbSyncLogLevelInfo, "created", "云采集任务已创建", models.ResAttrs{
+		"accountSource": task.AccountSource,
+		"accountId":     task.AccountId,
+		"accountName":   task.AccountName,
+		"provider":      task.Provider,
+		"regions":       regions,
+		"assetTypes":    assetTypes,
+	})
 
 	go runCmdbSyncTask(task.Id, c, cloneCmdbCloudAccount(account), cloneStringSlice(regions), cloneStringSlice(assetTypes))
 
@@ -153,9 +188,13 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 			status = models.CmdbSyncTaskFailed
 			errorMessage = fmt.Sprintf("cmdb sync task panic: %v", recovered)
 			stats["panic"] = fmt.Sprintf("%v", recovered)
+			appendCmdbSyncTaskLog(workerCtx, taskId, models.CmdbSyncLogLevelError, "panic", errorMessage, models.ResAttrs{
+				"stack": string(debug.Stack()),
+			})
 			logger.Errorf("%s\n%s", errorMessage, string(debug.Stack()))
 		}
 		endedAt := models.Time(time.Now())
+		stats["stage"] = status
 		if err := updateCmdbSyncTask(workerCtx, taskId, map[string]interface{}{
 			"status":        status,
 			"error_message": errorMessage,
@@ -164,16 +203,43 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 		}); err != nil {
 			logger.Errorf("update cmdb sync task finished status error: %v", err)
 		}
+		if account.Source == models.CmdbCloudAccountSourceCloudAccount && status == models.CmdbSyncTaskComplete {
+			if err := updateCloudAccountLastSyncAt(workerCtx, account.Id, endedAt); err != nil {
+				logger.Errorf("update cloud account last sync time error: %v", err)
+			}
+		}
+		level := models.CmdbSyncLogLevelInfo
+		message := "云采集任务完成"
+		if status == models.CmdbSyncTaskFailed {
+			level = models.CmdbSyncLogLevelError
+			message = "云采集任务失败"
+		}
+		appendCmdbSyncTaskLog(workerCtx, taskId, level, status, message, models.ResAttrs{
+			"status":       status,
+			"errorMessage": errorMessage,
+			"stats":        stats,
+		})
 	}()
 
 	startedAt := models.Time(time.Now())
+	stats["stage"] = models.CmdbSyncTaskRunning
 	if err := updateCmdbSyncTask(workerCtx, taskId, map[string]interface{}{
 		"status":     models.CmdbSyncTaskRunning,
 		"started_at": startedAt,
+		"stats":      stats,
 	}); err != nil {
 		logger.Errorf("update cmdb sync task running status error: %v", err)
 	}
+	appendCmdbSyncTaskLog(workerCtx, taskId, models.CmdbSyncLogLevelInfo, "running", "后台采集开始", models.ResAttrs{
+		"regions":    regions,
+		"assetTypes": assetTypes,
+	})
 
+	stats["stage"] = "collecting"
+	_ = updateCmdbSyncTask(workerCtx, taskId, map[string]interface{}{"stats": stats})
+	appendCmdbSyncTaskLog(workerCtx, taskId, models.CmdbSyncLogLevelInfo, "collecting", "开始调用云厂商采集器", models.ResAttrs{
+		"provider": account.Provider,
+	})
 	runStats, runErr := runCmdbCloudCollector(workerCtx, account, regions, assetTypes)
 	if runStats != nil {
 		stats = runStats
@@ -181,6 +247,13 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 	if runErr != nil {
 		status = models.CmdbSyncTaskFailed
 		errorMessage = runErr.Error()
+		appendCmdbSyncTaskLog(workerCtx, taskId, models.CmdbSyncLogLevelError, "collector", errorMessage, models.ResAttrs{
+			"stats": stats,
+		})
+	} else {
+		appendCmdbSyncTaskLog(workerCtx, taskId, models.CmdbSyncLogLevelInfo, "collector", "云厂商采集器执行完成", models.ResAttrs{
+			"stats": stats,
+		})
 	}
 }
 
@@ -189,6 +262,33 @@ func updateCmdbSyncTask(c *ctx.ServiceContext, taskId models.Id, attrs map[strin
 		Where("id = ? and org_id = ?", taskId, c.OrgId).
 		UpdateAttrs(attrs)
 	return err
+}
+
+func updateCloudAccountLastSyncAt(c *ctx.ServiceContext, accountId models.Id, lastSyncAt models.Time) error {
+	_, err := c.DB().Model(&models.CloudAccount{}).
+		Where("id = ? and org_id = ?", accountId, c.OrgId).
+		UpdateAttrs(map[string]interface{}{
+			"last_sync_at": lastSyncAt,
+		})
+	return err
+}
+
+func appendCmdbSyncTaskLog(c *ctx.ServiceContext, taskId models.Id, level, stage, message string, data models.ResAttrs) {
+	if c == nil || taskId == "" {
+		return
+	}
+	log := &models.CmdbSyncTaskLog{
+		OrgId:   c.OrgId,
+		TaskId:  taskId,
+		Level:   level,
+		Stage:   stage,
+		Message: message,
+		Data:    data,
+	}
+	log.Id = models.NewId("csl")
+	if err := models.Create(c.DB(), log); err != nil {
+		logs.Get().WithField("cmdbSyncTaskId", taskId).Warnf("append cmdb sync task log failed: %v", err)
+	}
 }
 
 func runCmdbCloudCollector(c *ctx.ServiceContext, account *cmdbCloudAccount, regions, assetTypes []string) (models.ResAttrs, error) {
@@ -251,6 +351,27 @@ func cloneStringSlice(values []string) []string {
 
 func discoverCmdbCloudAccounts(c *ctx.ServiceContext) ([]*cmdbCloudAccount, e.Error) {
 	accounts := make([]*cmdbCloudAccount, 0)
+
+	cloudAccounts := make([]models.CloudAccount, 0)
+	if err := c.DB().Model(&models.CloudAccount{}).
+		Where("org_id = ? and status = ?", c.OrgId, models.CloudAccountStatusEnabled).
+		Find(&cloudAccounts); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	for _, account := range cloudAccounts {
+		credentials := credentialMapFromCloudCredentials(account.Credentials)
+		provider := normalizeProvider(account.Provider)
+		if provider == "" {
+			provider = inferCloudProvider("", credentialKeys(credentials))
+		}
+		if provider == "" {
+			continue
+		}
+		credentials = credentialMapWithRegions(provider, credentials, []string(account.Regions))
+		accounts = append(accounts, buildCmdbCloudAccount(account.Id, models.CmdbCloudAccountSourceCloudAccount,
+			account.Name, account.Description, provider, account.AccountId, account.UpdatedAt, []string(account.Regions), credentials))
+	}
+
 	varGroups := make([]models.VariableGroup, 0)
 	if err := c.DB().Model(&models.VariableGroup{}).
 		Where("org_id = ? and type = ?", c.OrgId, "environment").
@@ -264,7 +385,7 @@ func discoverCmdbCloudAccounts(c *ctx.ServiceContext) ([]*cmdbCloudAccount, e.Er
 			continue
 		}
 		accounts = append(accounts, buildCmdbCloudAccount(vg.Id, models.CmdbCloudAccountSourceVariableGroup,
-			vg.Name, "", provider, vg.UpdatedAt, credentials))
+			vg.Name, "", provider, "", vg.UpdatedAt, nil, credentials))
 	}
 
 	resourceAccounts := make([]models.ResourceAccount, 0)
@@ -280,7 +401,7 @@ func discoverCmdbCloudAccounts(c *ctx.ServiceContext) ([]*cmdbCloudAccount, e.Er
 			continue
 		}
 		accounts = append(accounts, buildCmdbCloudAccount(account.Id, models.CmdbCloudAccountSourceResourceAccount,
-			account.Name, account.Description, provider, account.UpdatedAt, credentials))
+			account.Name, account.Description, provider, "", account.UpdatedAt, nil, credentials))
 	}
 
 	sort.SliceStable(accounts, func(i, j int) bool {
@@ -305,16 +426,17 @@ func findCmdbCloudAccount(c *ctx.ServiceContext, source string, id models.Id) (*
 	return nil, e.New(e.ObjectNotExistsOrNoPerm, fmt.Errorf("cloud account %s/%s not found", source, id), http.StatusNotFound)
 }
 
-func buildCmdbCloudAccount(id models.Id, source, name, description, provider string, updatedAt models.Time, credentials map[string]string) *cmdbCloudAccount {
+func buildCmdbCloudAccount(id models.Id, source, name, description, provider, accountId string, updatedAt models.Time, configuredRegions []string, credentials map[string]string) *cmdbCloudAccount {
 	provider = normalizeProvider(provider)
 	missing := missingCloudCredentialKeys(provider, credentials)
-	regions := inferCloudRegions(provider, credentials)
+	regions := firstNonEmptyStringSlice(normalizeStringList(configuredRegions), inferCloudRegions(provider, credentials))
 	return &cmdbCloudAccount{
 		Id:                    id,
 		Source:                source,
 		Name:                  name,
 		Description:           description,
 		Provider:              provider,
+		AccountId:             inferCloudAccountId(provider, accountId, "", credentials),
 		Regions:               regions,
 		Ready:                 len(missing) == 0,
 		MissingCredentialKeys: missing,

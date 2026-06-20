@@ -1,0 +1,10 @@
+# CloudIaC GitHub/offline dependency seed list
+# Format:
+# type url target
+
+git https://github.com/tfutils/tfenv.git git/tfutils/tfenv.git
+git https://github.com/idcos/cloudiac.git git/idcos/cloudiac.git
+git https://github.com/idcos/cloudiac-web.git git/idcos/cloudiac-web.git
+git https://github.com/idcos/cloudiac-docs.git git/idcos/cloudiac-docs.git
+git https://github.com/idcos/cloudiac-example.git git/idcos/cloudiac-example.git
+artifact https://github.com/accurics/terrascan/releases/download/v1.9.0/terrascan_1.9.0_Linux_x86_64.tar.gz artifacts/terrascan/1.9.0/terrascan_1.9.0_Linux_x86_64.tar.gz

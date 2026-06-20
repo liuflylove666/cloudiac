@@ -511,3 +511,215 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 - 风险整改是否需要直接接入现有 ITSM/工单系统。
 - 是否需要纳入 Kubernetes 多集群管理，还是先聚焦 IaaS/PaaS 云资源。
 - 是否需要按私有云/OpenStack/vSphere 设计 provider adapter 扩展点。
+
+## 16. 开发进展
+
+### 16.1 2026-06-20 V1.0 P0 云账号中心底座
+
+状态：已完成后端 API 和前端组织级入口。
+
+已完成：
+
+- 新增统一云账号模型 `iac_cloud_account`，支持 provider、accountId、tenantId、regions、runnerTags、credentials、status、validationStatus、lastValidatedAt、lastSyncAt、supportedTypes。
+- 新增云账号 CRUD API：`/api/v1/cloud/accounts`。
+- 新增云账号验证 API：`POST /api/v1/cloud/accounts/:id/validate`。
+- 凭证字段按 `isSecret` 加密存储，接口响应会脱敏返回。
+- 当前本地验证范围为凭证完整性、区域字段和 provider 支持类型校验，不直接从 Portal 调云厂商 API。
+- CMDB 云采集账号来源新增 `cloud_account`，旧的 `variable_group`、`resource_account` 来源保持兼容。
+- CMDB 同步任务可选择统一云账号，并在同步完成后回写云账号 `lastSyncAt`。
+- 云采集资产的 accountId 优先使用统一云账号的账号 ID。
+- 前端新增组织级“多云管理 - 云账号”页面，支持列表、筛选、创建、编辑、验证、启停和删除。
+
+验证：
+
+- 后端包编译验证通过：`go test -vet=off -run "^$" ./portal/models ./portal/services ./portal/apps ./portal/web/api/v1 ./portal/web/api/v1/handlers`。
+- 前端新增 JSX、路由和菜单 Babel 解析通过。
+- Docker Compose 生产构建已通过；本地 `frontend/node_modules/.bin/webpack` 仍存在断开软链问题，验证以容器构建为准。
+
+### 16.2 2026-06-20 V1.0 P1 云采集同步日志和任务详情
+
+状态：已完成 CMDB 云采集任务详情、阶段日志和前端查看入口。
+
+已完成：
+
+- 新增 CMDB 同步任务日志模型 `iac_cmdb_sync_task_log`，记录 orgId、taskId、level、stage、message、data。
+- 新增同步任务详情 API：`GET /api/v1/cmdb/sync-tasks/:id`，返回任务基础信息、统计和阶段日志。
+- 云采集执行过程会写入 created、running、collecting、collector、complete、failed、panic 等阶段日志。
+- 同步任务统计中增加当前 stage 信息，失败和 panic 会写入错误日志与任务最终状态。
+- “资产 CMDB - 云采集”任务列表新增详情操作，可查看任务参数、账号来源、状态、错误、阶段日志和统计 JSON。
+
+验证：
+
+- 后端包编译验证通过：`go test -vet=off -run "^$" ./portal/models ./portal/services ./portal/apps ./portal/web/api/v1 ./portal/web/api/v1/handlers`。
+- 前端 `resource-query/index.jsx` Babel 解析通过。
+- Docker Compose 重新构建并启动 `iac-portal`、`iac-web` 通过，`/api/v1/check` 返回 200，前端根路径返回 200。
+- 鉴权后 `GET /api/v1/cmdb/sync-tasks` 返回 200；当前无同步任务，使用不存在 taskId 调用详情接口返回 404。
+- 内置浏览器验证生产包加载正常，“资产 CMDB - 云采集”页签可见账号筛选、启动云采集按钮以及新增的来源、统计、操作等表头，控制台无 error。
+
+待继续：
+
+- 同步日志当前展示在 CMDB 云采集页，后续可按 PRD 的 `/api/v1/cloud/sync-tasks/:id` 增加云资产中心包装路由。
+- 采集日志已有阶段和统计，区域级/资源类型级耗时、失败隔离和重试明细仍待 collector 层继续补强。
+
+### 16.3 2026-06-20 V1.0 P0 多云总览
+
+状态：已完成组织级多云总览 API、菜单入口和前端页面。
+
+已完成：
+
+- 新增多云总览 API：`GET /api/v1/cloud/overview`。
+- 总览会基于现有 `iac_cloud_account`、`iac_cmdb_asset`、`iac_cmdb_sync_task` 统计账号、资产、治理缺口和同步健康。
+- 指标包含云账号总数/启用数/有效数/异常数/未同步数、CMDB 资产数、IaC 纳管资产数、云采集资产数、未纳管资产数、无负责人资产数、高风险资产数、运行中同步任务和近 24 小时失败任务。
+- 增加 Provider 覆盖统计、资产来源分布、资产类型 Top 10、风险分布、最近云采集任务和治理事项。
+- 前端新增“多云管理 - 总览”菜单和 `/org/:orgId/m-cloud-overview` 路由。
+
+验证：
+
+- 后端包编译验证通过：`go test -vet=off -run "^$" ./portal/models ./portal/services ./portal/apps ./portal/web/api/v1 ./portal/web/api/v1/handlers`。
+- 前端 `cloud-overview/index.jsx` Babel 解析通过。
+- Docker Compose 重新构建并启动 `iac-portal`、`iac-web` 通过，`/api/v1/check` 返回 200，前端总览路由返回 200。
+- 鉴权后 `GET /api/v1/cloud/overview` 返回 200，当前测试数据统计为 8 个 CMDB 资产、8 个未纳管资产、1 个无负责人资产、3 个高风险资产。
+- 内置浏览器验证生产包加载正常，“多云管理 - 总览”菜单和总览页面可见，关键指标、Provider 覆盖、治理事项、最近同步任务区域正常展示，控制台无 error。
+
+待继续：
+
+- 当前总览未新增 `managedBy/cloudAccountId` 字段，未纳管资产先按 `cloud_collect` 且无项目/环境/IaC 资源关联统计。
+- 多云总览中的成本、操作任务、事件和风险发现模型仍待后续 PRD 阶段接入。
+
+### 16.4 2026-06-20 V1.0 P0 多云云资产入口和包装 API
+
+状态：已完成多云云资产组织级入口和 cloud 包装 API。
+
+已完成：
+
+- 新增多云资产包装 API，先复用现有 CMDB 资产查询、详情、导入导出、归属更新、IaC 回填和云采集任务能力。
+- 新增 API：
+  - `GET /api/v1/cloud/assets`
+  - `GET /api/v1/cloud/assets/filters`
+  - `GET /api/v1/cloud/assets/export`
+  - `POST /api/v1/cloud/assets/import`
+  - `GET /api/v1/cloud/assets/:id`
+  - `PUT /api/v1/cloud/assets/:id/ownership`
+  - `POST /api/v1/cloud/backfill/iac-resources`
+  - `GET /api/v1/cloud/sync-tasks`
+  - `GET /api/v1/cloud/sync-tasks/:id`
+  - `POST /api/v1/cloud/sync-tasks`
+- 前端新增“多云管理 - 云资产”菜单和 `/org/:orgId/m-cloud-assets` 路由。
+- 云资产页面复用现有资产 CMDB 组件，但标题切换为“云资产”，资产列表/筛选/详情/导入/导出/同步任务走 `/api/v1/cloud/*` 包装接口。
+
+验证：
+
+- Docker Compose 生产构建 `iac-portal`、`iac-web` 通过，其中前端仅保留既有 bundle size warning。
+- Docker Compose 启动 `iac-portal`、`iac-web` 通过，`iac-portal` healthy，`GET /api/v1/check` 返回 200。
+- 前端 `/org/:orgId/m-cloud-assets` 路由返回 200，内置浏览器验证“多云管理 - 云资产”菜单、面包屑、页面标题、资产列表/应用依赖/云采集页签和资产表格可见，控制台无 error。
+
+### 16.5 2026-06-20 V1.0 P0 云账号区域与权限验证
+
+状态：已完成 PRD 8.1 中云账号区域和权限查询/更新接口，以及前端查看入口。
+
+已完成：
+
+- 新增云账号区域查询 API：`GET /api/v1/cloud/accounts/:id/regions`。
+- 新增云账号区域更新 API：`PUT /api/v1/cloud/accounts/:id/regions`。
+- 新增云账号权限验证结果 API：`GET /api/v1/cloud/accounts/:id/permissions`。
+- 区域响应会区分手动配置和自动推断来源，并标记默认区域。
+- 权限响应基于当前本地 provider adapter 能力，返回账号状态、凭证完整性、区域范围和资产采集能力检查结果。
+- 前端“多云管理 - 云账号”列表新增“区域/权限”操作，可查看和更新区域，并展示权限检查结果与支持采集的资产类型。
+
+验证：
+
+- 后端和前端生产镜像通过 Docker Compose 构建。
+- Docker Compose 重新启动 `iac-portal`、`iac-web` 通过，`/api/v1/check` 返回 200。
+- 使用临时 AWS 云账号验证 `GET/PUT /api/v1/cloud/accounts/:id/regions` 和 `GET /api/v1/cloud/accounts/:id/permissions` 返回 200，区域更新和权限状态正常，临时账号已删除。
+- 内置浏览器验证“多云管理 - 云账号”页面可加载，临时账号行展示“区域/权限”入口，抽屉内“启用区域”“权限验证结果”“支持采集资产类型”正常渲染；验证后浏览器已恢复到“多云管理 - 云资产”页面。
+
+待继续：
+
+- 当前权限验证仍是本地只读预检查，真实云 API 权限校验需在 provider adapter 中继续增强。
+- 区域和权限暂未拆分独立表，后续可按 PRD 的 `iac_cloud_account_region`、`iac_cloud_account_permission` 模型持久化区域状态、缺失权限和最近验证结果。
+
+### 16.6 2026-06-20 V1.0 P1 云资产覆盖率和未纳管识别
+
+状态：已完成多云云资产中心覆盖率 API 和前端展示。
+
+已完成：
+
+- 新增云资产覆盖率 API：`GET /api/v1/cloud/assets/coverage`。
+- 覆盖率接口基于现有 `iac_cmdb_asset` 和 `iac_cloud_account` 统计资产总数、IaC 纳管数、云采集数、未纳管资产、已关联云采集资产、无负责人资产、高风险资产、Provider 数、账号数、资产类型数、区域数、最近同步时间。
+- 未纳管口径沿用当前 V1.0 数据结构：`source = cloud_collect` 且无 `project_id/env_id/iac_resource_id` 的资产视为 cloud-only 未纳管资产。
+- 覆盖率接口按 Provider、云账号、资产类型输出分布，云账号统计会同时包含已接入但尚无资产的统一云账号，以及资产侧存在但未关联统一云账号的账号组。
+- 前端“多云管理 - 云资产”资产列表页新增“资产覆盖率”区块，展示资产总数、IaC 纳管、未纳管、无负责人、IaC 纳管覆盖率、资产归属覆盖率。
+- 前端新增 Provider 覆盖、账号覆盖、资产类型覆盖三组表格，并可从 Provider/资产类型快速回填资产列表筛选。
+- 多云总览中的治理事项跳转目标从旧“资产 CMDB”入口调整为“多云管理 - 云资产”入口。
+
+验证：
+
+- `git diff --check` 通过。
+- Docker Compose 生产构建 `iac-portal`、`iac-web` 通过；前端仅保留既有 bundle size warning。
+- Docker Compose 重新启动 `iac-portal`、`iac-web` 通过，`iac-portal` healthy，`GET /api/v1/check` 返回 200。
+- 鉴权后 `GET /api/v1/cloud/assets/coverage` 返回 200，当前测试组织统计为 8 个云采集资产、8 个未纳管资产、1 个无负责人资产、3 个高风险资产。
+- 前端 `/org/:orgId/m-cloud-assets` 和 `/org/:orgId/m-cloud-overview` 路由返回 200。
+- 内置浏览器验证“多云管理 - 云资产”页面可加载，覆盖率区块、Provider 覆盖、账号覆盖、资产类型覆盖正常渲染，控制台无 error。
+
+待继续：
+
+- 未纳管资产治理还缺少绑定项目/环境、创建治理任务等闭环操作。
+
+### 16.7 2026-06-20 V1.0 P1 未纳管资产筛选与批量治理
+
+状态：已完成多云云资产中心的账号筛选、纳管状态筛选和批量治理入口。
+
+已完成：
+
+- 资产搜索和筛选接口新增 `accountIds`、`managedBy` 参数，支持按云账号和纳管状态过滤资产列表。
+- `managedBy` 包含 `iac`、`cloud_linked`、`cloud_only`、`manual` 四类状态。
+- 新增批量资产归属治理 API：`PUT /api/v1/cloud/assets/ownership`、`PUT /api/v1/cmdb/assets/ownership`。
+- 批量治理支持一次更新负责人、应用、业务线、生命周期、合规风险，并记录资产变更历史。
+- 前端“多云管理 - 云资产”资产列表新增“账号”“纳管状态”列。
+- 前端筛选区新增“账号”“纳管状态”筛选项，覆盖率表中的未纳管数量可下钻到 `cloud_only` 资产列表。
+- 前端新增“批量治理”操作：未选择资产时禁用，选择资产后可打开治理弹窗批量填写归属信息。
+
+验证：
+
+- `git diff --check` 通过。
+- Docker Compose 生产构建 `iac-portal`、`iac-web` 通过；前端仅保留既有 bundle size warning。
+- Docker Compose 重新启动 `iac-portal`、`iac-web` 通过，`iac-portal` healthy，`GET /api/v1/check` 返回 200。
+- 鉴权后 `GET /api/v1/cloud/assets/filters` 返回 200，当前测试组织返回 3 个 `accountIds` 和 `cloud_only` 纳管状态。
+- 鉴权后 `GET /api/v1/cloud/assets?managedBy=cloud_only` 返回 200，当前测试组织可筛选出 8 条云上未纳管资产。
+- 使用一条未纳管资产验证 `PUT /api/v1/cloud/assets/ownership`，临时更新负责人后立即恢复原值，两次批量请求均返回 `updated=1`、`skipped=0`。
+- 内置浏览器验证“多云管理 - 云资产”页面可加载，覆盖率区块、账号/纳管状态筛选、账号/纳管状态列、“批量治理”入口正常渲染；选择资产后可打开批量治理弹窗并取消关闭，控制台无 error。
+
+待继续：
+
+- 批量治理继续支持项目/环境绑定、自动创建治理任务和治理状态流转。
+- 覆盖率表可继续补充账号维度的统一云账号关联修复入口。
+
+### 16.8 2026-06-20 V1.0 P1 云资产真实治理字段落地
+
+状态：已完成 `iac_cmdb_asset` 真实治理字段扩展、写入和旧数据回填。
+
+已完成：
+
+- `iac_cmdb_asset` 新增真实治理字段：`managedBy`、`cloudAccountId`、`syncPolicyId`、`lastOperationId`、`riskScore`、`costCenter`。
+- IaC 回填资产写入 `managedBy=iac`，云采集资产写入 `managedBy=cloud_only`，已关联项目/环境/IaC 资源的云资产会刷新为 `cloud_linked`。
+- 云采集资产优先写入统一云账号 `cloudAccountId`；旧资产会按 Provider 和账号 ID 自动回填统一云账号关联。
+- 资产列表、详情、筛选和覆盖率统计在查询前会刷新治理字段，兼容历史数据。
+- `managedBy` 筛选和覆盖率统计改为优先使用真实字段，保留旧数据推导兜底。
+- CSV 导出新增统一云账号 ID、纳管状态、同步策略 ID、最近操作 ID、成本中心、风险评分字段。
+- 前端资产列表优先展示后端返回的 `managedBy`，账号列补充展示已关联的统一云账号 ID。
+
+验证：
+
+- `git diff --check` 通过。
+- Docker Compose 生产构建 `iac-portal`、`iac-web` 通过；前端仅保留既有 bundle size warning。
+- Docker Compose 重新启动 `iac-portal`、`iac-web` 通过，`iac-portal` healthy，`GET /api/v1/check` 返回 200。
+- 鉴权后 `GET /api/v1/cloud/assets?managedBy=cloud_only` 返回 200，当前测试组织返回 8 条未纳管资产，响应资产包含 `managedBy=cloud_only` 和 `cloudAccountId` 字段。
+- 鉴权后 `GET /api/v1/cloud/assets/coverage` 返回 200，当前测试组织覆盖率仍为 8 个资产、8 个未纳管、0 个已关联云采集资产。
+- 鉴权后 `GET /api/v1/cloud/assets/export?format=csv&managedBy=cloud_only` 返回 CSV 表头包含统一云账号 ID、纳管状态、同步策略 ID、最近操作 ID、成本中心、风险评分。
+- 内置浏览器验证“多云管理 - 云资产”页面可加载，资产覆盖率、账号筛选、纳管状态筛选、账号列、纳管状态列正常渲染，控制台无 error。
+
+待继续：
+
+- 批量治理继续支持项目/环境绑定、自动创建治理任务和治理状态流转。
+- 云账号覆盖表继续补充“未关联账号修复/合并”入口。
+- `syncPolicyId`、`lastOperationId` 当前为预留字段，需在同步策略和云操作任务模型落地后接入真实写入。

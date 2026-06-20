@@ -5,7 +5,7 @@
 MY_DIRNAME=$(dirname "$0")
 MY_PATH=$(cd "${MY_DIRNAME}"; pwd)
 
-REPO_BASE=${REPO_BASE:-https://github.com/idcos}
+REPO_BASE=${REPO_BASE:-}
 REPOS_LIST=${REPOS_LIST:-$MY_PATH/../repos.list}
 
 function clone() {
@@ -18,7 +18,12 @@ function clone() {
   if echo "$REPO_PATH" | grep '://' >/dev/null; then 
     local REPO_ADDRESS="${REPO_PATH}"
   else
-    local REPO_ADDRESS="${REPO_BASE}/${REPO_PATH}"
+    if [[ -z "$REPO_BASE" ]]; then
+      echo "REPO_BASE is required for relative repo path: ${REPO_PATH}" >&2
+      echo "Set REPO_BASE to your local GitLab group, for example: http://gitlab.local/cloudiac-templates" >&2
+      return 1
+    fi
+    local REPO_ADDRESS="${REPO_BASE%/}/${REPO_PATH}"
   fi
 
   if [[ -d "$TARGET_DIR" ]]; then
@@ -34,4 +39,3 @@ while read -r REPO_PATH; do
   echo "$REPO_PATH" | grep -E '^#' >/dev/null && continue
   clone "$REPO_PATH"
 done < "$REPOS_LIST"
-

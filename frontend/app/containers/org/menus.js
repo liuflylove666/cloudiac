@@ -1,4 +1,4 @@
-import { CodeOutlined, LayoutOutlined, InteractionOutlined, SettingOutlined, ProjectOutlined, FormOutlined, PlusSquareOutlined, SearchOutlined } from '@ant-design/icons';
+import { CloudServerOutlined, CodeOutlined, DashboardOutlined, LayoutOutlined, InteractionOutlined, SettingOutlined, ProjectOutlined, FormOutlined, PlusSquareOutlined, SearchOutlined } from '@ant-design/icons';
 import getPermission from "utils/permission";
 
 const getMenus = (userInfo, { projectList }) => {
@@ -68,13 +68,23 @@ const getMenus = (userInfo, { projectList }) => {
       ]
     },
     {
-      subName: '',
+      subName: '多云管理',
       subKey: 'other',
       emptyMenuList: [],
       menuList: [
         {
-          name: '资产 CMDB',
-          key: 'm-other-resource',
+          name: '总览',
+          key: 'm-cloud-overview',
+          icon: <DashboardOutlined />
+        },
+        {
+          name: '云账号',
+          key: 'm-cloud-account',
+          icon: <CloudServerOutlined />
+        },
+        {
+          name: '云资产',
+          key: 'm-cloud-assets',
           icon: <SearchOutlined />
         }
       ]

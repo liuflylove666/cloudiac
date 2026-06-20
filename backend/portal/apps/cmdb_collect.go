@@ -64,19 +64,25 @@ func upsertCmdbCloudAssets(c *ctx.ServiceContext, assets []*models.CmdbAsset) (*
 }
 
 func newCmdbCloudAsset(account *cmdbCloudAccount, region, assetType, nativeType, nativeId, name string, now models.Time) *models.CmdbAsset {
-	accountId := firstNonEmpty(account.Credentials["AWS_ACCOUNT_ID"], account.Credentials["OCI_TENANCY_OCID"], string(account.Id))
+	accountId := firstNonEmpty(account.AccountId, account.Credentials["AWS_ACCOUNT_ID"], account.Credentials["OCI_TENANCY_OCID"], account.Credentials["ALICLOUD_ACCOUNT_ID"], string(account.Id))
+	cloudAccountId := models.Id("")
+	if account.Source == models.CmdbCloudAccountSourceCloudAccount {
+		cloudAccountId = account.Id
+	}
 	return &models.CmdbAsset{
-		OrgId:      "",
-		Source:     models.CmdbAssetSourceCloudCollect,
-		Provider:   account.Provider,
-		AccountId:  accountId,
-		Region:     region,
-		AssetType:  assetType,
-		NativeType: nativeType,
-		NativeId:   nativeId,
-		Name:       firstNonEmpty(name, nativeId),
-		Tags:       models.ResAttrs{},
-		Attributes: models.ResAttrs{},
+		OrgId:          "",
+		Source:         models.CmdbAssetSourceCloudCollect,
+		Provider:       account.Provider,
+		AccountId:      accountId,
+		CloudAccountId: cloudAccountId,
+		ManagedBy:      models.CmdbManagedByCloudOnly,
+		Region:         region,
+		AssetType:      assetType,
+		NativeType:     nativeType,
+		NativeId:       nativeId,
+		Name:           firstNonEmpty(name, nativeId),
+		Tags:           models.ResAttrs{},
+		Attributes:     models.ResAttrs{},
 		RawData: models.ResAttrs{
 			"accountSource": account.Source,
 			"accountRefId":  account.Id,

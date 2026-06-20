@@ -21,6 +21,11 @@ const cmdbAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  batchUpdateAssetOwnership: ({ orgId, ...restParams }) => {
+    return put('/api/v1/cmdb/assets/ownership', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
   importAssets: ({ orgId, ...restParams }) => {
     return post('/api/v1/cmdb/assets/import', restParams, {
       'IaC-Org-Id': orgId
@@ -53,6 +58,11 @@ const cmdbAPI = {
   },
   syncTasks: ({ orgId, ...restParams }) => {
     return getWithArgs('/api/v1/cmdb/sync-tasks', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  syncTaskDetail: ({ orgId, id }) => {
+    return getWithArgs(`/api/v1/cmdb/sync-tasks/${id}`, {}, {
       'IaC-Org-Id': orgId
     });
   },

@@ -64,4 +64,4 @@ playbook文件是在调用ansible进行应用部署时定义的描述配置文�
 | CLOUDIAC_COMMIT        | 当前任务的云模板代码 commit hash             |
 | CLOUDIAC_BRANCH        | 当前任务的云模板代码的分支                   |
 | CLOUDIAC_TASK_ID       | 当前任务的 id                                |
-| CLOUDIAC_TF_VERSION    | 当前任务使用的 terraform 版本号(eg. 0.14.11) |
+| CLOUDIAC_TF_VERSION    | 当前任务使用的 terraform 版本号(eg. 1.15.6) |

@@ -53,6 +53,9 @@ func SearchCmdbAssets(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (i
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
 		return nil, err
 	}
+	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
+		return nil, err
+	}
 
 	query := buildCmdbAssetQuery(c)
 	query = applyCmdbAssetSearch(query, form)
@@ -79,6 +82,9 @@ func CmdbAssetDetail(c *ctx.ServiceContext, form *forms.CmdbAssetParam) (*resps.
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
 		return nil, err
 	}
+	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
+		return nil, err
+	}
 
 	asset := resps.CmdbAssetResp{}
 	query := buildCmdbAssetQuery(c).Where("iac_cmdb_asset.id = ?", form.Id)
@@ -96,6 +102,9 @@ func CmdbAssetDetail(c *ctx.ServiceContext, form *forms.CmdbAssetParam) (*resps.
 
 func ExportCmdbAssets(c *ctx.ServiceContext, form *forms.ExportCmdbAssetForm) (*CmdbAssetExportFile, e.Error) {
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
+		return nil, err
+	}
+	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
 		return nil, err
 	}
 
@@ -214,8 +223,92 @@ func UpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.UpdateCmdbAsset
 	return CmdbAssetDetail(c, &forms.CmdbAssetParam{Id: form.Id})
 }
 
+func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdateCmdbAssetOwnershipForm) (*resps.CmdbBatchOwnershipResp, e.Error) {
+	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
+		return nil, err
+	}
+
+	resp := &resps.CmdbBatchOwnershipResp{
+		Total:  len(form.Ids),
+		Errors: make([]string, 0),
+	}
+	attrsBuilder := func(asset models.CmdbAsset) (map[string]interface{}, models.CmdbAsset) {
+		attrs := make(map[string]interface{})
+		after := asset
+		if form.HasKey("owner") {
+			after.Owner = strings.TrimSpace(form.Owner)
+			attrs["owner"] = after.Owner
+		}
+		if form.HasKey("application") {
+			after.Application = strings.TrimSpace(form.Application)
+			attrs["application"] = after.Application
+		}
+		if form.HasKey("businessLine") {
+			after.BusinessLine = strings.TrimSpace(form.BusinessLine)
+			attrs["business_line"] = after.BusinessLine
+		}
+		if form.HasKey("lifecycle") {
+			after.Lifecycle = strings.TrimSpace(form.Lifecycle)
+			attrs["lifecycle"] = after.Lifecycle
+		}
+		if form.HasKey("complianceRisk") {
+			after.ComplianceRisk = strings.TrimSpace(form.ComplianceRisk)
+			attrs["compliance_risk"] = after.ComplianceRisk
+		}
+		return attrs, after
+	}
+
+	if attrs, _ := attrsBuilder(models.CmdbAsset{}); len(attrs) == 0 {
+		return nil, e.New(e.BadParam, fmt.Errorf("at least one ownership field is required"))
+	}
+
+	assets := make([]models.CmdbAsset, 0)
+	if err := buildCmdbAssetQuery(c).
+		Where("iac_cmdb_asset.id in (?)", form.Ids).
+		Scan(&assets); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	assetById := make(map[models.Id]models.CmdbAsset, len(assets))
+	for _, asset := range assets {
+		assetById[asset.Id] = asset
+	}
+
+	for _, id := range form.Ids {
+		asset, ok := assetById[id]
+		if !ok {
+			resp.Skipped++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("资产 %s 不存在或无权限", id))
+			continue
+		}
+		attrs, after := attrsBuilder(asset)
+		diff := cmdbAssetOwnershipDiff(asset, after)
+		if len(diff) == 0 {
+			resp.Skipped++
+			continue
+		}
+		if _, err := c.DB().Model(&models.CmdbAsset{}).
+			Where("org_id = ? and id = ?", c.OrgId, id).
+			UpdateAttrs(attrs); err != nil {
+			resp.Skipped++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("资产 %s 更新失败：%s", id, err.Error()))
+			continue
+		}
+		if err := recordCmdbAssetChange(c, c.OrgId, id, models.CmdbAssetChangeTypeUpdated, models.CmdbAssetChangeSourceManual, diff); err != nil {
+			resp.Skipped++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("资产 %s 变更记录失败：%s", id, err.Error()))
+			continue
+		}
+		resp.Updated++
+	}
+
+	return resp, nil
+}
+
 func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*resps.CmdbAssetFilterResp, e.Error) {
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
+		return nil, err
+	}
+	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
 		return nil, err
 	}
 
@@ -226,9 +319,11 @@ func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*
 		Projects:   make([]resps.OrgProjectResp, 0),
 		Envs:       make([]resps.EnvResp, 0),
 		Providers:  make([]string, 0),
+		AccountIds: make([]string, 0),
 		AssetTypes: make([]string, 0),
 		Sources:    make([]string, 0),
 		Statuses:   make([]string, 0),
+		ManagedBy:  make([]string, 0),
 	}
 
 	if err := c.DB().Raw("select project_id, project_name from (?) as t where project_id <> '' group by project_id, project_name", baseQuery.Expr()).Scan(&resp.Projects); err != nil {
@@ -240,6 +335,9 @@ func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*
 	if err := c.DB().Raw("select provider from (?) as t where provider <> '' group by provider", baseQuery.Expr()).Scan(&resp.Providers); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
+	if err := c.DB().Raw("select account_id from (?) as t where account_id <> '' group by account_id", baseQuery.Expr()).Scan(&resp.AccountIds); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
 	if err := c.DB().Raw("select asset_type from (?) as t where asset_type <> '' group by asset_type", baseQuery.Expr()).Scan(&resp.AssetTypes); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
@@ -247,6 +345,11 @@ func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*
 		return nil, e.New(e.DBError, err)
 	}
 	if err := c.DB().Raw("select status from (?) as t where status <> '' group by status", baseQuery.Expr()).Scan(&resp.Statuses); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	if err := c.DB().Raw(fmt.Sprintf(`select managed_by from (
+		select %s as managed_by from (?) as t
+	) as m where managed_by <> '' group by managed_by`, cmdbManagedByExpr("")), baseQuery.Expr()).Scan(&resp.ManagedBy); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
 
@@ -317,9 +420,11 @@ func applyCmdbAssetSearch(query *db.Session, form *forms.SearchCmdbAssetForm) *d
 	query = whereInCSV(query, "iac_cmdb_asset.project_id", form.ProjectIds)
 	query = whereInCSV(query, "iac_cmdb_asset.env_id", form.EnvIds)
 	query = whereInCSV(query, "iac_cmdb_asset.provider", form.Providers)
+	query = whereInCSV(query, "iac_cmdb_asset.account_id", form.AccountIds)
 	query = whereInCSV(query, "iac_cmdb_asset.asset_type", form.AssetTypes)
 	query = whereInCSV(query, "iac_cmdb_asset.source", form.Sources)
 	query = whereInCSV(query, "iac_cmdb_asset.status", form.Statuses)
+	query = whereInManagedByCSV(query, form.ManagedBy)
 	query = applyCmdbAssetDSL(query, form.Dsl)
 	return query
 }
@@ -408,6 +513,26 @@ func whereInCSV(query *db.Session, field, value string) *db.Session {
 	return query.Where(fmt.Sprintf("%s in (?)", field), values)
 }
 
+func whereInManagedByCSV(query *db.Session, value string) *db.Session {
+	values := splitCSV(value)
+	if len(values) == 0 {
+		return query
+	}
+	clauses := make([]string, 0, len(values))
+	args := make([]interface{}, 0, len(values)*2)
+	for _, item := range values {
+		switch item {
+		case models.CmdbManagedByIac, models.CmdbManagedByCloudOnly, models.CmdbManagedByCloudLinked, models.CmdbManagedByManual:
+			clauses = append(clauses, cmdbManagedByExpr("iac_cmdb_asset.")+" = ?")
+			args = append(args, item)
+		}
+	}
+	if len(clauses) == 0 {
+		return query
+	}
+	return query.Where("("+strings.Join(clauses, " or ")+")", args...)
+}
+
 func splitCSV(value string) []string {
 	items := make([]string, 0)
 	for _, item := range strings.Split(value, ",") {
@@ -458,6 +583,7 @@ func cmdbAssetFromIacResource(row iacResourceForCmdb) *models.CmdbAsset {
 		PrivateIp:     firstNonEmpty(attrString(row.Attrs, "private_ip"), attrString(row.Attrs, "private_ip_address"), attrString(row.Attrs, "primary_private_ip")),
 		IacResourceId: row.ResourceId,
 		IacAddress:    row.Address,
+		ManagedBy:     models.CmdbManagedByIac,
 		Tags:          extractTags(row.Attrs),
 		Attributes:    row.Attrs,
 		RawData:       rawData,
@@ -537,8 +663,9 @@ func buildCmdbAssetCSVExportFile(assets []resps.CmdbAssetResp) (*CmdbAssetExport
 	buf.WriteString("\xEF\xBB\xBF")
 	writer := csv.NewWriter(buf)
 	headers := []string{
-		"资产ID", "项目", "环境", "云厂商", "账号", "区域", "可用区", "资产类型", "原生类型", "资源ID",
-		"名称", "状态", "来源", "负责人", "应用", "业务线", "生命周期", "成本", "合规风险",
+		"资产ID", "项目", "环境", "云厂商", "账号", "统一云账号ID", "纳管状态", "同步策略ID", "最近操作ID",
+		"区域", "可用区", "资产类型", "原生类型", "资源ID",
+		"名称", "状态", "来源", "负责人", "应用", "业务线", "成本中心", "生命周期", "成本", "风险评分", "合规风险",
 		"公网IP", "私网IP", "IaC地址", "标签", "最近同步", "更新时间",
 	}
 	if err := writer.Write(headers); err != nil {
@@ -552,6 +679,10 @@ func buildCmdbAssetCSVExportFile(assets []resps.CmdbAssetResp) (*CmdbAssetExport
 			asset.EnvName,
 			asset.Provider,
 			asset.AccountId,
+			asset.CloudAccountId.String(),
+			asset.ManagedBy,
+			asset.SyncPolicyId.String(),
+			asset.LastOperationId.String(),
 			asset.Region,
 			asset.Zone,
 			asset.AssetType,
@@ -563,8 +694,10 @@ func buildCmdbAssetCSVExportFile(assets []resps.CmdbAssetResp) (*CmdbAssetExport
 			asset.Owner,
 			asset.Application,
 			asset.BusinessLine,
+			asset.CostCenter,
 			asset.Lifecycle,
 			strconv.FormatFloat(asset.Cost, 'f', 4, 64),
+			strconv.FormatFloat(asset.RiskScore, 'f', 4, 64),
 			asset.ComplianceRisk,
 			asset.PublicIp,
 			asset.PrivateIp,

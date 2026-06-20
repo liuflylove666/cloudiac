@@ -212,6 +212,7 @@ func Init(migrate bool) {
 	autoMigrate(&CmdbApplicationRelation{}, sess)
 	autoMigrate(&CmdbAssetChange{}, sess)
 	autoMigrate(&CmdbSyncTask{}, sess)
+	autoMigrate(&CmdbSyncTaskLog{}, sess)
 
 	autoMigrate(&Variable{}, sess)
 
@@ -227,6 +228,7 @@ func Init(migrate bool) {
 	autoMigrate(&Notification{}, sess)
 	autoMigrate(&NotificationEvent{}, sess)
 	autoMigrate(&SystemCfg{}, sess)
+	autoMigrate(&CloudAccount{}, sess)
 	autoMigrate(&ResourceAccount{}, sess)
 	autoMigrate(&CtResourceMap{}, sess)
 	autoMigrate(&OperationLog{}, sess)

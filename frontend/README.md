@@ -25,7 +25,7 @@
 ## 开发向导
 
 1.  确保机器已安装 Node>=8.15.1, npm>=5。
-2.  克隆模板工程到本地 `https://github.com/idcos/CloudIaC-web.git`。
+2.  从内网 GitLab 克隆前端工程到本地，例如 `http://gitlab.local/cloudiac/cloudiac-web.git`。
 3.  进入工程文件夹: `cd cloudiac-web`。
 4.  执行 `npm i` 安装所需依赖。
 5.  执行 `npm start` 来启动项目.
@@ -41,6 +41,5 @@
 
 ## 贡献者
 
-> [https://github.com/idcos/CloudIaC-web/graphs/contributors](https://github.com/idcos/CloudIaC-web/graphs/contributors)
-
+> 请以内网 GitLab 项目的成员和提交记录为准。
 

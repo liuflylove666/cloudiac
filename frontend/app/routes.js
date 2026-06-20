@@ -116,6 +116,24 @@ export default function createRoutes() {
       component: loadable(() => import('containers/org'), asyncLoadFallback),
       routes: [
         {
+          path: '/org/:orgId/m-cloud-overview',
+          name: '多云总览',
+          component: loadable(() => import('containers/org/cloud-overview'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-account',
+          name: '云账号',
+          component: loadable(() => import('containers/org/cloud-account'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-assets',
+          name: '云资产',
+          component: loadable(() => import('containers/org/resource-query'), asyncLoadFallback),
+          exact: true
+        },
+        {
           path: '/org/:orgId/m-other-resource',
           name: '资产 CMDB',
           component: loadable(() => import('containers/org/resource-query'), asyncLoadFallback),

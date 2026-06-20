@@ -1,11 +1,8 @@
 <h1 align="center">CloudIaC</h1>
 <h3 align="center">开源基础设施即代码环境管理平台</h3>
 <p align="center">
-  <a href="https://github.com/idcos/cloudiac"><img src="https://shields.io/github/license/idcos/cloudiac" alt="License: Apache-2.0"></a>
-  <a href="https://idcos.github.io/cloudiac"><img src="https://readthedocs.org/projects/cloudiac/badge/?version=latest" alt="Docs"></a>
-  <a href="https://github.com/idcos/cloudiac/releases"><img src="https://img.shields.io/github/v/release/idcos/cloudiac" alt="GitHub release"></a>
-  <a href="https://github.com/idcos/cloudiac/releases/latest"><img src="https://img.shields.io/github/downloads/idcos/cloudiac/total" alt="Latest release"></a>
-  <a href="https://github.com/idcos/cloudiac"><img src="https://img.shields.io/github/stars/idcos/cloudiac?color=%231890FF&style=flat-square" alt="Stars"></a>
+  <span>License: Apache-2.0</span>
+  <span>Self-hosted deployment</span>
 </p>
 <hr />
 
@@ -36,7 +33,7 @@ CloudIaC https://cloudiac.org 是基于基础设施即代码(IaC, Infrastructure
 - 以 root 用户执行如下命令
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/idcos/cloudiac-docs/master/script/cloudiac-docker.sh | bash
+curl -fsSL http://gitlab.local/cloudiac/scripts/cloudiac-docker.sh | bash
 ```
 
 #### Docker Compose（本仓库）
@@ -86,7 +83,7 @@ docker compose -f docker/docker-compose.yml down
 
 ### 社区
 
-如果您在使用过程中有任何疑问或建议，欢迎提交 [GitHub Issue](https://github.com/idcos/cloudiac/issues/new/choose) 或加入我们的社区进一步交流沟通。
+如果您在使用过程中有任何疑问或建议，请通过内部项目管理平台提交问题，或加入我们的社区进一步交流沟通。
 
 项目官网: https://cloudiac.org
 
@@ -96,5 +93,4 @@ docker compose -f docker/docker-compose.yml down
 微信群超过200人无法扫码进入，请添加CloudIaC助手为好友，助手将邀请您进群
 
 <img src="https://user-images.githubusercontent.com/11749193/147626753-ca8069dc-3b6e-4989-ad7c-541ba97794ed.png" alt="助手二维码" width="200"/>
-
 

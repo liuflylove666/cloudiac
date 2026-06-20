@@ -54,27 +54,20 @@ func AutoGetTfVersion(c *ctx.ServiceContext, form *forms.TemplateTfVersionSearch
 	if tfconstraint == "" {
 		return consts.DefaultTerraformVersion, nil
 	}
-	// 查看内置版本中有无满足用户约束条件的版本
+	// 只允许平台声明支持的 Terraform 版本参与自动匹配。
 	tfVersion, tferr := GetDetailTfVersion(common.TerraformVersions, tfconstraint)
 	if tferr != nil {
-		return nil, e.New(e.InvalidTfVersion, tferr)
+		return nil, e.New(e.InvalidTfVersion, tferr, http.StatusBadRequest)
 	}
 	if tfVersion != "" {
 		return tfVersion, nil
-	} else {
-		// 如果内置版本中没有满足用户版本，则从官方提供所有版本中查找
-		tflist := getTfVersions()
-		if len(tflist) > 0 {
-			tfVersion, tferr = GetDetailTfVersion(tflist, tfconstraint)
-			// 官方提供所有版本没有找到，则抛错认定用户指定版本不存在
-			if tferr != nil || tfVersion == "" {
-				return nil, e.New(e.InvalidTfVersion, tferr)
-			}
-			return tfVersion, nil
-		}
 	}
 
-	return nil, e.New(e.VcsError, fmt.Errorf("Illegal terrain version number, please enter after verification"))
+	return nil, e.New(
+		e.InvalidTfVersion,
+		fmt.Errorf("terraform version constraint %q is not supported; only %s is supported", tfconstraint, consts.DefaultTerraformVersion),
+		http.StatusBadRequest,
+	)
 }
 
 // tflist: 提供的terraform版本约束列表
@@ -184,27 +177,11 @@ func initTfversions() {
 	// 添加写锁
 	m.Lock()
 	defer m.Unlock()
-	for {
-		tfversion, err := GetTFList(consts.DefaultTfMirror, true)
-		if err == nil {
-			TfListVersions = tfversion
-			break
-		} else {
-			time.Sleep(1 * time.Second)
-
-		}
-	}
+	TfListVersions = append([]string{}, common.TerraformVersions...)
 }
 
 func InitTfVersions() {
-	go func() {
-		initTfversions()
-		for {
-			time.Sleep(86400 * 7 * time.Second)
-			initTfversions()
-		}
-	}()
-
+	initTfversions()
 }
 
 func getTfVersions() []string {

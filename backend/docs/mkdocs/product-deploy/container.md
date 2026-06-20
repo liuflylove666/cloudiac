@@ -158,7 +158,10 @@ SERVICE_ID=iac-portal-01
 ## portal 服务注册的 tags
 SERVICE_TAGS="iac-portal;portal-01"
 
-# docker reigstry 地址，默认为空(使用 docker hub)
+# docker registry 地址，默认为空(使用 docker hub)
+# Harbor 示例: harbor.local/cloudiac/
+# AWS ECR 示例: 123456789012.dkr.ecr.us-east-1.amazonaws.com/
+# 注意: 使用私有 ECR 时，运行 Docker daemon 的机器需要先执行 aws ecr get-login-password | docker login。
 DOCKER_REGISTRY=""
 
 # logger 配置

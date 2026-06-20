@@ -19,7 +19,7 @@ const infoErrorType = {
 };
 const infoTypeName = {
   templates: '云模板',
-  vcs: 'VCS',
+  vcs: '代码仓库',
   varGroups: 'varGroups'
 };
 const Index = ({ reload, toggleVisible, orgId }) => {
@@ -144,7 +144,7 @@ const Index = ({ reload, toggleVisible, orgId }) => {
               return (importInfo[it].vcs || []).map((dt) => {
                 return (<>
                   {!!infoType[it] && <span>
-                    <span className={classNames(styles.resultTitle, { [styles.greenColor]: it === 'created' || it === 'copied' })}> {infoType[it]}【VCS】</span>: <span><span className={styles.resultText}>{dt.name}</span><span className={styles.resultText}>({dt.id})</span></span>
+                    <span className={classNames(styles.resultTitle, { [styles.greenColor]: it === 'created' || it === 'copied' })}> {infoType[it]}【代码仓库】</span>: <span><span className={styles.resultText}>{dt.name}</span><span className={styles.resultText}>({dt.id})</span></span>
                   </span>}
                 </>);
               });
@@ -177,7 +177,7 @@ const Index = ({ reload, toggleVisible, orgId }) => {
               return (importInfo[it].vcs || []).map((dt) => {
                 return (<>
                   {!!infoErrorType[it] && <span>
-                    <span className={classNames(styles.resultTitle, { [styles.greenColor]: it === 'created' || it === 'copied' })}> {infoErrorType[it]}【VCS】</span>: <span><span className={styles.resultText}>{dt.name}</span><span className={styles.resultText}>({dt.id})</span></span>
+                    <span className={classNames(styles.resultTitle, { [styles.greenColor]: it === 'created' || it === 'copied' })}> {infoErrorType[it]}【代码仓库】</span>: <span><span className={styles.resultText}>{dt.name}</span><span className={styles.resultText}>({dt.id})</span></span>
                   </span>}
                 </>);
               });
@@ -204,7 +204,7 @@ const Index = ({ reload, toggleVisible, orgId }) => {
               <div className={styles.importHeader}><span>*</span> 导入时以UUID作为是否重复导入的依据，UUID重复时的操作方式：</div>
               <Radio.Group onChange={(e) => setType(e.target.value)} value={type}>
                 <Space direction='vertical' size={4}>
-                  <Radio value={'update'}>覆盖 <span className={styles.radioText}>UUID重复时更新该条数据（包括云模板、VCS、资源帐号）</span></Radio> 
+                  <Radio value={'update'}>覆盖 <span className={styles.radioText}>UUID重复时更新该条数据（包括云模板、代码仓库、资源帐号）</span></Radio>
                   <Radio value={'skip'}>跳过 <span className={styles.radioText}>UUID重复时跳过该条数据，继续导入其他数据</span></Radio> 
                   <Radio value={'copy'}>创建副本 <span style={{ marginLeft: 0 }} className={styles.radioText}>UUID重复时，重新创建一条数据，如果名称也相同，给名称加上_copy后缀</span></Radio> 
                   <Radio value={'abort'}>中止 <span className={styles.radioText}>UUID重复时中止导入操作，不做任何变更</span></Radio>

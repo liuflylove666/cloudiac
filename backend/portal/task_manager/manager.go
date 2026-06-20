@@ -446,6 +446,7 @@ func (m *TaskManager) runTask(ctx context.Context, task models.Tasker) error {
 }
 
 // doRunTask, startErr 只在任务启动出错时(执行步骤前出错)才会返回错误
+//
 //nolint:cyclop
 func (m *TaskManager) doRunTask(ctx context.Context, task *models.Task) (startErr error) {
 	logger := m.logger.WithField("taskId", task.Id)
@@ -995,7 +996,8 @@ func (m *TaskManager) stop() {
 }
 
 // buildRunTaskReq 基于任务信息构建一个 RunTaskReq 对象。
-// 	注意这里不会设置 step 相关的数据，step 相关字段在 StartTaskStep() 方法中设置
+//
+//	注意这里不会设置 step 相关的数据，step 相关字段在 StartTaskStep() 方法中设置
 func buildRunTaskReq(dbSess *db.Session, task models.Task) (taskReq *runner.RunTaskReq, err error) {
 	runnerEnv := runner.TaskEnv{
 		Id:              string(task.EnvId),
@@ -1009,7 +1011,7 @@ func buildRunTaskReq(dbSess *db.Session, task models.Task) (taskReq *runner.RunT
 		AnsibleVars:     make(map[string]string),
 	}
 
-	if runnerEnv.TfVersion == "" {
+	if runnerEnv.TfVersion == "" || !utils.StrInArray(runnerEnv.TfVersion, common.TerraformVersions...) {
 		runnerEnv.TfVersion = consts.DefaultTerraformVersion
 	}
 	if err := buildTaskReqEnvVars(&runnerEnv, task.Variables); err != nil {
@@ -1209,6 +1211,7 @@ func deployOrDestroy(env *models.Env, lg *logrus.Entry, dbSess *db.Session, op s
 //
 
 // doRunScanTask, startErr 只在任务启动出错时(执行步骤前出错)才会返回错误
+//
 //nolint:cyclop
 func (m *TaskManager) doRunScanTask(ctx context.Context, task *models.ScanTask) (startErr error) {
 	logger := m.logger.WithField("taskId", task.Id)
@@ -1391,7 +1394,7 @@ func buildScanTaskReq(dbSess *db.Session, task *models.ScanTask, step *models.Ta
 		TerraformVars:   make(map[string]string),
 		AnsibleVars:     make(map[string]string),
 	}
-	if runnerEnv.TfVersion == "" {
+	if runnerEnv.TfVersion == "" || !utils.StrInArray(runnerEnv.TfVersion, common.TerraformVersions...) {
 		runnerEnv.TfVersion = consts.DefaultTerraformVersion
 	}
 	if err := buildTaskReqEnvVars(&runnerEnv, task.Variables); err != nil {
@@ -1598,7 +1601,7 @@ func runTaskReqAddSysEnvs(req *runner.RunTaskReq) error {
 		sysEnvs["CLOUDIAC_ENV_STATUS"] = env.Status
 		// 任务启动前的环境资源数量
 		sysEnvs["CLOUDIAC_ENV_RESOURCES"] = fmt.Sprintf("%d", resCount)
-		// 当前任务使用的 terraform 版本号(eg. 0.14.11)
+		// 当前任务使用的 terraform 版本号(eg. 1.15.6)
 		sysEnvs["CLOUDIAC_TF_VERSION"] = req.Env.TfVersion
 
 		// 所有 CLOUDIAC_ 前缀的变量都以小写名称通过环境变量传入 terraform

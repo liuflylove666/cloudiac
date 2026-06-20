@@ -21,5 +21,11 @@ type SystemCfg struct {
 
 type RegistryAddrForm struct {
 	BaseForm
-	RegistryAddr string `form:"registryAddr" json:"registryAddr" binding:""`
+	RegistryAddr          string `form:"registryAddr" json:"registryAddr" binding:""`
+	ImageRegistryType     string `form:"imageRegistryType" json:"imageRegistryType" binding:"omitempty,oneof=generic harbor ecr"`
+	ImageRegistryAddr     string `form:"imageRegistryAddr" json:"imageRegistryAddr" binding:""`
+	EcrAccountId          string `form:"ecrAccountId" json:"ecrAccountId" binding:""`
+	EcrRegion             string `form:"ecrRegion" json:"ecrRegion" binding:""`
+	EcrEndpoint           string `form:"ecrEndpoint" json:"ecrEndpoint" binding:""`
+	ImageRepositoryPrefix string `form:"imageRepositoryPrefix" json:"imageRepositoryPrefix" binding:""`
 }

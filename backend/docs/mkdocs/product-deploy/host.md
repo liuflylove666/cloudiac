@@ -26,10 +26,11 @@
 
 ```
 VERSION=v1.3.5
+CLOUDIAC_RELEASE_BASE_URL=${CLOUDIAC_RELEASE_BASE_URL:-http://gitlab.local/cloudiac/releases}
 mkdir -p /usr/yunji/cloudiac && \
 cd /usr/yunji/cloudiac && \
 for PACK in cloudiac cloudiac-repos cloudiac-providers; do
-  curl -sL https://github.com/idcos/cloudiac/releases/download/${VERSION}/${PACK}_${VERSION}.tar.gz -o ${PACK}_${VERSION}.tar.gz && \
+  curl -sL "${CLOUDIAC_RELEASE_BASE_URL}/${VERSION}/${PACK}_${VERSION}.tar.gz" -o ${PACK}_${VERSION}.tar.gz && \
   tar -xf ${PACK}_${VERSION}.tar.gz
 done
 ```
@@ -138,9 +139,10 @@ docker pull cloudiac/ct-worker
 
 ```
 WEB_VERSION=0.9.2
+CLOUDIAC_WEB_RELEASE_BASE_URL=${CLOUDIAC_WEB_RELEASE_BASE_URL:-http://gitlab.local/cloudiac-web/releases}
 mkdir -p /usr/yunji/cloudiac-web && \
 cd /usr/yunji/cloudiac-web && \
-curl -sL https://github.com/idcos/cloudiac-web/releases/download/${WEB_VERSION}/cloudiac-web_${WEB_VERSION}.tar.gz -o cloudiac-web_${WEB_VERSION}.tar.gz && \
+curl -sL "${CLOUDIAC_WEB_RELEASE_BASE_URL}/${WEB_VERSION}/cloudiac-web_${WEB_VERSION}.tar.gz" -o cloudiac-web_${WEB_VERSION}.tar.gz && \
 tar -xf cloudiac-web_${WEB_VERSION}.tar.gz
 ```
 

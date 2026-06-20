@@ -8,13 +8,13 @@ import { requestWrapper } from 'utils/request';
 import tplAPI from 'services/tpl';
 import vcsAPI from 'services/vcs';
 import OpModal from 'components/vcs-modal';
-import { TFVERSION_AUTO_MATCH } from 'constants/types';
 
 const FL = {
   labelCol: { span: 6 },
   wrapperCol: { span: 14 }
 };
 const { Option, OptGroup } = Select;
+const DEFAULT_TERRAFORM_VERSION = '1.15.6';
 
 const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, type, opType, saveLoading }) => {
 
@@ -33,27 +33,22 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
       tplAPI.listTfversions.bind(null, { orgId })
     )
   );
-
-  // 获取Terraform版本自动匹配值
-  const {
-    data: autoMatchTfVersion,
-    run: fetchAutoMatchTfVersion,
-    mutate: mutateAutoMatchTfVersion
-  } = useRequest(
-    ({ vcsId, repoRevision, repoId }) => requestWrapper(
-      tplAPI.autotfversion.bind(null, { orgId, repoId, vcsBranch: repoRevision, vcsId })
-    ),
-    {
-      manual: true
-    }
-  );
+  const tfversionOptionList = uniqBy(
+    [ ...(tfversionOptions || []), DEFAULT_TERRAFORM_VERSION ].map(value => ({ value })),
+    'value'
+  ).map(it => it.value);
+  const latestTfVersion = tfversionOptionList[0] || DEFAULT_TERRAFORM_VERSION;
+  const normalizeTfVersion = value => tfversionOptionList.includes(value) ? value : latestTfVersion;
   
   useEffect(() => {
     fetchVcsList();
   }, []);
 
   useEffect(() => {
-    form.setFieldsValue(formData);
+    form.setFieldsValue({
+      ...formData,
+      tfVersion: normalizeTfVersion(formData.tfVersion)
+    });
     if (formData.vcsId) {
       fetchRepos(formData);
     }
@@ -61,10 +56,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
       fetchRepoBranches(formData);
       fetchRepoTags(formData);
     }
-    if (formData.repoRevision) {
-      fetchAutoMatchTfVersion(formData);
-    }
-  }, [ctData, type]);
+  }, [ctData, type, latestTfVersion]);
 
   const fetchVcsList = async () => {
     try {
@@ -86,7 +78,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
     }
   };
 
-  // 获取Terraform版本自动匹配值
+  // 获取仓库列表
   const {
     data: repos = [],
     run: fetchRepos,
@@ -192,7 +184,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
         repoId: undefined,
         repoRevision: undefined,
         workdir: undefined,
-        tfVersion: undefined
+        tfVersion: latestTfVersion
       });
     }
     if (changedValues.repoId) {
@@ -201,19 +193,16 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
       setRepoTags([]);
       fetchRepoBranches(allValues);
       fetchRepoTags(allValues);
-      mutateAutoMatchTfVersion(undefined);
       form.setFieldsValue({
         repoFullName: (repos.find(it => it.id === changedValues.repoId) || {}).fullName,
         repoRevision: undefined,
         workdir: undefined,
-        tfVersion: undefined
+        tfVersion: latestTfVersion
       });
     }
     if (changedValues.repoRevision) {
-      mutateAutoMatchTfVersion(undefined);
-      fetchAutoMatchTfVersion(allValues);
       form.setFieldsValue({
-        tfVersion: undefined,
+        tfVersion: latestTfVersion,
       });
     }
   };
@@ -224,7 +213,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
       await onlineCheckForm(values);
       stepHelper.updateData({
         type, 
-        data: { ...values, autoMatchTfVersion }
+        data: values
       });
       stepHelper.go(index);
     }
@@ -234,7 +223,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
     await onlineCheckForm(values);
     stepHelper.updateData({
       type, 
-      data: { ...values, autoMatchTfVersion },
+      data: values,
       isSubmit: opType === 'edit'
     });
     opType === 'add' && stepHelper.next();
@@ -257,7 +246,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
       onValuesChange={onValuesChange}
     >
       <Form.Item
-        label='vcs'
+        label='代码仓库'
         name='vcsId'
         rules={[
           {
@@ -267,7 +256,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
         ]}
       >
         <Select 
-          placeholder='请选择vcs'
+          placeholder='请选择代码仓库'
           showSearch={true}
           optionFilterProp='children'
           notFoundContent={(
@@ -275,7 +264,7 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               imageStyle={{ height: 60 }}
               description={(
-                <span>暂无数据，&nbsp;<a onClick={opVcsModal}>创建VCS</a></span>
+                <span>暂无数据，&nbsp;<a onClick={opVcsModal}>创建代码仓库</a></span>
               )}
             />
           )}
@@ -364,21 +353,13 @@ const Repo = ({ onlineCheckForm, goCTlist, childRef, stepHelper, orgId, ctData, 
             >
               <Select placeholder='请选择Terraform版本'>
                 {
-                  autoMatchTfVersion && <Option value={TFVERSION_AUTO_MATCH}>自动匹配</Option>
-                }
-                {
-                  (tfversionOptions || []).map(it => <Option value={it}>{it}</Option>)
-                }
-                {
-                  (formData.tfVersion && !([...tfversionOptions, TFVERSION_AUTO_MATCH]).includes(formData.tfVersion)) && (
-                    <Option value={formData.tfVersion}>{formData.tfVersion}</Option>
-                  )
+                  tfversionOptionList.map(it => <Option key={it} value={it}>v{it}</Option>)
                 }
               </Select>
             </Form.Item>
           </Col>
           <Col flex='4'>
-            <Tooltip title='当选择“自动检测”时，CloudIaC 会解析工作目录下的 versions.tf 文件，并根据其中的版本约束选择最佳的 terraform 版本，若匹配失败则默认使用 v0.14.0。'>
+            <Tooltip title='当前平台只支持 Terraform v1.15.6，旧版本模板在编辑或执行时会自动收敛到该版本。'>
               <QuestionCircleOutlined style={{ fontSize: 16, marginLeft: 12, marginTop: 8, color: '#898989' }}/>
             </Tooltip>
           </Col>

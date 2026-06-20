@@ -1,0 +1,174 @@
+@import 'containers/App/styles/variable.less';
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.headerDesc {
+  margin-top: 4px;
+  color: #6b778c;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricItem {
+  display: flex;
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.metricIcon {
+  flex: 0 0 36px;
+  height: 36px;
+  margin-right: 12px;
+  color: #2f7de1;
+  font-size: 24px;
+  line-height: 36px;
+  text-align: center;
+  background: #edf5ff;
+  border-radius: 6px;
+}
+
+.metricBody {
+  min-width: 0;
+}
+
+.metricValue {
+  margin: 8px 0 6px;
+  color: #172b4d;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.warningTone {
+  border-color: #ffe1a6;
+  background: #fffaf0;
+
+  .metricIcon {
+    color: #ad6800;
+    background: #fff1d6;
+  }
+}
+
+.errorTone {
+  border-color: #ffc9c9;
+  background: #fff7f7;
+
+  .metricIcon {
+    color: #c92a2a;
+    background: #ffe3e3;
+  }
+}
+
+.progressGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.progressItem {
+  min-width: 0;
+}
+
+.progressMeta,
+.miniBarMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.twoColumn {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 16px;
+}
+
+.threeColumn {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #172b4d;
+}
+
+.actionItem {
+  display: block;
+  padding: 12px;
+  color: inherit;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #fbfcfe;
+
+  &:hover {
+    color: inherit;
+    border-color: #b8d4f6;
+    background: #f7fbff;
+  }
+}
+
+.miniBar {
+  min-width: 0;
+}
+
+.miniBarTrack {
+  height: 8px;
+  overflow: hidden;
+  background: #eef2f7;
+  border-radius: 4px;
+}
+
+.miniBarInner {
+  height: 100%;
+  background: #2f7de1;
+  border-radius: 4px;
+}
+
+@media (max-width: 1180px) {
+  .metricGrid,
+  .threeColumn {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .twoColumn {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .headerRow,
+  .progressMeta,
+  .miniBarMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .metricGrid,
+  .progressGrid,
+  .threeColumn {
+    grid-template-columns: 1fr;
+  }
+
+  .metricValue {
+    font-size: 24px;
+  }
+}

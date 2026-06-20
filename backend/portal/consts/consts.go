@@ -36,7 +36,7 @@ const (
 	DefaultSysEmail = "sys@example.com"
 	DefaultSysName  = "System"
 
-	DefaultTerraformVersion = "1.2.4"
+	DefaultTerraformVersion = "1.15.6"
 
 	// token subject
 	JwtSubjectUserAuth  = "userAuth" // 用于用户认证
@@ -224,12 +224,7 @@ var (
 		"pending":  "排队中",
 	}
 	TerraformVersions = []string{
-		"0.11.15",
-		"0.12.31",
-		"0.13.7",
-		"0.14.11",
-		"0.15.5",
-		"1.0.6",
+		"1.15.6",
 	}
 
 	TaskStatusToEventType = map[string]string{

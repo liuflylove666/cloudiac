@@ -197,7 +197,7 @@ const releaseNoteTemplate = `# Releases
 {{ end }}
 {{ end }}
 
-**完整 Changelog 及版本包:** [https://github.com/idcos/cloudiac/releases/tag/v{{.Version}}](https://github.com/idcos/cloudiac/releases/tag/v{{.Version}})
+**完整 Changelog 及版本包:** 请从内网 GitLab/Harbor 制品库获取 cloudiac v{{.Version}}。
 
 
 {{end}}

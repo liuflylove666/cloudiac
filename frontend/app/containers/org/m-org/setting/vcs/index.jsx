@@ -120,7 +120,7 @@ export default ({ title, orgId }) => {
       width: 480,
       title: `你确定要禁用${name}吗？`,
       icon: <ExclamationCircleFilled />,
-      content: `禁用将导致引用该VCS仓库的云模板不可用，确定要禁用吗`,
+      content: `禁用将导致引用该代码仓库的云模板不可用，确定要禁用吗`,
       okText: '确认',
     	cancelText: '取消',
       onOk: () => {
@@ -135,7 +135,7 @@ export default ({ title, orgId }) => {
       width: 480,
       title: `你确定要删除${name}吗？`,
       icon: <ExclamationCircleFilled />,
-      content: `删除将导致引用该VCS仓库的云模板不可用，确定要删除吗`,
+      content: `删除将导致引用该代码仓库的云模板不可用，确定要删除吗`,
       okText: '确认',
     	cancelText: '取消',
       onOk: () => {
@@ -180,7 +180,7 @@ export default ({ title, orgId }) => {
           setOpt('add');
           toggleVisible();
         }}
-      >添加VCS</Button>
+      >添加代码仓库</Button>
     </div>
     <Table
       columns={columns}

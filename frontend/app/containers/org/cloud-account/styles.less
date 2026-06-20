@@ -1,0 +1,82 @@
+@import 'containers/App/styles/variable.less';
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.filterBar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.actionBar {
+  flex: 0 0 auto;
+}
+
+.keywordSearch {
+  width: 320px;
+  max-width: 100%;
+}
+
+.summary {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f7f9fc;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+
+.sectionTitle {
+  margin: 10px 0 12px;
+  color: #1f2d3d;
+  font-weight: 500;
+}
+
+.credentials {
+  padding-top: 4px;
+}
+
+.credentialRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.credentialKey,
+.credentialValue {
+  margin-bottom: 12px;
+}
+
+.drawerFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tagList {
+  min-height: 32px;
+  line-height: 32px;
+}
+
+@media (max-width: 760px) {
+  .toolbar,
+  .formGrid,
+  .credentialRow {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .actionBar {
+    justify-content: flex-start;
+  }
+}

@@ -34,7 +34,9 @@ const providerMap = {
   oci: 'OCI',
   alicloud: 'AliCloud',
   azure: 'Azure',
-  gcp: 'GCP'
+  gcp: 'GCP',
+  tencentcloud: '腾讯云',
+  huawei: '华为云'
 };
 
 const sourceMap = {
@@ -51,16 +53,20 @@ const riskMap = {
 
 const taskStatusMap = {
   pending: '等待中',
+  approving: '待审批',
   running: '运行中',
   complete: '完成',
-  failed: '失败'
+  failed: '失败',
+  rejected: '已驳回'
 };
 
 const taskStatusColorMap = {
   pending: 'default',
+  approving: 'warning',
   running: 'processing',
   complete: 'success',
-  failed: 'error'
+  failed: 'error',
+  rejected: 'default'
 };
 
 const actionLevelColorMap = {
@@ -75,6 +81,7 @@ const sourceLabel = (value) => sourceMap[value] || value || '-';
 const riskLabel = (value) => riskMap[value] || value || '-';
 const numberText = (value) => Number(value || 0).toLocaleString();
 const percent = (value) => Math.max(0, Math.min(100, Number(value || 0)));
+const percentText = (value) => `${percent(value).toFixed(1)}%`;
 
 const MetricItem = ({ icon, title, value, suffix, description, tone }) => (
   <div className={`${styles.metricItem} ${tone ? styles[tone] : ''}`}>
@@ -127,6 +134,8 @@ const CloudOverviewPage = ({ match }) => {
   const actions = data.actions || [];
   const recentSyncTasks = data.recentSyncTasks || [];
   const coverageRate = percent(metrics.coverageRate);
+  const governanceRate = percent(metrics.governanceRate);
+  const cloudOnlyRate = percent(metrics.cloudOnlyRate);
   const accountReadyRate = metrics.accountEnabled ? percent(metrics.accountReady / metrics.accountEnabled * 100) : 0;
 
   const providerColumns = useMemo(() => [
@@ -153,6 +162,17 @@ const CloudOverviewPage = ({ match }) => {
       title: '资产',
       width: 100,
       render: numberText
+    },
+    {
+      dataIndex: 'iacManagedAssetCount',
+      title: 'IaC覆盖',
+      width: 130,
+      render: (value, record) => (
+        <Space size={4}>
+          <Text>{numberText(value)}</Text>
+          <Text type='secondary'>/{numberText(record.assetCount)}</Text>
+        </Space>
+      )
     },
     {
       dataIndex: 'cloudOnlyAssetCount',
@@ -233,7 +253,14 @@ const CloudOverviewPage = ({ match }) => {
                 icon={<DatabaseOutlined/>}
                 title='CMDB 资产'
                 value={metrics.assetTotal}
-                description={`云采集 ${numberText(metrics.cloudCollectedAssets)}，IaC ${numberText(metrics.iacManagedAssets)}`}
+                description={`云采集 ${numberText(metrics.cloudCollectedAssets)}，IaC覆盖 ${numberText(metrics.iacManagedAssets)}`}
+              />
+              <MetricItem
+                icon={<AppstoreOutlined/>}
+                title='IaC 覆盖'
+                value={metrics.iacManagedAssets}
+                description={`直接 ${numberText(metrics.iacDirectAssets)}，关联 ${numberText(metrics.iacLinkedAssets)}`}
+                tone={coverageRate < 80 ? 'warningTone' : ''}
               />
               <MetricItem
                 icon={<WarningOutlined/>}
@@ -253,8 +280,8 @@ const CloudOverviewPage = ({ match }) => {
             <div className={styles.progressGrid}>
               <div className={styles.progressItem}>
                 <div className={styles.progressMeta}>
-                  <Text>IaC 纳管覆盖率</Text>
-                  <Text type='secondary'>{coverageRate.toFixed(1)}%</Text>
+                  <Text>IaC 覆盖率</Text>
+                  <Text type='secondary'>{percentText(coverageRate)}</Text>
                 </div>
                 <Progress percent={coverageRate} showInfo={false} strokeColor='#2f7de1'/>
               </div>
@@ -264,6 +291,49 @@ const CloudOverviewPage = ({ match }) => {
                   <Text type='secondary'>{accountReadyRate.toFixed(1)}%</Text>
                 </div>
                 <Progress percent={accountReadyRate} showInfo={false} strokeColor='#2ca58d'/>
+              </div>
+              <div className={styles.progressItem}>
+                <div className={styles.progressMeta}>
+                  <Text>治理关联率</Text>
+                  <Text type='secondary'>{percentText(governanceRate)}</Text>
+                </div>
+                <Progress percent={governanceRate} showInfo={false} strokeColor='#6f8f2f'/>
+              </div>
+              <div className={styles.progressItem}>
+                <div className={styles.progressMeta}>
+                  <Text>云上未纳管率</Text>
+                  <Text type='secondary'>{percentText(cloudOnlyRate)}</Text>
+                </div>
+                <Progress percent={cloudOnlyRate} showInfo={false} strokeColor={cloudOnlyRate > 0 ? '#d46b08' : '#2ca58d'}/>
+              </div>
+            </div>
+          </div>
+
+          <div className='idcos-card'>
+            <div className={styles.sectionTitle}>
+              <AppstoreOutlined/>
+              <Text strong={true}>IaC 治理视图</Text>
+            </div>
+            <div className={styles.iacGrid}>
+              <div className={styles.iacItem}>
+                <Text type='secondary'>直接来自 IaC</Text>
+                <div className={styles.iacValue}>{numberText(metrics.iacDirectAssets)}</div>
+                <Text type='secondary'>由环境资源回填到 CMDB</Text>
+              </div>
+              <div className={styles.iacItem}>
+                <Text type='secondary'>云采集已关联 IaC</Text>
+                <div className={styles.iacValue}>{numberText(metrics.iacLinkedAssets)}</div>
+                <Text type='secondary'>云上资源已绑定 IaC 资源 ID</Text>
+              </div>
+              <div className={styles.iacItem}>
+                <Text type='secondary'>云采集已绑定项目/环境</Text>
+                <div className={styles.iacValue}>{numberText(metrics.cloudLinkedAssets)}</div>
+                <Text type='secondary'>进入项目治理范围的云资产</Text>
+              </div>
+              <div className={`${styles.iacItem} ${metrics.cloudOnlyAssets ? styles.warningIacItem : ''}`}>
+                <Text type='secondary'>云上未纳管</Text>
+                <div className={styles.iacValue}>{numberText(metrics.cloudOnlyAssets)}</div>
+                <Link to={`/org/${orgId}/m-cloud-assets?managedBy=cloud_only`}>查看并治理</Link>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -6,14 +7,17 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
+  Popover,
   Popconfirm,
   Select,
   Space,
   Switch,
   Table,
-  Tag
+  Tag,
+  Tooltip
 } from 'antd';
-import { CloudSyncOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CloudSyncOutlined, MinusCircleOutlined, PlusOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import moment from 'moment';
 import PageHeader from 'components/pageHeader';
@@ -29,7 +33,11 @@ const { Search: InputSearch } = Input;
 const providerOptions = [
   { label: 'AWS', value: 'aws' },
   { label: 'OCI', value: 'oci' },
-  { label: 'AliCloud', value: 'alicloud' }
+  { label: 'AliCloud', value: 'alicloud' },
+  { label: 'Azure', value: 'azure' },
+  { label: 'GCP', value: 'gcp' },
+  { label: '腾讯云', value: 'tencentcloud' },
+  { label: '华为云', value: 'huawei' }
 ];
 
 const statusMap = {
@@ -41,6 +49,28 @@ const validationStatusMap = {
   pending: { label: '待验证', color: 'default' },
   valid: { label: '有效', color: 'success' },
   invalid: { label: '异常', color: 'error' }
+};
+
+const healthStatusMap = {
+  healthy: { label: '健康', color: 'success' },
+  warning: { label: '提醒', color: 'warning' },
+  unhealthy: { label: '异常', color: 'error' }
+};
+
+const syncTaskStatusMap = {
+  pending: { label: '等待中', color: 'default' },
+  running: { label: '运行中', color: 'processing' },
+  complete: { label: '完成', color: 'success' },
+  failed: { label: '失败', color: 'error' }
+};
+
+const failureCategoryMap = {
+  credential: '凭证异常',
+  permission: '权限异常',
+  configuration: '配置异常',
+  rate_limit: 'API 限流',
+  network: '网络异常',
+  unknown: '未分类异常'
 };
 
 const permissionStatusMap = {
@@ -67,6 +97,35 @@ const providerCredentialTemplates = {
     { id: 'ALICLOUD_ACCESS_KEY', key: 'ALICLOUD_ACCESS_KEY', value: '', isSecret: false },
     { id: 'ALICLOUD_SECRET_KEY', key: 'ALICLOUD_SECRET_KEY', value: '', isSecret: true },
     { id: 'ALICLOUD_ACCOUNT_ID', key: 'ALICLOUD_ACCOUNT_ID', value: '', isSecret: false }
+  ],
+  azure: [
+    { id: 'AZURE_TENANT_ID', key: 'AZURE_TENANT_ID', value: '', isSecret: false },
+    { id: 'AZURE_CLIENT_ID', key: 'AZURE_CLIENT_ID', value: '', isSecret: false },
+    { id: 'AZURE_CLIENT_SECRET', key: 'AZURE_CLIENT_SECRET', value: '', isSecret: true },
+    { id: 'AZURE_SUBSCRIPTION_ID', key: 'AZURE_SUBSCRIPTION_ID', value: '', isSecret: false }
+  ],
+  gcp: [
+    { id: 'GCP_PROJECT_ID', key: 'GCP_PROJECT_ID', value: '', isSecret: false },
+    { id: 'GCP_ACCESS_TOKEN', key: 'GCP_ACCESS_TOKEN', value: '', isSecret: true },
+    { id: 'GCP_SERVICE_ACCOUNT_JSON', key: 'GCP_SERVICE_ACCOUNT_JSON', value: '', isSecret: true }
+  ],
+  tencentcloud: [
+    { id: 'TENCENTCLOUD_ACCOUNT_ID', key: 'TENCENTCLOUD_ACCOUNT_ID', value: '', isSecret: false },
+    { id: 'TENCENTCLOUD_SECRET_ID', key: 'TENCENTCLOUD_SECRET_ID', value: '', isSecret: false },
+    { id: 'TENCENTCLOUD_SECRET_KEY', key: 'TENCENTCLOUD_SECRET_KEY', value: '', isSecret: true },
+    { id: 'TENCENTCLOUD_TOKEN', key: 'TENCENTCLOUD_TOKEN', value: '', isSecret: true },
+    { id: 'TENCENTCLOUD_COS_ENDPOINT', key: 'TENCENTCLOUD_COS_ENDPOINT', value: '', isSecret: false },
+    { id: 'TENCENTCLOUD_INVENTORY_JSON', key: 'TENCENTCLOUD_INVENTORY_JSON', value: '', isSecret: true }
+  ],
+  huawei: [
+    { id: 'HUAWEI_ACCOUNT_ID', key: 'HUAWEI_ACCOUNT_ID', value: '', isSecret: false },
+    { id: 'HUAWEI_PROJECT_ID', key: 'HUAWEI_PROJECT_ID', value: '', isSecret: false },
+    { id: 'HUAWEI_AUTH_TOKEN', key: 'HUAWEI_AUTH_TOKEN', value: '', isSecret: true },
+    { id: 'HUAWEI_ACCESS_KEY', key: 'HUAWEI_ACCESS_KEY', value: '', isSecret: false },
+    { id: 'HUAWEI_SECRET_KEY', key: 'HUAWEI_SECRET_KEY', value: '', isSecret: true },
+    { id: 'HUAWEI_ENDPOINT_SUFFIX', key: 'HUAWEI_ENDPOINT_SUFFIX', value: '', isSecret: false },
+    { id: 'HUAWEI_OBS_ENDPOINT', key: 'HUAWEI_OBS_ENDPOINT', value: '', isSecret: false },
+    { id: 'HUAWEI_INVENTORY_JSON', key: 'HUAWEI_INVENTORY_JSON', value: '', isSecret: true }
   ]
 };
 
@@ -81,7 +140,9 @@ const splitList = (value) => {
 };
 
 const joinList = (value) => Array.isArray(value) && value.length ? value.join(', ') : '-';
+const formListText = (value) => Array.isArray(value) && value.length ? value.join(', ') : '';
 const renderTime = (value) => !value || String(value).indexOf('0001-01-01') === 0 ? '-' : moment(value).format('YYYY-MM-DD HH:mm:ss');
+const accountSupportedAssetTypes = (account) => (account || {}).supportedAssetTypes || (account || {}).supportedTypes || [];
 
 const statusTag = (value) => {
   const item = statusMap[value] || { label: value || '-', color: 'default' };
@@ -91,6 +152,178 @@ const statusTag = (value) => {
 const validationTag = (value) => {
   const item = validationStatusMap[value] || { label: value || '-', color: 'default' };
   return <Tag color={item.color}>{item.label}</Tag>;
+};
+
+const healthTag = (value) => {
+  const item = healthStatusMap[value] || { label: value || '-', color: 'default' };
+  return <Tag color={item.color}>{item.label}</Tag>;
+};
+
+const syncTaskStatusTag = (value) => {
+  const item = syncTaskStatusMap[value] || { label: value || '-', color: 'default' };
+  return <Tag color={item.color}>{item.label}</Tag>;
+};
+
+const syncTaskTime = (task) => task ? renderTime(task.endedAt || task.createdAt) : '-';
+
+const renderSyncTaskLink = (label, task, orgId) => {
+  const time = syncTaskTime(task);
+  if (!task || !task.id || !orgId) {
+    return <span>{label}：{time}</span>;
+  }
+  return (
+    <span>
+      {label}：
+      <Link to={`/org/${orgId}/m-cloud-assets?syncTaskId=${task.id}`}>
+        {time}
+      </Link>
+    </span>
+  );
+};
+
+const renderScheduleTaskHistoryLink = (item, orgId) => {
+  if (!item || !item.policyId || !item.scheduleKey || !orgId) {
+    return null;
+  }
+  const params = [
+    `syncPolicyId=${encodeURIComponent(item.policyId)}`,
+    `syncPolicyScheduleKey=${encodeURIComponent(item.scheduleKey)}`
+  ];
+  return (
+    <Link to={`/org/${orgId}/m-cloud-assets?${params.join('&')}`}>
+      任务历史
+    </Link>
+  );
+};
+
+const renderFailureImpact = (impact, orgId) => {
+  if (!impact) {
+    return null;
+  }
+  const category = failureCategoryMap[impact.category] || impact.category || '同步失败';
+  const statusClass = impact.status === 'unhealthy' ? styles.errorText : styles.warningText;
+  const title = (
+    <Space direction='vertical' size={0}>
+      <span>任务：{impact.taskId || '-'}</span>
+      <span>分类：{category}</span>
+      <span>时间：{renderTime(impact.occurredAt)}</span>
+      <span>错误：{impact.message || '-'}</span>
+      <span>重试：{impact.retryable ? '建议重试' : '需处理后重试'}</span>
+      {!!impact.retryHint && <span>建议：{impact.retryHint}</span>}
+    </Space>
+  );
+  const content = orgId && impact.taskId ? (
+    <Link className={statusClass} to={`/org/${orgId}/m-cloud-assets?syncTaskId=${impact.taskId}`}>
+      失败影响：{category}
+    </Link>
+  ) : (
+    <span className={statusClass}>失败影响：{category}</span>
+  );
+  return (
+    <Tooltip title={title}>
+      {content}
+    </Tooltip>
+  );
+};
+
+const renderPolicyProtection = (_, record) => {
+  const protection = record.protection || {};
+  const pauseWindows = protection.pauseWindows || [];
+  const maxRunsPerDay = protection.maxRunsPerDay || 0;
+  const maxTriggeredPerRun = protection.maxTriggeredPerRun || 0;
+  const maxConcurrentRunning = protection.maxConcurrentRunning || 0;
+  return (
+    <Space direction='vertical' size={0}>
+      <Tooltip title={protection.pauseReason || ''}>
+        <span>{protection.pausedNow ? <Tag color='warning'>暂停中</Tag> : <Tag color='success'>正常</Tag>}</span>
+      </Tooltip>
+      {!!pauseWindows.length && <span className={styles.mutedText}>窗口：{pauseWindows.join(', ')}</span>}
+      {!!maxRunsPerDay && <span className={styles.mutedText}>今日：{protection.runsToday || 0}/{maxRunsPerDay}</span>}
+      {!!maxTriggeredPerRun && <span className={styles.mutedText}>单轮上限：{maxTriggeredPerRun}</span>}
+      {!!maxConcurrentRunning && (
+        <span className={styles.mutedText}>并发：{protection.runningCount || 0}/{maxConcurrentRunning}</span>
+      )}
+    </Space>
+  );
+};
+
+const renderPolicySchedules = (_, record) => {
+  const schedules = record.schedules || [];
+  if (!schedules.length) {
+    return <span className={styles.mutedText}>默认周期</span>;
+  }
+  return (
+    <Space direction='vertical' size={4} className={styles.scheduleSummary}>
+      {schedules.map((item) => (
+        <div className={styles.scheduleSummaryItem} key={item.key}>
+          <Space size={4} wrap={true}>
+            <span>{item.name || item.key}</span>
+            {item.dueNow && <Tag color='processing'>到期</Tag>}
+            {!!item.lastSyncStatus && syncTaskStatusTag(item.lastSyncStatus)}
+          </Space>
+          <div className={styles.mutedText}>区域：{joinList(item.regions)}</div>
+          <div className={styles.mutedText}>类型：{joinList(item.assetTypes)}</div>
+          <div className={styles.mutedText}>间隔：{item.syncInterval || '-'} 秒 / 下次：{renderTime(item.nextSyncAt)}</div>
+        </div>
+      ))}
+    </Space>
+  );
+};
+
+const renderHealthBasis = (detail, orgId) => {
+  const policy = (detail || {}).policy || {};
+  const policyName = policy.name || '';
+  const schedules = (detail || {}).schedules || [];
+  const failureImpact = (detail || {}).failureImpact;
+  const staleSchedules = schedules.filter((item) => item.stale || item.lastSyncStatus === 'failed');
+  const healthyScheduleCount = schedules.length - staleSchedules.length;
+  const scheduleTip = (
+    <Space direction='vertical' size={6} className={styles.scheduleSummary}>
+      {schedules.map((item) => (
+        <div className={styles.scheduleSummaryItem} key={`${item.policyId}-${item.scheduleKey}`}>
+          <div>
+            {item.scheduleName || item.scheduleKey}：{item.stale ? '异常' : '正常'}
+          </div>
+          <div>区域：{joinList(item.regions)} / 类型：{joinList(item.assetTypes)}</div>
+          <Space size={8} wrap={true}>
+            {renderSyncTaskLink('成功', item.lastSuccessTask, orgId)}
+            {renderSyncTaskLink('失败', item.lastFailureTask, orgId)}
+            {renderScheduleTaskHistoryLink(item, orgId)}
+          </Space>
+        </div>
+      ))}
+    </Space>
+  );
+  return (
+    <Space direction='vertical' size={0}>
+      <span>{policyName ? `策略：${policyName}` : '默认同步窗口'}</span>
+      <span className={styles.mutedText}>窗口：{(detail || {}).healthWindowText || '-'}</span>
+      {!!(detail || {}).enabledPolicyCount && (
+        <span className={styles.mutedText}>启用策略：{(detail || {}).enabledPolicyCount}</span>
+      )}
+      {renderFailureImpact(failureImpact, orgId)}
+      {!!schedules.length && (
+        <Popover content={scheduleTip} trigger='click'>
+          <span className={staleSchedules.length ? styles.warningText : styles.mutedText}>
+            子周期：{healthyScheduleCount}/{schedules.length} 正常
+          </span>
+        </Popover>
+      )}
+    </Space>
+  );
+};
+
+const renderSyncSummary = (detail) => {
+  const successTask = (detail || {}).lastSuccessTask;
+  const failureTask = (detail || {}).lastFailureTask;
+  return (
+    <Space direction='vertical' size={0}>
+      <span>成功：{syncTaskTime(successTask)}</span>
+      <span className={failureTask ? styles.warningText : styles.mutedText}>
+        失败：{syncTaskTime(failureTask)}
+      </span>
+    </Space>
+  );
 };
 
 const normalizeCredentialRows = (provider, credentials) => {
@@ -420,9 +653,210 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
   );
 };
 
+const SyncPolicyDrawer = ({ visible, mode, record, accounts, onClose, onSubmit, submitting }) => {
+  const [ form ] = Form.useForm();
+  const [ selectedAccountId, setSelectedAccountId ] = useState('');
+
+  const selectedAccount = useMemo(
+    () => (accounts || []).find((item) => item.id === selectedAccountId) || {},
+    [ accounts, selectedAccountId ]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const defaultAccountId = record.cloudAccountId || ((accounts || [])[0] || {}).id || '';
+    const params = record.params || {};
+    setSelectedAccountId(defaultAccountId);
+    const account = (accounts || []).find((item) => item.id === defaultAccountId) || {};
+    form.setFieldsValue({
+      name: record.name,
+      description: record.description,
+      cloudAccountId: defaultAccountId,
+      regionsText: record.regions && record.regions.length ? formListText(record.regions) : formListText(account.regions),
+      assetTypesText: record.assetTypes && record.assetTypes.length ? formListText(record.assetTypes) : formListText(accountSupportedAssetTypes(account)),
+      status: (record.status || 'enable') === 'enable',
+      syncInterval: record.syncInterval || 86400,
+      maxRetryAttempts: record.maxRetryAttempts || 3,
+      retryBackoffSeconds: record.retryBackoffSeconds || 300,
+      notifyOnFailure: !!record.notifyOnFailure,
+      autoPauseOnFailure: !!record.autoPauseOnFailure,
+      pauseWindowsText: formListText(params.pauseWindows),
+      maxRunsPerDay: params.maxRunsPerDay || 0,
+      scheduleOverrides: (params.scheduleOverrides || []).map((item) => ({
+        name: item.name,
+        regionsText: formListText(item.regions),
+        assetTypesText: formListText(item.assetTypes),
+        syncInterval: item.syncInterval || record.syncInterval || 86400
+      }))
+    });
+  }, [ visible, record, accounts ]);
+
+  const submit = async () => {
+    const values = await form.validateFields();
+    const account = (accounts || []).find((item) => item.id === values.cloudAccountId) || {};
+    onSubmit({
+      name: values.name,
+      description: values.description,
+      cloudAccountId: values.cloudAccountId,
+      provider: account.provider || record.provider,
+      regions: splitList(values.regionsText),
+      assetTypes: splitList(values.assetTypesText),
+      status: values.status ? 'enable' : 'disable',
+      syncInterval: values.syncInterval,
+      maxRetryAttempts: values.maxRetryAttempts,
+      retryBackoffSeconds: values.retryBackoffSeconds,
+      notifyOnFailure: !!values.notifyOnFailure,
+      autoPauseOnFailure: !!values.autoPauseOnFailure,
+      params: {
+        ...(record.params || {}),
+        pauseWindows: splitList(values.pauseWindowsText),
+        maxRunsPerDay: values.maxRunsPerDay || 0,
+        scheduleOverrides: (values.scheduleOverrides || [])
+          .map((item) => ({
+            name: item.name,
+            regions: splitList(item.regionsText),
+            assetTypes: splitList(item.assetTypesText),
+            syncInterval: item.syncInterval || values.syncInterval
+          }))
+          .filter((item) => item.regions.length || item.assetTypes.length)
+      }
+    });
+  };
+
+  return (
+    <Drawer
+      title={mode === 'add' ? '创建同步策略' : '编辑同步策略'}
+      width={720}
+      visible={visible}
+      onClose={onClose}
+      destroyOnClose={true}
+      footer={(
+        <div className={styles.drawerFooter}>
+          <Button onClick={onClose}>取消</Button>
+          <Button type='primary' loading={submitting} onClick={submit}>保存</Button>
+        </div>
+      )}
+    >
+      <Form form={form} layout='vertical'>
+        <div className={styles.formGrid}>
+          <Form.Item name='name' label='策略名称' rules={[{ required: true, message: '请输入策略名称' }]}>
+            <Input placeholder='例如：生产账号每日采集'/>
+          </Form.Item>
+          <Form.Item name='cloudAccountId' label='云账号' rules={[{ required: true, message: '请选择云账号' }]}>
+            <Select
+              placeholder='请选择云账号'
+              onChange={(value) => {
+                setSelectedAccountId(value);
+                const account = (accounts || []).find((item) => item.id === value) || {};
+                form.setFieldsValue({
+                  regionsText: formListText(account.regions),
+                  assetTypesText: formListText(accountSupportedAssetTypes(account))
+                });
+              }}
+            >
+              {(accounts || []).map((item) => (
+                <Option key={item.id} value={item.id}>
+                  {item.name} / {(providerOptions.find((provider) => provider.value === item.provider) || {}).label || item.provider}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </div>
+        <Descriptions size='small' column={2} className={styles.summary}>
+          <Descriptions.Item label='云厂商'>{(providerOptions.find((item) => item.value === selectedAccount.provider) || {}).label || selectedAccount.provider || '-'}</Descriptions.Item>
+          <Descriptions.Item label='账号 ID'>{selectedAccount.accountId || '-'}</Descriptions.Item>
+        </Descriptions>
+        <Form.Item name='regionsText' label='采集区域'>
+          <Input placeholder='多个区域用逗号、空格或换行分隔；留空则使用云账号区域'/>
+        </Form.Item>
+        <Form.Item name='assetTypesText' label='资源类型范围'>
+          <Input placeholder='多个资源类型用逗号、空格或换行分隔；留空则使用账号支持范围'/>
+        </Form.Item>
+        <div className={styles.formGrid}>
+          <Form.Item name='syncInterval' label='同步间隔（秒）' rules={[{ required: true, message: '请输入同步间隔' }]}>
+            <InputNumber min={60} max={2592000} style={{ width: '100%' }}/>
+          </Form.Item>
+          <Form.Item name='maxRetryAttempts' label='失败最大重试次数'>
+            <InputNumber min={1} max={10} style={{ width: '100%' }}/>
+          </Form.Item>
+          <Form.Item name='retryBackoffSeconds' label='失败退避秒数'>
+            <InputNumber min={60} max={86400} style={{ width: '100%' }}/>
+          </Form.Item>
+          <Form.Item name='status' label='状态' valuePropName='checked'>
+            <Switch checkedChildren='启用' unCheckedChildren='禁用'/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='notifyOnFailure' label='失败时发送通知事件' valuePropName='checked'>
+            <Switch checkedChildren='开启' unCheckedChildren='关闭'/>
+          </Form.Item>
+          <Form.Item name='autoPauseOnFailure' label='超过重试次数后自动暂停' valuePropName='checked'>
+            <Switch checkedChildren='开启' unCheckedChildren='关闭'/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='pauseWindowsText' label='暂停窗口'>
+            <Input placeholder='例如 00:00-06:00, 22:00-23:59'/>
+          </Form.Item>
+          <Form.Item name='maxRunsPerDay' label='每日运行上限'>
+            <InputNumber min={0} max={9999} style={{ width: '100%' }}/>
+          </Form.Item>
+        </div>
+        <Form.List name='scheduleOverrides'>
+          {(fields, { add, remove }) => (
+            <div className={styles.scheduleEditor}>
+              <div className={styles.sectionTitle}>独立周期</div>
+              {fields.map((field) => (
+                <div className={styles.scheduleRow} key={field.key}>
+                  <div className={styles.scheduleGrid}>
+                    <Form.Item {...field} name={[field.name, 'name']} label='名称'>
+                      <Input placeholder='例如：核心区域'/>
+                    </Form.Item>
+                    <Form.Item {...field} name={[field.name, 'regionsText']} label='区域'>
+                      <Input placeholder='留空代表全部区域'/>
+                    </Form.Item>
+                    <Form.Item {...field} name={[field.name, 'assetTypesText']} label='资源类型'>
+                      <Input placeholder='留空代表全部类型'/>
+                    </Form.Item>
+                    <Form.Item {...field} name={[field.name, 'syncInterval']} label='间隔（秒）'>
+                      <InputNumber min={60} max={2592000} style={{ width: '100%' }}/>
+                    </Form.Item>
+                  </div>
+                  <Button
+                    className={styles.scheduleRemove}
+                    type='link'
+                    icon={<MinusCircleOutlined/>}
+                    onClick={() => remove(field.name)}
+                  />
+                </div>
+              ))}
+              <Button
+                type='dashed'
+                icon={<PlusOutlined/>}
+                onClick={() => add({ syncInterval: form.getFieldValue('syncInterval') || 86400 })}
+              >
+                添加周期
+              </Button>
+            </div>
+          )}
+        </Form.List>
+        <Form.Item name='description' label='描述'>
+          <TextArea rows={3}/>
+        </Form.Item>
+      </Form>
+    </Drawer>
+  );
+};
+
 const CloudAccountPage = ({ match }) => {
   const { orgId } = match.params || {};
   const [ query, setQuery ] = useState({
+    currentPage: 1,
+    pageSize: 10
+  });
+  const [ policyQuery, setPolicyQuery ] = useState({
     currentPage: 1,
     pageSize: 10
   });
@@ -433,6 +867,11 @@ const CloudAccountPage = ({ match }) => {
   });
   const [ regionDrawer, setRegionDrawer ] = useState({
     visible: false,
+    record: {}
+  });
+  const [ policyDrawer, setPolicyDrawer ] = useState({
+    visible: false,
+    mode: 'add',
     record: {}
   });
 
@@ -466,8 +905,48 @@ const CloudAccountPage = ({ match }) => {
     }
   );
 
+  const {
+    loading: policyLoading,
+    data: policyData,
+    run: fetchPolicyList
+  } = useRequest(
+    () => requestWrapper(cloudAccountAPI.syncPolicies.bind(null, { orgId, ...policyQuery })),
+    {
+      refreshDeps: [ policyQuery, orgId ]
+    }
+  );
+
+  const {
+    loading: policySubmitting,
+    run: savePolicy
+  } = useRequest(
+    (payload) => requestWrapper(
+      policyDrawer.mode === 'add'
+        ? cloudAccountAPI.createSyncPolicy.bind(null, { orgId, ...payload })
+        : cloudAccountAPI.updateSyncPolicy.bind(null, { orgId, id: policyDrawer.record.id, ...payload }),
+      { autoSuccess: true }
+    ),
+    {
+      manual: true,
+      onSuccess: () => {
+        setPolicyDrawer({ visible: false, mode: 'add', record: {} });
+        fetchPolicyList();
+      }
+    }
+  );
+
   const validateAccount = async (record) => {
     await requestWrapper(cloudAccountAPI.validate.bind(null, { orgId, id: record.id }), { autoSuccess: true });
+    fetchList();
+  };
+
+  const healthCheckAccount = async (record) => {
+    await requestWrapper(cloudAccountAPI.healthCheck.bind(null, { orgId, id: record.id }), { autoSuccess: true });
+    fetchList();
+  };
+
+  const healthCheckAll = async () => {
+    await requestWrapper(cloudAccountAPI.healthCheckAll.bind(null, { orgId }), { autoSuccess: true });
     fetchList();
   };
 
@@ -486,6 +965,47 @@ const CloudAccountPage = ({ match }) => {
       { autoSuccess: true }
     );
     fetchList();
+  };
+
+  const runPolicy = async (record) => {
+    await requestWrapper(cloudAccountAPI.runSyncPolicy.bind(null, { orgId, id: record.id }), { autoSuccess: true });
+    fetchPolicyList();
+    fetchList();
+  };
+
+  const runDuePolicies = async () => {
+    await requestWrapper(cloudAccountAPI.runDueSyncPolicies.bind(null, { orgId, force: true }), { autoSuccess: true });
+    fetchPolicyList();
+    fetchList();
+  };
+
+  const removePolicy = async (record) => {
+    await requestWrapper(cloudAccountAPI.deleteSyncPolicy.bind(null, { orgId, id: record.id }), { autoSuccess: true });
+    fetchPolicyList();
+  };
+
+  const togglePolicyStatus = async (record) => {
+    await requestWrapper(
+      cloudAccountAPI.updateSyncPolicy.bind(null, {
+        orgId,
+        id: record.id,
+        name: record.name,
+        description: record.description,
+        cloudAccountId: record.cloudAccountId,
+        provider: record.provider,
+        regions: record.regions || [],
+        assetTypes: record.assetTypes || [],
+        status: record.status === 'enable' ? 'disable' : 'enable',
+        syncInterval: record.syncInterval,
+        maxRetryAttempts: record.maxRetryAttempts,
+        retryBackoffSeconds: record.retryBackoffSeconds,
+        notifyOnFailure: !!record.notifyOnFailure,
+        autoPauseOnFailure: !!record.autoPauseOnFailure,
+        params: record.params || {}
+      }),
+      { autoSuccess: true }
+    );
+    fetchPolicyList();
   };
 
   const columns = useMemo(() => [
@@ -527,8 +1047,36 @@ const CloudAccountPage = ({ match }) => {
       render: validationTag
     },
     {
+      title: '健康',
+      dataIndex: 'healthStatus',
+      width: 110,
+      render: (value, record) => (
+        <Tooltip title={record.healthMessage || '-'}>
+          {healthTag(value)}
+        </Tooltip>
+      )
+    },
+    {
+      title: '健康依据',
+      dataIndex: 'healthDetail',
+      width: 220,
+      render: (value) => renderHealthBasis(value, orgId)
+    },
+    {
+      title: '同步摘要',
+      dataIndex: 'healthDetail',
+      width: 220,
+      render: renderSyncSummary
+    },
+    {
       title: '最近验证',
       dataIndex: 'lastValidatedAt',
+      width: 170,
+      render: renderTime
+    },
+    {
+      title: '最近健康检查',
+      dataIndex: 'lastHealthCheckedAt',
       width: 170,
       render: renderTime
     },
@@ -541,12 +1089,14 @@ const CloudAccountPage = ({ match }) => {
     {
       title: '操作',
       fixed: 'right',
-      width: 340,
+      width: 400,
       render: (_, record) => (
         <span className='inlineOp'>
           <a onClick={() => setDrawer({ visible: true, mode: 'edit', record })}>编辑</a>
           <span className='ant-divider ant-divider-vertical'/>
           <a onClick={() => validateAccount(record)}>验证</a>
+          <span className='ant-divider ant-divider-vertical'/>
+          <a onClick={() => healthCheckAccount(record)}>健康</a>
           <span className='ant-divider ant-divider-vertical'/>
           <a onClick={() => setRegionDrawer({ visible: true, record })}>区域/权限</a>
           <span className='ant-divider ant-divider-vertical'/>
@@ -560,7 +1110,96 @@ const CloudAccountPage = ({ match }) => {
     }
   ], [ orgId ]);
 
+  const policyColumns = useMemo(() => [
+    {
+      title: '策略名称',
+      dataIndex: 'name',
+      width: 180,
+      ellipsis: true
+    },
+    {
+      title: '云账号',
+      dataIndex: 'cloudAccountName',
+      width: 180,
+      ellipsis: true,
+      render: (value, record) => value || record.cloudAccountId || '-'
+    },
+    {
+      title: '云厂商',
+      dataIndex: 'provider',
+      width: 110,
+      render: (value) => (providerOptions.find((item) => item.value === value) || {}).label || value || '-'
+    },
+    {
+      title: '区域',
+      dataIndex: 'regions',
+      width: 200,
+      render: joinList
+    },
+    {
+      title: '资源类型',
+      dataIndex: 'assetTypes',
+      width: 220,
+      render: joinList
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      render: statusTag
+    },
+    {
+      title: '保护',
+      dataIndex: 'protection',
+      width: 220,
+      render: renderPolicyProtection
+    },
+    {
+      title: '子周期',
+      dataIndex: 'schedules',
+      width: 300,
+      render: renderPolicySchedules
+    },
+    {
+      title: '最近执行',
+      dataIndex: 'lastSyncStatus',
+      width: 190,
+      render: (value, record) => (
+        <Space direction='vertical' size={0}>
+          {syncTaskStatusTag(value)}
+          <span>{renderTime(record.lastSyncedAt)}</span>
+          {!!record.failureCount && <span className={styles.mutedText}>失败 {record.failureCount} 次</span>}
+        </Space>
+      )
+    },
+    {
+      title: '下次同步',
+      dataIndex: 'nextSyncAt',
+      width: 170,
+      render: renderTime
+    },
+    {
+      title: '操作',
+      fixed: 'right',
+      width: 260,
+      render: (_, record) => (
+        <span className='inlineOp'>
+          <a onClick={() => runPolicy(record)}>运行</a>
+          <span className='ant-divider ant-divider-vertical'/>
+          <a onClick={() => setPolicyDrawer({ visible: true, mode: 'edit', record })}>编辑</a>
+          <span className='ant-divider ant-divider-vertical'/>
+          <a onClick={() => togglePolicyStatus(record)}>{record.status === 'enable' ? '禁用' : '启用'}</a>
+          <span className='ant-divider ant-divider-vertical'/>
+          <Popconfirm title='确定删除该同步策略？' onConfirm={() => removePolicy(record)}>
+            <a>删除</a>
+          </Popconfirm>
+        </span>
+      )
+    }
+  ], [ orgId ]);
+
   const list = (data || {}).list || [];
+  const policyList = (policyData || {}).list || [];
 
   return (
     <Layout
@@ -596,15 +1235,17 @@ const CloudAccountPage = ({ match }) => {
           </Space>
           <Space className={styles.actionBar}>
             <Button icon={<ReloadOutlined/>} onClick={fetchList}>刷新</Button>
+            <Button icon={<SyncOutlined/>} onClick={healthCheckAll}>健康检查</Button>
             <Button type='primary' icon={<PlusOutlined/>} onClick={() => setDrawer({ visible: true, mode: 'add', record: {} })}>
               创建云账号
             </Button>
           </Space>
         </div>
-        <Descriptions className={styles.summary} size='small' column={4}>
+        <Descriptions className={styles.summary} size='small' column={5}>
           <Descriptions.Item label='账号数'>{(data || {}).total || 0}</Descriptions.Item>
           <Descriptions.Item label='可用'>{list.filter((item) => item.ready).length}</Descriptions.Item>
           <Descriptions.Item label='异常'>{list.filter((item) => item.validationStatus === 'invalid').length}</Descriptions.Item>
+          <Descriptions.Item label='健康异常'>{list.filter((item) => item.healthStatus === 'unhealthy').length}</Descriptions.Item>
           <Descriptions.Item label='同步源'><CloudSyncOutlined/> CMDB</Descriptions.Item>
         </Descriptions>
         <Table
@@ -621,6 +1262,65 @@ const CloudAccountPage = ({ match }) => {
             showQuickJumper: true,
             showTotal: (total) => `共${total}条`,
             onChange: (currentPage, pageSize) => setQuery({ ...query, currentPage, pageSize })
+          }}
+        />
+      </div>
+      <div className={`idcos-card ${styles.policyCard}`}>
+        <div className={styles.toolbar}>
+          <Space className={styles.filterBar} size={[8, 8]} wrap={true}>
+            <InputSearch
+              className={styles.keywordSearch}
+              allowClear={true}
+              placeholder='搜索策略名称、账号或错误信息'
+              onSearch={(value) => setPolicyQuery({ ...policyQuery, q: value, currentPage: 1 })}
+            />
+            <Select
+              allowClear={true}
+              placeholder='云厂商'
+              style={{ width: 160 }}
+              onChange={(provider) => setPolicyQuery({ ...policyQuery, provider, currentPage: 1 })}
+            >
+              {providerOptions.map((item) => <Option key={item.value} value={item.value}>{item.label}</Option>)}
+            </Select>
+            <Select
+              allowClear={true}
+              placeholder='策略状态'
+              style={{ width: 160 }}
+              onChange={(status) => setPolicyQuery({ ...policyQuery, status, currentPage: 1 })}
+            >
+              {Object.entries(statusMap).map(([value, item]) => (
+                <Option key={value} value={value}>{item.label}</Option>
+              ))}
+            </Select>
+          </Space>
+          <Space className={styles.actionBar}>
+            <Button icon={<ReloadOutlined/>} onClick={fetchPolicyList}>刷新</Button>
+            <Button icon={<SyncOutlined/>} onClick={runDuePolicies}>运行到期策略</Button>
+            <Button type='primary' icon={<PlusOutlined/>} onClick={() => setPolicyDrawer({ visible: true, mode: 'add', record: {} })}>
+              创建同步策略
+            </Button>
+          </Space>
+        </div>
+        <Descriptions className={styles.summary} size='small' column={4}>
+          <Descriptions.Item label='策略数'>{(policyData || {}).total || 0}</Descriptions.Item>
+          <Descriptions.Item label='启用'>{policyList.filter((item) => item.status === 'enable').length}</Descriptions.Item>
+          <Descriptions.Item label='运行中'>{policyList.filter((item) => item.lastSyncStatus === 'running').length}</Descriptions.Item>
+          <Descriptions.Item label='失败'>{policyList.filter((item) => item.lastSyncStatus === 'failed').length}</Descriptions.Item>
+        </Descriptions>
+        <Table
+          rowKey='id'
+          columns={policyColumns}
+          dataSource={policyList}
+          loading={policyLoading}
+          scroll={{ x: 'min-content' }}
+          pagination={{
+            current: policyQuery.currentPage,
+            pageSize: policyQuery.pageSize,
+            total: (policyData || {}).total || 0,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `共${total}条`,
+            onChange: (currentPage, pageSize) => setPolicyQuery({ ...policyQuery, currentPage, pageSize })
           }}
         />
       </div>
@@ -641,6 +1341,17 @@ const CloudAccountPage = ({ match }) => {
           orgId={orgId}
           onClose={() => setRegionDrawer({ visible: false, record: {} })}
           onUpdated={fetchList}
+        />
+      )}
+      {policyDrawer.visible && (
+        <SyncPolicyDrawer
+          visible={policyDrawer.visible}
+          mode={policyDrawer.mode}
+          record={policyDrawer.record}
+          accounts={list}
+          onClose={() => setPolicyDrawer({ visible: false, mode: 'add', record: {} })}
+          onSubmit={savePolicy}
+          submitting={policySubmitting}
         />
       )}
     </Layout>

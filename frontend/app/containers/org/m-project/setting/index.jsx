@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import history from 'utils/history';
+import React, { useState, useCallback } from 'react';
 import { connect } from 'react-redux';
-import { Menu, notification, Tabs } from "antd";
+import { Tabs } from "antd";
 
 import { Eb_WP } from 'components/error-boundary';
 import PageHeader from 'components/pageHeader';
@@ -9,10 +8,12 @@ import Layout from 'components/common/layout';
 
 import Basic from './basic';
 import User from './user';
+import Notification from '../../m-org/setting/notification';
 
 const subNavs = {
   basic: '基本信息',
-  user: '用户'
+  user: '用户',
+  notification: '通知'
 };
 
 const ProjectSetting = ({ match, dispatch }) => {
@@ -23,7 +24,8 @@ const ProjectSetting = ({ match, dispatch }) => {
   const renderByPanel = useCallback(() => {
     const PAGES = {
       basic: (props) => <Basic {...props}/>,
-      user: (props) => <User {...props}/>
+      user: (props) => <User {...props}/>,
+      notification: (props) => <Notification {...props}/>
     };
     return PAGES[panel]({
       title: subNavs[panel],

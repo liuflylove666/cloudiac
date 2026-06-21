@@ -12,7 +12,7 @@ type UpdateNotificationForm struct {
 	Secret    string    `json:"secret" form:"secret" binding:"max=255"`
 	Url       string    `json:"url" form:"url" binding:"omitempty,url,max=255"` //url格式
 	UserIds   []string  `form:"userIds" json:"userIds" binding:"omitempty,dive,required,startswith=u-,max=32"`
-	EventType []string  `form:"eventType" json:"eventType" binding:"omitempty,dive,required,startswith=task."` //enum('task.failed', 'task.complete', 'task.approving', 'task.running', "task.crondrift")
+	EventType []string  `form:"eventType" json:"eventType" binding:"omitempty,dive,required,max=128"`
 }
 
 type CreateNotificationForm struct {
@@ -22,7 +22,7 @@ type CreateNotificationForm struct {
 	Secret    string   `json:"secret" form:"secret" binding:"max=255"`
 	Url       string   `json:"url" form:"url" binding:"omitempty,url,max=255"`
 	UserIds   []string `form:"userIds" json:"userIds" binding:"omitempty,dive,required,startswith=u-,max=32"`
-	EventType []string `form:"eventType" json:"eventType" binding:"omitempty,dive,required,startswith=task."` //enum('task.failed', 'task.complete', 'task.approving', 'task.running', "task.crondrift")
+	EventType []string `form:"eventType" json:"eventType" binding:"omitempty,dive,required,max=128"`
 }
 
 type DeleteNotificationForm struct {
@@ -38,4 +38,91 @@ type DetailNotificationForm struct {
 
 type SearchNotificationForm struct {
 	PageForm
+}
+
+type SearchNotificationDeliveryForm struct {
+	PageForm
+
+	Id        models.Id `uri:"id" json:"id" binding:"required,startswith=notif-,max=32" swaggerignore:"true"`
+	EventId   models.Id `form:"eventId" json:"eventId" binding:"max=32"`
+	EventType string    `form:"eventType" json:"eventType" binding:"max=128"`
+	Type      string    `form:"type" json:"type" binding:"omitempty,oneof=email webhook wechat slack dingtalk"`
+	Status    string    `form:"status" json:"status" binding:"omitempty,oneof=success failed"`
+}
+
+type SearchNotificationTemplateForm struct {
+	PageForm
+
+	EventType string `form:"eventType" json:"eventType" binding:"max=128"`
+	Type      string `form:"type" json:"type" binding:"omitempty,oneof=email webhook wechat slack dingtalk"`
+	Status    string `form:"status" json:"status" binding:"omitempty,oneof=enable disable"`
+}
+
+type CreateNotificationTemplateForm struct {
+	BaseForm
+
+	Name             string    `json:"name" form:"name" binding:"required,gte=2,lte=255"`
+	EventType        string    `json:"eventType" form:"eventType" binding:"required,max=128"`
+	Type             string    `json:"type" form:"type" binding:"required,oneof=email webhook wechat slack dingtalk"`
+	Title            string    `json:"title" form:"title" binding:"max=255"`
+	Content          string    `json:"content" form:"content"`
+	MarkdownContent  string    `json:"markdownContent" form:"markdownContent"`
+	Status           string    `json:"status" form:"status" binding:"omitempty,oneof=enable disable"`
+	SourceTemplateId models.Id `json:"sourceTemplateId" form:"sourceTemplateId" binding:"omitempty,startswith=ntpl-,max=32"`
+}
+
+type UpdateNotificationTemplateForm struct {
+	BaseForm
+
+	Id models.Id `uri:"id" form:"id" json:"id" binding:"required,startswith=ntpl-,max=32" swaggerignore:"true"`
+	CreateNotificationTemplateForm
+}
+
+type DetailNotificationTemplateForm struct {
+	BaseForm
+
+	Id models.Id `uri:"id" json:"id" binding:"required,startswith=ntpl-,max=32" swaggerignore:"true"`
+}
+
+type DeleteNotificationTemplateForm struct {
+	BaseForm
+
+	Id models.Id `uri:"id" json:"id" binding:"required,startswith=ntpl-,max=32" swaggerignore:"true"`
+}
+
+type CopyNotificationTemplatesForm struct {
+	BaseForm
+
+	SourceTemplateIds []models.Id `json:"sourceTemplateIds" form:"sourceTemplateIds" binding:"required,min=1,max=100,dive,required,startswith=ntpl-,max=32"`
+}
+
+type SearchNotificationTemplateVersionsForm struct {
+	PageForm
+
+	Id models.Id `uri:"id" json:"id" binding:"required,startswith=ntpl-,max=32" swaggerignore:"true"`
+}
+
+type RollbackNotificationTemplateVersionForm struct {
+	BaseForm
+
+	Id        models.Id `uri:"id" json:"id" binding:"required,startswith=ntpl-,max=32" swaggerignore:"true"`
+	VersionId models.Id `uri:"versionId" json:"versionId" binding:"required,startswith=ntplv-,max=32" swaggerignore:"true"`
+}
+
+type NotificationTemplateVariablesForm struct {
+	BaseForm
+
+	EventType string `form:"eventType" json:"eventType" binding:"max=128"`
+	Type      string `form:"type" json:"type" binding:"omitempty,oneof=email webhook wechat slack dingtalk"`
+}
+
+type PreviewNotificationTemplateForm struct {
+	BaseForm
+
+	EventType       string                 `json:"eventType" form:"eventType" binding:"omitempty,max=128"`
+	Type            string                 `json:"type" form:"type" binding:"omitempty,oneof=email webhook wechat slack dingtalk"`
+	Title           string                 `json:"title" form:"title" binding:"max=255"`
+	Content         string                 `json:"content" form:"content"`
+	MarkdownContent string                 `json:"markdownContent" form:"markdownContent"`
+	SampleData      map[string]interface{} `json:"sampleData" form:"sampleData"`
 }

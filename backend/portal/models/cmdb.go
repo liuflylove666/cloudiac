@@ -29,10 +29,12 @@ const (
 	CmdbAssetChangeSourceManual = "manual_edit"
 	CmdbAssetChangeSourceImport = "import"
 
-	CmdbSyncTaskPending  = "pending"
-	CmdbSyncTaskRunning  = "running"
-	CmdbSyncTaskComplete = "complete"
-	CmdbSyncTaskFailed   = "failed"
+	CmdbSyncTaskPending   = "pending"
+	CmdbSyncTaskApproving = "approving"
+	CmdbSyncTaskRunning   = "running"
+	CmdbSyncTaskComplete  = "complete"
+	CmdbSyncTaskFailed    = "failed"
+	CmdbSyncTaskRejected  = "rejected"
 
 	CmdbSyncLogLevelInfo  = "info"
 	CmdbSyncLogLevelWarn  = "warn"
@@ -172,6 +174,7 @@ type CmdbSyncTask struct {
 	OrgId         Id       `json:"orgId" gorm:"index;size:32;not null"`
 	AccountSource string   `json:"accountSource" gorm:"index;size:32;not null;default:'variable_group'"`
 	AccountId     Id       `json:"accountId" gorm:"index;size:32;not null"`
+	SyncPolicyId  Id       `json:"syncPolicyId" gorm:"index;size:32;not null;default:''"`
 	AccountName   string   `json:"accountName" gorm:"size:128;not null;default:''"`
 	Provider      string   `json:"provider" gorm:"index;size:64;not null;default:''"`
 	Regions       StrSlice `json:"regions" gorm:"type:json"`

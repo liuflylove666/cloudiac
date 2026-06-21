@@ -227,6 +227,10 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
 		return nil, err
 	}
+	projectEnvBinding, err := resolveCmdbBatchProjectEnvBinding(c, form)
+	if err != nil {
+		return nil, err
+	}
 
 	resp := &resps.CmdbBatchOwnershipResp{
 		Total:  len(form.Ids),
@@ -235,6 +239,14 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 	attrsBuilder := func(asset models.CmdbAsset) (map[string]interface{}, models.CmdbAsset) {
 		attrs := make(map[string]interface{})
 		after := asset
+		if projectEnvBinding.Enabled {
+			after.ProjectId = projectEnvBinding.ProjectId
+			after.EnvId = projectEnvBinding.EnvId
+			after.ManagedBy = inferCmdbManagedBy(&after)
+			attrs["project_id"] = after.ProjectId
+			attrs["env_id"] = after.EnvId
+			attrs["managed_by"] = after.ManagedBy
+		}
 		if form.HasKey("owner") {
 			after.Owner = strings.TrimSpace(form.Owner)
 			attrs["owner"] = after.Owner
@@ -273,6 +285,32 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 		assetById[asset.Id] = asset
 	}
 
+	operation := &models.CloudOperation{
+		OrgId:         c.OrgId,
+		ProjectId:     projectEnvBinding.ProjectId,
+		EnvId:         projectEnvBinding.EnvId,
+		CreatorId:     c.UserId,
+		Name:          "批量治理云资产",
+		OperationType: models.CloudOperationTypeGovernance,
+		Action:        models.CloudOperationActionGovernanceOwnership,
+		Status:        models.CloudOperationStatusRunning,
+		RiskLevel:     models.CloudOperationRiskLow,
+		Message:       "正在记录批量治理结果",
+		Params:        cmdbBatchOwnershipOperationParams(form, projectEnvBinding),
+	}
+	if len(assets) == 1 {
+		operation.AssetId = assets[0].Id
+		operation.CloudAccountId = assets[0].CloudAccountId
+		operation.Provider = assets[0].Provider
+		operation.ResourceType = assets[0].AssetType
+		operation.ResourceId = assets[0].NativeId
+		operation.ResourceName = assets[0].Name
+	}
+	if err := createCloudOperation(c, operation, "创建批量资产治理任务"); err != nil {
+		return nil, err
+	}
+	resp.OperationId = operation.Id
+
 	for _, id := range form.Ids {
 		asset, ok := assetById[id]
 		if !ok {
@@ -286,6 +324,7 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 			resp.Skipped++
 			continue
 		}
+		attrs["last_operation_id"] = operation.Id
 		if _, err := c.DB().Model(&models.CmdbAsset{}).
 			Where("org_id = ? and id = ?", c.OrgId, id).
 			UpdateAttrs(attrs); err != nil {
@@ -301,7 +340,150 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 		resp.Updated++
 	}
 
+	status := models.CloudOperationStatusComplete
+	message := "批量治理完成"
+	if resp.Updated == 0 && len(resp.Errors) > 0 {
+		status = models.CloudOperationStatusFailed
+		message = "批量治理失败"
+	} else if len(resp.Errors) > 0 {
+		message = "批量治理完成，存在部分失败"
+	}
+	if err := finishCloudOperation(c, operation, status, message, models.ResAttrs{
+		"total":   resp.Total,
+		"updated": resp.Updated,
+		"skipped": resp.Skipped,
+		"errors":  resp.Errors,
+	}); err != nil {
+		return nil, err
+	}
+
 	return resp, nil
+}
+
+func cmdbBatchOwnershipOperationParams(form *forms.BatchUpdateCmdbAssetOwnershipForm, binding cmdbProjectEnvBinding) models.ResAttrs {
+	params := models.ResAttrs{
+		"assetIds": cmdbIdStrings(form.Ids),
+		"fields":   cmdbBatchOwnershipFields(form, binding),
+	}
+	if binding.Enabled {
+		params["projectId"] = binding.ProjectId.String()
+		params["envId"] = binding.EnvId.String()
+	}
+	if form.HasKey("owner") {
+		params["owner"] = strings.TrimSpace(form.Owner)
+	}
+	if form.HasKey("application") {
+		params["application"] = strings.TrimSpace(form.Application)
+	}
+	if form.HasKey("businessLine") {
+		params["businessLine"] = strings.TrimSpace(form.BusinessLine)
+	}
+	if form.HasKey("lifecycle") {
+		params["lifecycle"] = strings.TrimSpace(form.Lifecycle)
+	}
+	if form.HasKey("complianceRisk") {
+		params["complianceRisk"] = strings.TrimSpace(form.ComplianceRisk)
+	}
+	return params
+}
+
+func cmdbBatchOwnershipFields(form *forms.BatchUpdateCmdbAssetOwnershipForm, binding cmdbProjectEnvBinding) []string {
+	fields := make([]string, 0)
+	if binding.Enabled {
+		fields = append(fields, "projectId", "envId", "managedBy")
+	}
+	if form.HasKey("owner") {
+		fields = append(fields, "owner")
+	}
+	if form.HasKey("application") {
+		fields = append(fields, "application")
+	}
+	if form.HasKey("businessLine") {
+		fields = append(fields, "businessLine")
+	}
+	if form.HasKey("lifecycle") {
+		fields = append(fields, "lifecycle")
+	}
+	if form.HasKey("complianceRisk") {
+		fields = append(fields, "complianceRisk")
+	}
+	return fields
+}
+
+func cmdbIdStrings(ids []models.Id) []string {
+	values := make([]string, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, id.String())
+	}
+	return values
+}
+
+type cmdbProjectEnvBinding struct {
+	Enabled   bool
+	ProjectId models.Id
+	EnvId     models.Id
+}
+
+func resolveCmdbBatchProjectEnvBinding(c *ctx.ServiceContext, form *forms.BatchUpdateCmdbAssetOwnershipForm) (cmdbProjectEnvBinding, e.Error) {
+	hasProjectKey := form.HasKey("projectId")
+	hasEnvKey := form.HasKey("envId")
+	if !hasProjectKey && !hasEnvKey {
+		return cmdbProjectEnvBinding{}, nil
+	}
+
+	binding := cmdbProjectEnvBinding{
+		Enabled:   true,
+		ProjectId: form.ProjectId,
+		EnvId:     form.EnvId,
+	}
+	if binding.EnvId != "" {
+		env := models.Env{}
+		if err := c.DB().Model(&models.Env{}).
+			Where("id = ? and org_id = ?", form.EnvId, c.OrgId).
+			First(&env); err != nil {
+			if e.IsRecordNotFound(err) {
+				return binding, e.New(e.BadParam, fmt.Errorf("环境 %s 不存在或不属于当前组织", form.EnvId))
+			}
+			return binding, e.New(e.DBError, err)
+		}
+		if binding.ProjectId == "" {
+			binding.ProjectId = env.ProjectId
+		}
+		if binding.ProjectId != env.ProjectId {
+			return binding, e.New(e.BadParam, fmt.Errorf("环境 %s 不属于项目 %s", form.EnvId, binding.ProjectId))
+		}
+	}
+	if binding.ProjectId != "" {
+		if err := ensureCmdbProjectBindingAllowed(c, binding.ProjectId); err != nil {
+			return binding, err
+		}
+	}
+	return binding, nil
+}
+
+func ensureCmdbProjectBindingAllowed(c *ctx.ServiceContext, projectId models.Id) e.Error {
+	project := models.Project{}
+	if err := c.DB().Model(&models.Project{}).
+		Where("id = ? and org_id = ?", projectId, c.OrgId).
+		First(&project); err != nil {
+		if e.IsRecordNotFound(err) {
+			return e.New(e.BadParam, fmt.Errorf("项目 %s 不存在或不属于当前组织", projectId))
+		}
+		return e.New(e.DBError, err)
+	}
+	if c.IsSuperAdmin || services.UserHasOrgRole(c.UserId, c.OrgId, consts.OrgRoleAdmin) {
+		return nil
+	}
+	count, err := c.DB().Model(&models.UserProject{}).
+		Where("user_id = ? and project_id = ?", c.UserId, projectId).
+		Count()
+	if err != nil {
+		return e.New(e.DBError, err)
+	}
+	if count == 0 {
+		return e.New(e.BadParam, fmt.Errorf("无权限绑定到项目 %s", projectId))
+	}
+	return nil
 }
 
 func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*resps.CmdbAssetFilterResp, e.Error) {
@@ -326,11 +508,8 @@ func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*
 		ManagedBy:  make([]string, 0),
 	}
 
-	if err := c.DB().Raw("select project_id, project_name from (?) as t where project_id <> '' group by project_id, project_name", baseQuery.Expr()).Scan(&resp.Projects); err != nil {
-		return nil, e.New(e.DBError, err)
-	}
-	if err := c.DB().Raw("select env_id, env_name from (?) as t where env_id <> '' group by env_id, env_name", baseQuery.Expr()).Scan(&resp.Envs); err != nil {
-		return nil, e.New(e.DBError, err)
+	if err := fillCmdbProjectEnvFilters(c, resp); err != nil {
+		return nil, err
 	}
 	if err := c.DB().Raw("select provider from (?) as t where provider <> '' group by provider", baseQuery.Expr()).Scan(&resp.Providers); err != nil {
 		return nil, e.New(e.DBError, err)
@@ -354,6 +533,34 @@ func CmdbAssetFilters(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (*
 	}
 
 	return resp, nil
+}
+
+func fillCmdbProjectEnvFilters(c *ctx.ServiceContext, resp *resps.CmdbAssetFilterResp) e.Error {
+	projectQuery := c.DB().Model(&models.Project{}).
+		Select("iac_project.id as project_id, iac_project.name as project_name").
+		Where("iac_project.org_id = ? and iac_project.status = ?", c.OrgId, models.Enable).
+		Order("iac_project.name asc")
+	envQuery := c.DB().Model(&models.Env{}).
+		Select("iac_env.id as env_id, iac_env.name as env_name").
+		Joins("join iac_project on iac_project.id = iac_env.project_id").
+		Where("iac_env.org_id = ? and iac_project.status = ?", c.OrgId, models.Enable).
+		Order("iac_project.name asc, iac_env.name asc")
+
+	if !c.IsSuperAdmin && !services.UserHasOrgRole(c.UserId, c.OrgId, consts.OrgRoleAdmin) {
+		projectQuery = projectQuery.
+			Joins("join iac_user_project on iac_user_project.project_id = iac_project.id").
+			Where("iac_user_project.user_id = ?", c.UserId)
+		envQuery = envQuery.
+			Joins("join iac_user_project on iac_user_project.project_id = iac_env.project_id").
+			Where("iac_user_project.user_id = ?", c.UserId)
+	}
+	if err := projectQuery.Scan(&resp.Projects); err != nil {
+		return e.New(e.DBError, err)
+	}
+	if err := envQuery.Scan(&resp.Envs); err != nil {
+		return e.New(e.DBError, err)
+	}
+	return nil
 }
 
 func BackfillCmdbAssetsFromIac(c *ctx.ServiceContext) (*resps.CmdbBackfillResp, e.Error) {
@@ -461,6 +668,9 @@ func cmdbAssetOwnershipUpdateAttrs(form *forms.UpdateCmdbAssetOwnershipForm, ass
 
 func cmdbAssetOwnershipDiff(before models.CmdbAsset, after models.CmdbAsset) models.ResAttrs {
 	diff := models.ResAttrs{}
+	appendCmdbScalarDiff(diff, "projectId", before.ProjectId.String(), after.ProjectId.String())
+	appendCmdbScalarDiff(diff, "envId", before.EnvId.String(), after.EnvId.String())
+	appendCmdbScalarDiff(diff, "managedBy", before.ManagedBy, after.ManagedBy)
 	appendCmdbScalarDiff(diff, "owner", before.Owner, after.Owner)
 	appendCmdbScalarDiff(diff, "application", before.Application, after.Application)
 	appendCmdbScalarDiff(diff, "businessLine", before.BusinessLine, after.BusinessLine)
@@ -895,10 +1105,10 @@ func cmdbAssetApplicationInferredRelation(sourceAssetId models.Id, targetAssetId
 			RelationType:  appRelation.RelationType,
 			Source:        models.CmdbRelationSourceAppInferred,
 			Metadata: models.ResAttrs{
-				"sourceApplication":          sourceApplication,
-				"targetApplication":          targetApplication,
-				"applicationRelationSource":  appRelation.Source,
-				"applicationRelationCount":   appRelation.AssetRelationCount,
+				"sourceApplication":           sourceApplication,
+				"targetApplication":           targetApplication,
+				"applicationRelationSource":   appRelation.Source,
+				"applicationRelationCount":    appRelation.AssetRelationCount,
 				"applicationSourceAssetCount": appRelation.SourceAssetCount,
 				"applicationTargetAssetCount": appRelation.TargetAssetCount,
 			},
@@ -981,6 +1191,51 @@ func attrString(attrs models.ResAttrs, key string) string {
 		return v
 	default:
 		return fmt.Sprintf("%v", v)
+	}
+}
+
+func attrResAttrs(attrs models.ResAttrs, key string) models.ResAttrs {
+	if attrs == nil {
+		return nil
+	}
+	value, ok := attrs[key]
+	if !ok || value == nil {
+		return nil
+	}
+	switch v := value.(type) {
+	case models.ResAttrs:
+		return v
+	case map[string]interface{}:
+		return models.ResAttrs(v)
+	default:
+		return nil
+	}
+}
+
+func attrInt(attrs models.ResAttrs, key string) int {
+	if attrs == nil {
+		return 0
+	}
+	value, ok := attrs[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		number, _ := v.Int64()
+		return int(number)
+	case string:
+		number, _ := strconv.Atoi(strings.TrimSpace(v))
+		return number
+	default:
+		number, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprintf("%v", v)))
+		return number
 	}
 }
 

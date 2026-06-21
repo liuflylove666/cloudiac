@@ -76,6 +76,8 @@ type BatchUpdateCmdbAssetOwnershipForm struct {
 	BaseForm
 
 	Ids            []models.Id `json:"ids" form:"ids" binding:"required,min=1,dive,max=32"`
+	ProjectId      models.Id   `json:"projectId" form:"projectId" binding:"max=32"`
+	EnvId          models.Id   `json:"envId" form:"envId" binding:"max=32"`
 	Owner          string      `json:"owner" form:"owner" binding:"max=128"`
 	Application    string      `json:"application" form:"application" binding:"max=128"`
 	BusinessLine   string      `json:"businessLine" form:"businessLine" binding:"max=128"`
@@ -86,10 +88,16 @@ type BatchUpdateCmdbAssetOwnershipForm struct {
 type SearchCmdbSyncTaskForm struct {
 	PageForm
 
-	Provider      string    `form:"provider" json:"provider"`
-	AccountSource string    `form:"accountSource" json:"accountSource"`
-	AccountId     models.Id `form:"accountId" json:"accountId"`
-	Status        string    `form:"status" json:"status"`
+	Provider              string    `form:"provider" json:"provider"`
+	AccountSource         string    `form:"accountSource" json:"accountSource"`
+	AccountId             models.Id `form:"accountId" json:"accountId"`
+	SyncPolicyId          models.Id `form:"syncPolicyId" json:"syncPolicyId"`
+	SyncPolicyScheduleKey string    `form:"syncPolicyScheduleKey" json:"syncPolicyScheduleKey"`
+	TrendDays             int       `form:"trendDays" json:"trendDays"`
+	TrendStartDate        string    `form:"trendStartDate" json:"trendStartDate"`
+	TrendEndDate          string    `form:"trendEndDate" json:"trendEndDate"`
+	FailureThreshold      float64   `form:"failureThreshold" json:"failureThreshold"`
+	Status                string    `form:"status" json:"status"`
 }
 
 type CmdbSyncTaskParam struct {
@@ -98,12 +106,40 @@ type CmdbSyncTaskParam struct {
 	Id models.Id `uri:"id" json:"id" binding:"required,max=32" swaggerignore:"true"`
 }
 
+type CmdbSyncTaskRerunGroupParam struct {
+	BaseForm
+
+	GroupId models.Id `uri:"groupId" json:"groupId" binding:"required,max=32" swaggerignore:"true"`
+}
+
+type CmdbSyncTaskRerunGroupApprovalForm struct {
+	BaseForm
+
+	GroupId models.Id `uri:"groupId" json:"groupId" binding:"required,max=32" swaggerignore:"true"`
+	Action  string    `form:"action" json:"action" binding:"required,oneof=approved rejected"`
+	Comment string    `form:"comment" json:"comment" binding:"max=255"`
+}
+
+type BatchRerunFailedCmdbSyncTasksForm struct {
+	BaseForm
+
+	TaskIds          []models.Id `json:"taskIds" form:"taskIds" binding:"required,min=1,max=50,dive,max=32"`
+	Reason           string      `json:"reason" form:"reason" binding:"required,max=255"`
+	Regions          []string    `json:"regions" form:"regions"`
+	AssetTypes       []string    `json:"assetTypes" form:"assetTypes"`
+	RequiresApproval bool        `json:"requiresApproval" form:"requiresApproval"`
+}
+
 type CreateCmdbSyncTaskForm struct {
 	BaseForm
 
-	AccountSource string    `json:"accountSource" form:"accountSource" binding:"required,oneof=variable_group resource_account cloud_account"`
-	AccountId     models.Id `json:"accountId" form:"accountId" binding:"required,max=32"`
-	Provider      string    `json:"provider" form:"provider" binding:"omitempty,oneof=aws oci oracle alicloud"`
-	Regions       []string  `json:"regions" form:"regions"`
-	AssetTypes    []string  `json:"assetTypes" form:"assetTypes"`
+	AccountSource          string    `json:"accountSource" form:"accountSource" binding:"required,oneof=variable_group resource_account cloud_account"`
+	AccountId              models.Id `json:"accountId" form:"accountId" binding:"required,max=32"`
+	SyncPolicyId           models.Id `json:"syncPolicyId" form:"syncPolicyId" binding:"max=32"`
+	SyncPolicyScheduleKey  string    `json:"syncPolicyScheduleKey" form:"syncPolicyScheduleKey" binding:"max=64"`
+	SyncPolicyScheduleName string    `json:"syncPolicyScheduleName" form:"syncPolicyScheduleName" binding:"max=128"`
+	Reason                 string    `json:"reason" form:"reason" binding:"max=255"`
+	Provider               string    `json:"provider" form:"provider" binding:"omitempty,oneof=aws oci oracle alicloud azure gcp tencentcloud huawei"`
+	Regions                []string  `json:"regions" form:"regions"`
+	AssetTypes             []string  `json:"assetTypes" form:"assetTypes"`
 }

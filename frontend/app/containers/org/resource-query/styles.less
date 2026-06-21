@@ -114,6 +114,135 @@
   font-weight: 600;
 }
 
+.syncTaskSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+  background: #e6edf5;
+}
+
+.syncTaskMetric {
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.syncTaskMetricValue {
+  margin-top: 6px;
+  color: #172b4d;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.syncTaskMetricTime {
+  min-height: 22px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  color: #172b4d;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.syncTaskFailureAlert {
+  grid-column: 1 / -1;
+  border-radius: 0;
+}
+
+.syncTaskTrend {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+}
+
+.syncTaskTrendHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.syncTaskTrendGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.syncTaskTrendItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+  min-height: 92px;
+  padding: 8px;
+  background: #f7f9fc;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+}
+
+.syncTaskTrendBars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 40px;
+}
+
+.syncTaskTrendComplete,
+.syncTaskTrendFailed {
+  display: block;
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+}
+
+.syncTaskTrendComplete {
+  background: #52c41a;
+}
+
+.syncTaskTrendFailed {
+  background: #ff4d4f;
+}
+
+.syncTaskTrendDate,
+.syncTaskTrendCount {
+  max-width: 100%;
+  color: #6b778c;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.syncTaskBreakdownGrid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+}
+
+.syncTaskBreakdownPanel {
+  min-width: 0;
+}
+
+.syncTaskBreakdownTitle {
+  margin-bottom: 8px;
+  color: #172b4d;
+  font-weight: 600;
+}
+
 .jsonBlock {
   max-height: 420px;
   margin: 0;
@@ -163,6 +292,17 @@
   justify-content: flex-end;
 }
 
+.actionPreview {
+  padding: 12px;
+  background: #fbfcfe;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+}
+
+.actionCreateForm {
+  width: 100%;
+}
+
 .currentNode,
 .relationNode {
   display: flex;
@@ -185,6 +325,7 @@
   .relationGraph,
   .ownershipGrid,
   .coverageMetricGrid,
+  .syncTaskSummary,
   .coverageProgressGrid,
   .coverageTableGrid {
     display: flex;
@@ -192,9 +333,15 @@
   }
 
   .coverageHeader,
-  .coverageProgressMeta {
+  .coverageProgressMeta,
+  .syncTaskTrendHeader {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .syncTaskBreakdownGrid {
+    display: flex;
+    flex-direction: column;
   }
 
   .actionBar {
@@ -204,6 +351,7 @@
 
 @media (max-width: 1180px) {
   .coverageMetricGrid,
+  .syncTaskSummary,
   .coverageTableGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -1,0 +1,129 @@
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.metric {
+  min-height: 72px;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.metricValue {
+  color: #1f2933;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 30px;
+}
+
+.metricLabel {
+  color: #667085;
+  font-size: 12px;
+}
+
+.moneyTone {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
+
+.warningTone {
+  background: #fffbe6;
+  border-color: #ffe58f;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.budgetPanel {
+  padding-top: 16px;
+  margin-bottom: 18px;
+  border-top: 1px solid #edf0f2;
+}
+
+.insightPanel {
+  padding-top: 16px;
+  margin-bottom: 18px;
+  border-top: 1px solid #edf0f2;
+}
+
+.syncPanel {
+  padding-top: 16px;
+  margin-bottom: 18px;
+  border-top: 1px solid #edf0f2;
+}
+
+.budgetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.budgetMetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.budgetFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.filterBar {
+  flex: 1;
+}
+
+.keywordSearch {
+  width: 260px;
+}
+
+.periodInput {
+  width: 120px;
+}
+
+.inlineHint {
+  max-width: 240px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jsonBlock {
+  max-height: 280px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #2f3542;
+  background: #f6f8fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}

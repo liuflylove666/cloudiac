@@ -30,6 +30,22 @@
   border-radius: 4px;
 }
 
+.policyCard {
+  margin-top: 16px;
+}
+
+.mutedText {
+  color: #8c98a4;
+}
+
+.warningText {
+  color: #d46b08;
+}
+
+.errorText {
+  color: #cf1322;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -57,6 +73,38 @@
   margin-bottom: 12px;
 }
 
+.scheduleEditor {
+  margin-bottom: 16px;
+}
+
+.scheduleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid #eef1f5;
+}
+
+.scheduleGrid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.2fr) minmax(140px, 1.2fr) minmax(110px, .8fr);
+  column-gap: 12px;
+}
+
+.scheduleRemove {
+  flex: 0 0 auto;
+  margin-top: 30px;
+}
+
+.scheduleSummary {
+  max-width: 100%;
+}
+
+.scheduleSummaryItem {
+  line-height: 20px;
+}
+
 .drawerFooter {
   display: flex;
   justify-content: flex-end;
@@ -71,9 +119,15 @@
 @media (max-width: 760px) {
   .toolbar,
   .formGrid,
-  .credentialRow {
+  .credentialRow,
+  .scheduleRow,
+  .scheduleGrid {
     display: flex;
     flex-direction: column;
+  }
+
+  .scheduleRemove {
+    margin-top: 0;
   }
 
   .actionBar {

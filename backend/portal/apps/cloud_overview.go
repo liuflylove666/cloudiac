@@ -14,9 +14,11 @@ import (
 )
 
 type cloudOverviewAssetProviderRow struct {
-	Provider            string `gorm:"column:provider"`
-	AssetCount          int64  `gorm:"column:asset_count"`
-	CloudOnlyAssetCount int64  `gorm:"column:cloud_only_asset_count"`
+	Provider              string `gorm:"column:provider"`
+	AssetCount            int64  `gorm:"column:asset_count"`
+	IacManagedAssetCount  int64  `gorm:"column:iac_managed_asset_count"`
+	CloudLinkedAssetCount int64  `gorm:"column:cloud_linked_asset_count"`
+	CloudOnlyAssetCount   int64  `gorm:"column:cloud_only_asset_count"`
 }
 
 type cloudOverviewLastSyncRow struct {
@@ -104,12 +106,24 @@ func cloudOverviewMetrics(c *ctx.ServiceContext) (resps.CloudOverviewMetricResp,
 	if metrics.AssetTotal, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).Where("org_id = ?", c.OrgId)); err != nil {
 		return metrics, e.New(e.DBError, err)
 	}
-	if metrics.IacManagedAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
+	if metrics.IacDirectAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
 		Where("org_id = ? and source = ?", c.OrgId, models.CmdbAssetSourceIacResource)); err != nil {
+		return metrics, e.New(e.DBError, err)
+	}
+	if metrics.IacLinkedAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
+		Where("org_id = ? and source <> ? and iac_resource_id <> ''", c.OrgId, models.CmdbAssetSourceIacResource)); err != nil {
+		return metrics, e.New(e.DBError, err)
+	}
+	if metrics.IacManagedAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
+		Where("org_id = ? and (source = ? or iac_resource_id <> '')", c.OrgId, models.CmdbAssetSourceIacResource)); err != nil {
 		return metrics, e.New(e.DBError, err)
 	}
 	if metrics.CloudCollectedAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
 		Where("org_id = ? and source = ?", c.OrgId, models.CmdbAssetSourceCloudCollect)); err != nil {
+		return metrics, e.New(e.DBError, err)
+	}
+	if metrics.CloudLinkedAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
+		Where("org_id = ? and source = ? and (project_id <> '' or env_id <> '' or iac_resource_id <> '')", c.OrgId, models.CmdbAssetSourceCloudCollect)); err != nil {
 		return metrics, e.New(e.DBError, err)
 	}
 	if metrics.CloudOnlyAssets, err = cloudOverviewCount(c.DB().Model(&models.CmdbAsset{}).
@@ -147,6 +161,8 @@ func cloudOverviewMetrics(c *ctx.ServiceContext) (resps.CloudOverviewMetricResp,
 	metrics.LastSyncAt = lastSync.LastSyncAt
 	if metrics.AssetTotal > 0 {
 		metrics.CoverageRate = float64(metrics.IacManagedAssets) / float64(metrics.AssetTotal) * 100
+		metrics.GovernanceRate = float64(metrics.AssetTotal-metrics.CloudOnlyAssets) / float64(metrics.AssetTotal) * 100
+		metrics.CloudOnlyRate = float64(metrics.CloudOnlyAssets) / float64(metrics.AssetTotal) * 100
 	}
 	return metrics, nil
 }
@@ -170,8 +186,10 @@ func cloudOverviewProviders(c *ctx.ServiceContext) ([]resps.CloudOverviewProvide
 	if err := c.DB().Model(&models.CmdbAsset{}).
 		Select(`provider,
 			count(*) as asset_count,
+			sum(if(source = ? or iac_resource_id <> '', 1, 0)) as iac_managed_asset_count,
+			sum(if(source = ? and (project_id <> '' or env_id <> '' or iac_resource_id <> ''), 1, 0)) as cloud_linked_asset_count,
 			sum(if(source = ? and project_id = '' and env_id = '' and iac_resource_id = '', 1, 0)) as cloud_only_asset_count`,
-			models.CmdbAssetSourceCloudCollect).
+			models.CmdbAssetSourceIacResource, models.CmdbAssetSourceCloudCollect, models.CmdbAssetSourceCloudCollect).
 		Where("org_id = ? and provider <> ''", c.OrgId).
 		Group("provider").
 		Scan(&assetRows); err != nil {
@@ -185,13 +203,17 @@ func cloudOverviewProviders(c *ctx.ServiceContext) ([]resps.CloudOverviewProvide
 	for _, row := range assetRows {
 		if index, ok := providerIndex[row.Provider]; ok {
 			providers[index].AssetCount = row.AssetCount
+			providers[index].IacManagedAssetCount = row.IacManagedAssetCount
+			providers[index].CloudLinkedAssetCount = row.CloudLinkedAssetCount
 			providers[index].CloudOnlyAssetCount = row.CloudOnlyAssetCount
 			continue
 		}
 		providers = append(providers, resps.CloudOverviewProviderResp{
-			Provider:            row.Provider,
-			AssetCount:          row.AssetCount,
-			CloudOnlyAssetCount: row.CloudOnlyAssetCount,
+			Provider:              row.Provider,
+			AssetCount:            row.AssetCount,
+			IacManagedAssetCount:  row.IacManagedAssetCount,
+			CloudLinkedAssetCount: row.CloudLinkedAssetCount,
+			CloudOnlyAssetCount:   row.CloudOnlyAssetCount,
 		})
 	}
 	return providers, nil
@@ -233,6 +255,9 @@ func cloudOverviewActions(orgId models.Id, metrics resps.CloudOverviewMetricResp
 	}
 	if metrics.CloudOnlyAssets > 0 {
 		actions = append(actions, cloudOverviewAction("cloudOnlyAssets", "治理未纳管资产", "云上存在未关联 IaC 项目/环境的资产。", "warning", metrics.CloudOnlyAssets, assetTarget))
+	}
+	if metrics.AssetTotal > 0 && metrics.CoverageRate < 80 {
+		actions = append(actions, cloudOverviewAction("iacCoverage", "提升 IaC 覆盖率", "IaC 覆盖率低于 80%，建议优先关联云采集资产和 IaC 项目环境。", "warning", metrics.AssetTotal-metrics.IacManagedAssets, assetTarget))
 	}
 	if metrics.UnownedAssets > 0 {
 		actions = append(actions, cloudOverviewAction("unownedAssets", "补齐资产负责人", "部分资产缺少负责人，影响风险和成本归属。", "warning", metrics.UnownedAssets, assetTarget))

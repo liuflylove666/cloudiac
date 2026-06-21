@@ -1,4 +1,4 @@
-import { CloudServerOutlined, CodeOutlined, DashboardOutlined, LayoutOutlined, InteractionOutlined, SettingOutlined, ProjectOutlined, FormOutlined, PlusSquareOutlined, SearchOutlined } from '@ant-design/icons';
+import { BellOutlined, CloudServerOutlined, CodeOutlined, DashboardOutlined, DollarOutlined, LayoutOutlined, InteractionOutlined, SettingOutlined, ProjectOutlined, FormOutlined, PlusSquareOutlined, SearchOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import getPermission from "utils/permission";
 
 const getMenus = (userInfo, { projectList }) => {
@@ -86,6 +86,31 @@ const getMenus = (userInfo, { projectList }) => {
           name: '云资产',
           key: 'm-cloud-assets',
           icon: <SearchOutlined />
+        },
+        {
+          name: '操作任务',
+          key: 'm-cloud-operations',
+          icon: <FormOutlined />
+        },
+        {
+          name: '风险合规',
+          key: 'm-cloud-risks',
+          icon: <SafetyCertificateOutlined />
+        },
+        {
+          name: '成本中心',
+          key: 'm-cloud-costs',
+          icon: <DollarOutlined />
+        },
+        {
+          name: '事件中心',
+          key: 'm-cloud-events',
+          icon: <BellOutlined />
+        },
+        {
+          name: 'ITSM工单',
+          key: 'm-cloud-itsm',
+          icon: <FormOutlined />
         }
       ]
     }

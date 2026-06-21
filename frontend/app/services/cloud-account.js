@@ -31,6 +31,16 @@ const cloudAccountAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  healthCheck: ({ orgId, id }) => {
+    return post(`/api/v1/cloud/accounts/${id}/health-check`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  healthCheckAll: ({ orgId }) => {
+    return post('/api/v1/cloud/accounts/health-check', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
   regions: ({ orgId, id }) => {
     return getWithArgs(`/api/v1/cloud/accounts/${id}/regions`, {}, {
       'IaC-Org-Id': orgId
@@ -43,6 +53,36 @@ const cloudAccountAPI = {
   },
   permissions: ({ orgId, id }) => {
     return getWithArgs(`/api/v1/cloud/accounts/${id}/permissions`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  syncPolicies: ({ orgId, ...restParams }) => {
+    return getWithArgs('/api/v1/cloud/sync-policies', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  createSyncPolicy: ({ orgId, ...restParams }) => {
+    return post('/api/v1/cloud/sync-policies', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  updateSyncPolicy: ({ orgId, id, ...restParams }) => {
+    return put(`/api/v1/cloud/sync-policies/${id}`, restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  deleteSyncPolicy: ({ orgId, id }) => {
+    return del(`/api/v1/cloud/sync-policies/${id}`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  runSyncPolicy: ({ orgId, id }) => {
+    return post(`/api/v1/cloud/sync-policies/${id}/run`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  runDueSyncPolicies: ({ orgId, force }) => {
+    return post('/api/v1/cloud/sync-policies/run-due', { force }, {
       'IaC-Org-Id': orgId
     });
   }

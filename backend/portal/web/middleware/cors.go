@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	allowHeaders  = "Content-Type,AccessToken,X-CSRF-Token,Authorization,Token"
+	allowHeaders  = "Content-Type,AccessToken,X-CSRF-Token,Authorization,Token,IaC-Org-Id,IaC-Project-Id,X-CloudIaC-Signature-Report-Token"
 	exposeHeaders = "Content-Length,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Content-Type"
 )
 

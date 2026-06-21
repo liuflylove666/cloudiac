@@ -83,6 +83,13 @@ func main() {
 
 	// 启动后台 worker
 	go task_manager.Start(configs.Get().Consul.ServiceID)
+	go apps.StartCloudWebhookRetryWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudWebhookQueueMaintenanceWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudAccountHealthWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudBudgetEvaluationWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudCostSyncScheduleWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudSyncPolicyWorker(configs.Get().Consul.ServiceID)
+	go apps.StartNotificationDeliveryCleanupWorker(configs.Get().Consul.ServiceID)
 
 	// // 获取演示组织ID
 	// org, _ := services.GetDemoOrganization(db.Get())

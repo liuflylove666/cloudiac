@@ -62,6 +62,7 @@ CloudIaC 当前以 IaC 环境、模板、任务、资源漂移为核心，已经
 | 应用依赖视图 | 已完成 | 应用列表、详情、应用关系图、上下游表格、近期变更和风险等级已实现 |
 | 应用依赖维护 | 已完成 | 支持人工维护应用上游/下游依赖，写入 `iac_cmdb_application_relation` |
 | 变更风险感知 | 部分完成 | 应用近 7 天变更、上下游影响和风险等级已实现；缺更完整风险规则配置 |
+| Kubernetes 集群信息 | 部分完成 | EKS/OKE 已采集为 `kubernetes_cluster`，资产详情已新增 K8S 信息页签展示版本、Endpoint、网络、安全组和节点组/节点池；GKE/AKS 节点池和工作负载层仍待扩展 |
 | 资产搜索 DSL | 已完成 | 支持 provider、type、source、status、owner、application、tag.*、attr.* 等 DSL |
 | 导入/导出 | 已完成 | 支持 JSON 导入、CSV/JSON 导出、选中导出、归属覆盖 |
 | Webhook/事件推送 | 待开发 | 尚未实现 CMDB 变更事件推送 |
@@ -212,7 +213,7 @@ CMDB 页面入口：组织级资源查询/资产中心页面。
 
 ### 9.1 AWS
 
-已完成：EC2 Instance、VPC、Subnet、Security Group、EBS Volume、EKS Cluster、RDS DB Instance、ElastiCache Redis/Valkey Cluster、ElastiCache Replication Group。
+已完成：EC2 Instance、VPC、Subnet、Security Group、EBS Volume、EKS Cluster、EKS NodeGroup 信息、RDS DB Instance、ElastiCache Redis/Valkey Cluster、ElastiCache Replication Group。
 
 待开发：Route Table、Public IP/EIP 独立资产、ELB/ALB/NLB、S3 Bucket、NAT Gateway、Internet Gateway、更完整的标签/成本/合规映射。
 
@@ -220,7 +221,7 @@ CMDB 页面入口：组织级资源查询/资产中心页面。
 
 ### 9.2 OCI
 
-已完成：Compute Instance、VCN、Subnet、Security List、Network Security Group、Public IP、Block Volume、Load Balancer、Object Storage Bucket、OKE Cluster、DB System、Autonomous Database、Redis Cluster。
+已完成：Compute Instance、VCN、Subnet、Security List、Network Security Group、Public IP、Block Volume、Load Balancer、Object Storage Bucket、OKE Cluster、OKE NodePool 信息、DB System、Autonomous Database、Redis Cluster。
 
 待开发：Route Table 独立资产、NAT Gateway、Internet Gateway、Service Gateway、DRG、完整 compartment/identity 归属映射。
 
@@ -417,6 +418,7 @@ DSL 支持：
 | P1 | 风险规则配置化 | 待开发 |
 | P1 | 导入模板、预校验、差异预览 | 待开发 |
 | P1 | 编辑/导出权限细分 | 待开发 |
+| P1 | GKE/AKS 节点池和 K8S 工作负载层信息 | 待开发 |
 | P2 | Azure/GCP/腾讯云/华为云 collector | 待开发 |
 | P2 | 图谱性能优化和大规模资产压测 | 待开发 |
 | P2 | 成本、合规、生命周期报表 | 待开发 |

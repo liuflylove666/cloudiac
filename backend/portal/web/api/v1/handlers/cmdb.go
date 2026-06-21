@@ -134,6 +134,15 @@ func (Cmdb) SyncTaskDetail(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbSyncTaskDetail(c.Service(), &form))
 }
 
+// SyncTaskRerunGroupDetail 查询 CMDB 云采集任务批量重跑任务组。
+func (Cmdb) SyncTaskRerunGroupDetail(c *ctx.GinRequest) {
+	form := forms.CmdbSyncTaskRerunGroupParam{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CmdbSyncTaskRerunGroupDetail(c.Service(), &form))
+}
+
 // StartSyncTask 启动一次 CMDB 云采集任务
 func (Cmdb) StartSyncTask(c *ctx.GinRequest) {
 	form := forms.CreateCmdbSyncTaskForm{}
@@ -141,4 +150,22 @@ func (Cmdb) StartSyncTask(c *ctx.GinRequest) {
 		return
 	}
 	c.JSONResult(apps.StartCmdbSyncTask(c.Service(), &form))
+}
+
+// BatchRerunFailedSyncTasks 批量重跑失败的 CMDB 云采集任务
+func (Cmdb) BatchRerunFailedSyncTasks(c *ctx.GinRequest) {
+	form := forms.BatchRerunFailedCmdbSyncTasksForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.BatchRerunFailedCmdbSyncTasks(c.Service(), &form))
+}
+
+// ApproveSyncTaskRerunGroup 审批 CMDB 云采集批量重跑任务组。
+func (Cmdb) ApproveSyncTaskRerunGroup(c *ctx.GinRequest) {
+	form := forms.CmdbSyncTaskRerunGroupApprovalForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.ApproveCmdbSyncTaskRerunGroup(c.Service(), &form))
 }

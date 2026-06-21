@@ -302,11 +302,45 @@ type awsEC2DescribeSecurityGroupsResponse struct {
 }
 
 type awsEC2SecurityGroup struct {
-	GroupId     string   `xml:"groupId"`
-	GroupName   string   `xml:"groupName"`
-	Description string   `xml:"groupDescription"`
-	VpcId       string   `xml:"vpcId"`
-	Tags        []awsTag `xml:"tagSet>item"`
+	GroupId             string                          `xml:"groupId"`
+	GroupName           string                          `xml:"groupName"`
+	Description         string                          `xml:"groupDescription"`
+	VpcId               string                          `xml:"vpcId"`
+	Tags                []awsTag                        `xml:"tagSet>item"`
+	IpPermissions       []awsEC2SecurityGroupPermission `xml:"ipPermissions>item"`
+	IpPermissionsEgress []awsEC2SecurityGroupPermission `xml:"ipPermissionsEgress>item"`
+}
+
+type awsEC2SecurityGroupPermission struct {
+	IpProtocol       string                          `xml:"ipProtocol"`
+	FromPort         string                          `xml:"fromPort"`
+	ToPort           string                          `xml:"toPort"`
+	IpRanges         []awsEC2SecurityGroupIpRange    `xml:"ipRanges>item"`
+	Ipv6Ranges       []awsEC2SecurityGroupIpv6Range  `xml:"ipv6Ranges>item"`
+	PrefixListIds    []awsEC2SecurityGroupPrefixList `xml:"prefixListIds>item"`
+	UserIdGroupPairs []awsEC2SecurityGroupPair       `xml:"groups>item"`
+}
+
+type awsEC2SecurityGroupIpRange struct {
+	CidrIp      string `xml:"cidrIp"`
+	Description string `xml:"description"`
+}
+
+type awsEC2SecurityGroupIpv6Range struct {
+	CidrIpv6    string `xml:"cidrIpv6"`
+	Description string `xml:"description"`
+}
+
+type awsEC2SecurityGroupPrefixList struct {
+	PrefixListId string `xml:"prefixListId"`
+	Description  string `xml:"description"`
+}
+
+type awsEC2SecurityGroupPair struct {
+	GroupId     string `xml:"groupId"`
+	GroupName   string `xml:"groupName"`
+	UserId      string `xml:"userId"`
+	Description string `xml:"description"`
 }
 
 func collectAwsSecurityGroups(ctx context.Context, account *cmdbCloudAccount, region string) ([]*models.CmdbAsset, error) {
@@ -323,9 +357,11 @@ func collectAwsSecurityGroups(ctx context.Context, account *cmdbCloudAccount, re
 			asset := newCmdbCloudAsset(account, region, models.CmdbAssetTypeNetworkSecurityGroup, "aws_security_group", sg.GroupId, sg.GroupName, now)
 			asset.Tags = awsTagsToAttrs(sg.Tags)
 			asset.Attributes = models.ResAttrs{
-				"description": sg.Description,
-				"groupName":   sg.GroupName,
-				"vpcId":       sg.VpcId,
+				"description":  sg.Description,
+				"groupName":    sg.GroupName,
+				"vpcId":        sg.VpcId,
+				"ingressRules": awsSecurityGroupPermissionRules(sg.IpPermissions, "ingress"),
+				"egressRules":  awsSecurityGroupPermissionRules(sg.IpPermissionsEgress, "egress"),
 			}
 			assets = append(assets, asset)
 		}
@@ -412,6 +448,36 @@ type awsEKSVpcConfig struct {
 	ClusterSecurityGroupId string   `json:"clusterSecurityGroupId"`
 }
 
+type awsEKSListNodegroupsResponse struct {
+	Nodegroups []string `json:"nodegroups"`
+	NextToken  string   `json:"nextToken"`
+}
+
+type awsEKSDescribeNodegroupResponse struct {
+	Nodegroup awsEKSNodegroup `json:"nodegroup"`
+}
+
+type awsEKSNodegroup struct {
+	NodegroupName  string            `json:"nodegroupName"`
+	NodegroupArn   string            `json:"nodegroupArn"`
+	ClusterName    string            `json:"clusterName"`
+	Version        string            `json:"version"`
+	ReleaseVersion string            `json:"releaseVersion"`
+	Status         string            `json:"status"`
+	CapacityType   string            `json:"capacityType"`
+	InstanceTypes  []string          `json:"instanceTypes"`
+	Subnets        []string          `json:"subnets"`
+	AmiType        string            `json:"amiType"`
+	NodeRole       string            `json:"nodeRole"`
+	ScalingConfig  models.ResAttrs   `json:"scalingConfig"`
+	RemoteAccess   models.ResAttrs   `json:"remoteAccess"`
+	Labels         models.ResAttrs   `json:"labels"`
+	Taints         []models.ResAttrs `json:"taints"`
+	Tags           map[string]string `json:"tags"`
+	CreatedAt      string            `json:"createdAt"`
+	ModifiedAt     string            `json:"modifiedAt"`
+}
+
 func collectAwsEksClusters(ctx context.Context, account *cmdbCloudAccount, region string) ([]*models.CmdbAsset, error) {
 	assets := make([]*models.CmdbAsset, 0)
 	nextToken := ""
@@ -448,10 +514,62 @@ func collectAwsEksClusters(ctx context.Context, account *cmdbCloudAccount, regio
 				"encryptionConfig":       cluster.EncryptionConfig,
 				"kubernetesNetwork":      cluster.KubernetesNetworkCfg,
 			}
+			nodegroups, nodegroupErr := collectAwsEksNodegroups(ctx, account, region, cluster.Name)
+			if nodegroupErr != nil {
+				asset.Attributes["nodeGroupCollectError"] = nodegroupErr.Error()
+			} else {
+				asset.Attributes["nodeGroups"] = nodegroups
+				asset.Attributes["nodeGroupCount"] = len(nodegroups)
+			}
 			assets = append(assets, asset)
 		}
 		if resp.NextToken == "" {
 			return assets, nil
+		}
+		nextToken = resp.NextToken
+	}
+}
+
+func collectAwsEksNodegroups(ctx context.Context, account *cmdbCloudAccount, region, clusterName string) ([]models.ResAttrs, error) {
+	nodegroups := make([]models.ResAttrs, 0)
+	nextToken := ""
+	for {
+		values := url.Values{"maxResults": []string{"100"}}
+		if nextToken != "" {
+			values.Set("nextToken", nextToken)
+		}
+		resp := awsEKSListNodegroupsResponse{}
+		if err := awsJSONAPI(ctx, account, "eks", region, "/clusters/"+url.PathEscape(clusterName)+"/node-groups", values, &resp); err != nil {
+			return nodegroups, err
+		}
+		for _, nodegroupName := range resp.Nodegroups {
+			detail := awsEKSDescribeNodegroupResponse{}
+			if err := awsJSONAPI(ctx, account, "eks", region, "/clusters/"+url.PathEscape(clusterName)+"/node-groups/"+url.PathEscape(nodegroupName), nil, &detail); err != nil {
+				return nodegroups, err
+			}
+			ng := detail.Nodegroup
+			nodegroups = append(nodegroups, models.ResAttrs{
+				"name":           ng.NodegroupName,
+				"arn":            ng.NodegroupArn,
+				"status":         ng.Status,
+				"version":        ng.Version,
+				"releaseVersion": ng.ReleaseVersion,
+				"capacityType":   ng.CapacityType,
+				"instanceTypes":  ng.InstanceTypes,
+				"subnets":        ng.Subnets,
+				"amiType":        ng.AmiType,
+				"nodeRole":       ng.NodeRole,
+				"scalingConfig":  ng.ScalingConfig,
+				"remoteAccess":   ng.RemoteAccess,
+				"labels":         ng.Labels,
+				"taints":         ng.Taints,
+				"tags":           stringMapToResAttrs(ng.Tags),
+				"createdAt":      ng.CreatedAt,
+				"modifiedAt":     ng.ModifiedAt,
+			})
+		}
+		if resp.NextToken == "" {
+			return nodegroups, nil
 		}
 		nextToken = resp.NextToken
 	}
@@ -882,6 +1000,66 @@ func awsTagName(tags []awsTag) string {
 		}
 	}
 	return ""
+}
+
+func awsSecurityGroupPermissionRules(permissions []awsEC2SecurityGroupPermission, direction string) []models.ResAttrs {
+	rules := make([]models.ResAttrs, 0)
+	for _, permission := range permissions {
+		base := models.ResAttrs{
+			"direction":  direction,
+			"protocol":   permission.IpProtocol,
+			"fromPort":   permission.FromPort,
+			"toPort":     permission.ToPort,
+			"portRange":  awsSecurityGroupPortRange(permission),
+			"permission": permission.IpProtocol,
+		}
+		for _, item := range permission.IpRanges {
+			rules = append(rules, awsSecurityGroupRuleWithTarget(base, direction, item.CidrIp, item.Description))
+		}
+		for _, item := range permission.Ipv6Ranges {
+			rules = append(rules, awsSecurityGroupRuleWithTarget(base, direction, item.CidrIpv6, item.Description))
+		}
+		for _, item := range permission.PrefixListIds {
+			rules = append(rules, awsSecurityGroupRuleWithTarget(base, direction, item.PrefixListId, item.Description))
+		}
+		for _, item := range permission.UserIdGroupPairs {
+			target := firstNonEmpty(item.GroupId, item.GroupName, item.UserId)
+			rules = append(rules, awsSecurityGroupRuleWithTarget(base, direction, target, item.Description))
+		}
+		if len(permission.IpRanges) == 0 && len(permission.Ipv6Ranges) == 0 &&
+			len(permission.PrefixListIds) == 0 && len(permission.UserIdGroupPairs) == 0 {
+			rules = append(rules, awsSecurityGroupRuleWithTarget(base, direction, "", ""))
+		}
+	}
+	return rules
+}
+
+func awsSecurityGroupRuleWithTarget(base models.ResAttrs, direction, target, description string) models.ResAttrs {
+	rule := models.ResAttrs{}
+	for key, value := range base {
+		rule[key] = value
+	}
+	if direction == "egress" {
+		rule["destination"] = target
+	} else {
+		rule["source"] = target
+	}
+	if description != "" {
+		rule["description"] = description
+	}
+	return rule
+}
+
+func awsSecurityGroupPortRange(permission awsEC2SecurityGroupPermission) string {
+	fromPort := strings.TrimSpace(permission.FromPort)
+	toPort := strings.TrimSpace(permission.ToPort)
+	if fromPort == "" && toPort == "" {
+		return "all"
+	}
+	if toPort == "" || fromPort == toPort {
+		return fromPort
+	}
+	return fmt.Sprintf("%s-%s", fromPort, toPort)
 }
 
 func awsTagsToAttrs(tags []awsTag) models.ResAttrs {

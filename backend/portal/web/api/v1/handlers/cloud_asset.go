@@ -43,6 +43,42 @@ func (CloudAsset) AssetDetail(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbAssetDetail(c.Service(), &form))
 }
 
+// SecurityRules 查询多云资产安全组/安全列表规则视图。
+func (CloudAsset) SecurityRules(c *ctx.GinRequest) {
+	form := forms.CmdbAssetParam{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CloudAssetSecurityRules(c.Service(), &form))
+}
+
+// AssetActions 查询多云资产可执行动作目录。
+func (CloudAsset) AssetActions(c *ctx.GinRequest) {
+	form := forms.CloudAssetActionParam{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CloudAssetActions(c.Service(), &form))
+}
+
+// DryRunAssetAction 对多云资产动作做预检查。
+func (CloudAsset) DryRunAssetAction(c *ctx.GinRequest) {
+	form := forms.DryRunCloudAssetActionForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.DryRunCloudAssetAction(c.Service(), &form))
+}
+
+// CreateAssetAction 创建多云资产操作任务。
+func (CloudAsset) CreateAssetAction(c *ctx.GinRequest) {
+	form := forms.CreateCloudAssetActionForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CreateCloudAssetAction(c.Service(), &form))
+}
+
 // ExportAssets 导出多云资产，当前复用 CMDB 资产导出。
 func (CloudAsset) ExportAssets(c *ctx.GinRequest) {
 	form := forms.ExportCmdbAssetForm{}
@@ -107,6 +143,15 @@ func (CloudAsset) SyncTaskDetail(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbSyncTaskDetail(c.Service(), &form))
 }
 
+// SyncTaskRerunGroupDetail 查询多云资产同步任务批量重跑任务组。
+func (CloudAsset) SyncTaskRerunGroupDetail(c *ctx.GinRequest) {
+	form := forms.CmdbSyncTaskRerunGroupParam{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CmdbSyncTaskRerunGroupDetail(c.Service(), &form))
+}
+
 // StartSyncTask 启动一次多云资产采集任务。
 func (CloudAsset) StartSyncTask(c *ctx.GinRequest) {
 	form := forms.CreateCmdbSyncTaskForm{}
@@ -114,4 +159,22 @@ func (CloudAsset) StartSyncTask(c *ctx.GinRequest) {
 		return
 	}
 	c.JSONResult(apps.StartCmdbSyncTask(c.Service(), &form))
+}
+
+// BatchRerunFailedSyncTasks 批量重跑失败的多云资产采集任务。
+func (CloudAsset) BatchRerunFailedSyncTasks(c *ctx.GinRequest) {
+	form := forms.BatchRerunFailedCmdbSyncTasksForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.BatchRerunFailedCmdbSyncTasks(c.Service(), &form))
+}
+
+// ApproveSyncTaskRerunGroup 审批多云资产采集批量重跑任务组。
+func (CloudAsset) ApproveSyncTaskRerunGroup(c *ctx.GinRequest) {
+	form := forms.CmdbSyncTaskRerunGroupApprovalForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.ApproveCmdbSyncTaskRerunGroup(c.Service(), &form))
 }

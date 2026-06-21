@@ -3,19 +3,47 @@
 package apps
 
 import (
+	"crypto/md5"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"cloudiac/portal/consts"
 	"cloudiac/portal/consts/e"
 	"cloudiac/portal/libs/ctx"
+	"cloudiac/portal/libs/db"
 	"cloudiac/portal/libs/page"
 	"cloudiac/portal/models"
 	"cloudiac/portal/models/forms"
 	"cloudiac/portal/models/resps"
 	"cloudiac/portal/services"
 	"cloudiac/utils"
+	"cloudiac/utils/logs"
+)
+
+const (
+	cloudAccountHealthWorkerDefaultInterval = 30 * time.Minute
+	cloudAccountHealthWorkerMinInterval     = time.Minute
+	cloudAccountHealthWorkerMaxInterval     = 24 * time.Hour
+	cloudAccountHealthEventDefaultQuiet     = 24 * time.Hour
+	cloudAccountHealthEventMinQuiet         = time.Hour
+	cloudAccountHealthEventMaxQuiet         = 30 * 24 * time.Hour
+	cloudAccountHealthDefaultShardTotal     = 1
+	cloudAccountHealthMaxShardTotal         = 128
+	cloudAccountHealthManualConcurrency     = 1
+	cloudAccountHealthWorkerConcurrency     = 4
+	cloudAccountHealthMaxConcurrency        = 32
+
+	cloudAccountHealthWorkerIntervalEnv    = "CLOUDIAC_CLOUD_ACCOUNT_HEALTH_WORKER_INTERVAL_SECONDS"
+	cloudAccountHealthEventQuietEnv        = "CLOUDIAC_CLOUD_ACCOUNT_HEALTH_EVENT_QUIET_HOURS"
+	cloudAccountHealthWorkerShardsEnv      = "CLOUDIAC_CLOUD_ACCOUNT_HEALTH_WORKER_SHARDS"
+	cloudAccountHealthWorkerConcurrencyEnv = "CLOUDIAC_CLOUD_ACCOUNT_HEALTH_WORKER_CONCURRENCY"
 )
 
 type cloudAccountValidation struct {
@@ -25,6 +53,38 @@ type cloudAccountValidation struct {
 	MissingCredentialKeys []string
 	SupportedAssetTypes   []string
 	Regions               []string
+}
+
+type cloudAccountHealthCheck struct {
+	Status  string
+	Message string
+}
+
+type cloudAccountHealthCheckOptions struct {
+	ShardIndex  int
+	ShardTotal  int
+	Concurrency int
+}
+
+func (o cloudAccountHealthCheckOptions) sharded() bool {
+	return o.ShardTotal > 1
+}
+
+type cloudAccountSyncHealthWindow struct {
+	MaxAge         time.Duration
+	PolicyId       models.Id
+	PolicyName     string
+	SyncInterval   int
+	PolicyCount    int64
+	ScheduleKey    string
+	ScheduleName   string
+	Regions        []string
+	AssetTypes     []string
+	LastSyncTaskId models.Id
+	LastSyncStatus string
+	LastError      string
+	LastSyncedAt   models.Time
+	NextSyncAt     time.Time
 }
 
 func SearchCloudAccounts(c *ctx.ServiceContext, form *forms.SearchCloudAccountForm) (interface{}, e.Error) {
@@ -56,7 +116,7 @@ func SearchCloudAccounts(c *ctx.ServiceContext, form *forms.SearchCloudAccountFo
 
 	list := make([]resps.CloudAccountResp, 0, len(accounts))
 	for _, account := range accounts {
-		list = append(list, cloudAccountResp(account))
+		list = append(list, cloudAccountResp(c, account))
 	}
 
 	return page.PageResp{
@@ -71,7 +131,7 @@ func CloudAccountDetail(c *ctx.ServiceContext, form *forms.CloudAccountParam) (*
 	if err != nil {
 		return nil, err
 	}
-	resp := cloudAccountResp(*account)
+	resp := cloudAccountResp(c, *account)
 	return &resp, nil
 }
 
@@ -97,6 +157,7 @@ func CreateCloudAccount(c *ctx.ServiceContext, form *forms.CreateCloudAccountFor
 		Regions:     models.StrSlice(regions),
 		RunnerTags:  models.StrSlice(normalizeStringList(form.RunnerTags)),
 		Credentials: credentials,
+		Metadata:    form.Metadata,
 		Status:      firstNonEmpty(form.Status, models.CloudAccountStatusEnabled),
 	}
 	account.Id = models.NewId("cla")
@@ -106,7 +167,7 @@ func CreateCloudAccount(c *ctx.ServiceContext, form *forms.CreateCloudAccountFor
 	if createErr != nil {
 		return nil, createErr
 	}
-	resp := cloudAccountResp(*created)
+	resp := cloudAccountResp(c, *created)
 	return &resp, nil
 }
 
@@ -153,6 +214,10 @@ func UpdateCloudAccount(c *ctx.ServiceContext, form *forms.UpdateCloudAccountFor
 		attrs["credentials"] = credentials
 		account.Credentials = credentials
 	}
+	if form.HasKey("metadata") {
+		attrs["metadata"] = form.Metadata
+		account.Metadata = form.Metadata
+	}
 	if form.HasKey("accountId") {
 		attrs["account_id"] = form.AccountId
 		account.AccountId = form.AccountId
@@ -173,7 +238,7 @@ func UpdateCloudAccount(c *ctx.ServiceContext, form *forms.UpdateCloudAccountFor
 		}
 	}
 	if len(attrs) == 0 {
-		resp := cloudAccountResp(*account)
+		resp := cloudAccountResp(c, *account)
 		return &resp, nil
 	}
 
@@ -181,7 +246,7 @@ func UpdateCloudAccount(c *ctx.ServiceContext, form *forms.UpdateCloudAccountFor
 	if updateErr != nil {
 		return nil, updateErr
 	}
-	resp := cloudAccountResp(*updated)
+	resp := cloudAccountResp(c, *updated)
 	return &resp, nil
 }
 
@@ -202,20 +267,8 @@ func ValidateCloudAccount(c *ctx.ServiceContext, form *forms.CloudAccountParam) 
 		UpdateAttrs(attrs); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
-	for key, value := range attrs {
-		switch key {
-		case "validation_status":
-			account.ValidationStatus = value.(string)
-		case "validation_message":
-			account.ValidationMessage = value.(string)
-		case "last_validated_at":
-			account.LastValidatedAt = value.(models.Time)
-		case "supported_types":
-			account.SupportedTypes = value.(models.StrSlice)
-		case "regions":
-			account.Regions = value.(models.StrSlice)
-		}
-	}
+	applyCloudAccountAttrs(account, attrs)
+	cloudAccountEvent(c, account, "cloud_account.validated", "云账号验证", account.ValidationStatus, account.ValidationMessage)
 
 	validation := validateCloudAccount(account)
 	return &resps.CloudAccountValidationResp{
@@ -228,6 +281,304 @@ func ValidateCloudAccount(c *ctx.ServiceContext, form *forms.CloudAccountParam) 
 		SupportedAssetTypes:   validation.SupportedAssetTypes,
 		Regions:               validation.Regions,
 	}, nil
+}
+
+func CheckCloudAccountHealth(c *ctx.ServiceContext, form *forms.CloudAccountParam) (*resps.CloudAccountHealthResp, e.Error) {
+	account, err := services.GetCloudAccountById(c.DB(), c.OrgId, form.Id)
+	if err != nil {
+		return nil, err
+	}
+	return checkCloudAccountHealth(c, account, true)
+}
+
+func CheckCloudAccountsHealth(c *ctx.ServiceContext, form *forms.CheckCloudAccountsHealthForm) (*resps.CloudAccountHealthSummaryResp, e.Error) {
+	options, err := cloudAccountHealthCheckOptionsFromForm(form, cloudAccountHealthManualConcurrency)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]models.CloudAccount, 0)
+	query := services.QueryCloudAccount(c.DB()).Where("org_id = ?", c.OrgId)
+	query = applyCloudAccountHealthShard(query, options)
+	if err := query.Find(&accounts); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	return runCloudAccountHealthChecks(accounts, options, true, func(account models.CloudAccount) *ctx.ServiceContext {
+		return cloudAccountHealthChildContext(c, account)
+	})
+}
+
+func CheckCloudAccountsHealthForAllOrgs() (*resps.CloudAccountHealthSummaryResp, e.Error) {
+	return checkCloudAccountsHealthForAllOrgsWithOptions(cloudAccountHealthCheckOptions{
+		ShardTotal:  1,
+		Concurrency: cloudAccountHealthManualConcurrency,
+	})
+}
+
+func checkCloudAccountsHealthForAllOrgsWithOptions(options cloudAccountHealthCheckOptions) (*resps.CloudAccountHealthSummaryResp, e.Error) {
+	options = cloudAccountHealthNormalizeOptions(options, cloudAccountHealthManualConcurrency)
+	accounts := make([]models.CloudAccount, 0)
+	query := applyCloudAccountHealthShard(db.Get().Model(&models.CloudAccount{}), options)
+	if err := query.Find(&accounts); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	return runCloudAccountHealthChecks(accounts, options, false, cloudAccountHealthSystemContext)
+}
+
+func CheckCloudAccountsHealthForAllOrgsWithLock() (*resps.CloudAccountHealthSummaryResp, bool, e.Error) {
+	options := cloudAccountHealthWorkerOptions()
+	if options.sharded() {
+		return checkCloudAccountsHealthShardsForAllOrgsWithLock(options)
+	}
+	return checkCloudAccountsHealthForAllOrgsWithLockOptions(options)
+}
+
+func checkCloudAccountsHealthForAllOrgsWithLockOptions(options cloudAccountHealthCheckOptions) (*resps.CloudAccountHealthSummaryResp, bool, e.Error) {
+	options = cloudAccountHealthNormalizeOptions(options, cloudAccountHealthWorkerConcurrency)
+	locked, releaseLock, lockErr := cloudWebhookAcquireMysqlLock(cloudAccountHealthLockName(options))
+	if lockErr != nil {
+		return nil, false, e.New(e.DBError, lockErr)
+	}
+	if !locked {
+		result := cloudAccountHealthNewSummary(options, 0)
+		result.LockSkipped = true
+		result.LockSkippedCount = 1
+		return result, false, nil
+	}
+	defer releaseLock()
+	result, err := checkCloudAccountsHealthForAllOrgsWithOptions(options)
+	if result != nil {
+		result.Locked = true
+	}
+	return result, true, err
+}
+
+func StartCloudAccountHealthWorker(serviceId string) {
+	interval := cloudAccountHealthWorkerInterval()
+	options := cloudAccountHealthWorkerOptions()
+	logger := logs.Get().
+		WithField("worker", "cloudAccountHealth").
+		WithField("serviceId", serviceId).
+		WithField("interval", interval.String()).
+		WithField("shardTotal", options.ShardTotal).
+		WithField("concurrency", options.Concurrency)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if result, locked, err := CheckCloudAccountsHealthForAllOrgsWithLock(); err != nil {
+			logger.Warnf("check cloud account health failed: %v", err)
+		} else if !locked {
+			logger.Infof("check cloud account health skipped: lock is held by another portal")
+		} else {
+			logger.Infof("check cloud account health result: total=%d checked=%d healthy=%d warning=%d unhealthy=%d shardTotal=%d concurrency=%d lockSkipped=%d",
+				result.TotalCount, result.CheckedCount, result.HealthyCount, result.WarningCount, result.UnhealthyCount,
+				result.ShardTotal, result.Concurrency, result.LockSkippedCount)
+		}
+		<-ticker.C
+	}
+}
+
+func checkCloudAccountsHealthShardsForAllOrgsWithLock(options cloudAccountHealthCheckOptions) (*resps.CloudAccountHealthSummaryResp, bool, e.Error) {
+	options = cloudAccountHealthNormalizeOptions(options, cloudAccountHealthWorkerConcurrency)
+	result := cloudAccountHealthNewSummary(options, 0)
+	result.Shards = make([]resps.CloudAccountHealthShardResp, options.ShardTotal)
+	lockedShards := make([]int, 0, options.ShardTotal)
+	releaseLocks := make([]func(), 0, options.ShardTotal)
+	for shardIndex := 0; shardIndex < options.ShardTotal; shardIndex++ {
+		shardOptions := options
+		shardOptions.ShardIndex = shardIndex
+		shard := resps.CloudAccountHealthShardResp{
+			ShardIndex: shardIndex,
+			ShardTotal: options.ShardTotal,
+		}
+		locked, releaseLock, lockErr := cloudWebhookAcquireMysqlLock(cloudAccountHealthLockName(shardOptions))
+		if lockErr != nil {
+			for _, release := range releaseLocks {
+				release()
+			}
+			return nil, false, e.New(e.DBError, lockErr)
+		}
+		if !locked {
+			shard.LockSkipped = true
+			result.LockSkipped = true
+			result.LockSkippedCount++
+			result.Shards[shardIndex] = shard
+			continue
+		}
+		shard.Locked = true
+		result.Locked = true
+		result.Shards[shardIndex] = shard
+		lockedShards = append(lockedShards, shardIndex)
+		releaseLocks = append(releaseLocks, releaseLock)
+	}
+	defer func() {
+		for _, release := range releaseLocks {
+			release()
+		}
+	}()
+	if len(lockedShards) == 0 {
+		return result, false, nil
+	}
+
+	accounts := make([]models.CloudAccount, 0)
+	query := applyCloudAccountHealthShardIndexes(db.Get().Model(&models.CloudAccount{}), options.ShardTotal, lockedShards)
+	if err := query.Find(&accounts); err != nil {
+		return nil, false, e.New(e.DBError, err)
+	}
+	for idx := range accounts {
+		shardIndex := cloudAccountHealthShardIndex(accounts[idx].Id, options.ShardTotal)
+		if shardIndex >= 0 && shardIndex < len(result.Shards) {
+			result.Shards[shardIndex].TotalCount++
+		}
+	}
+
+	checkResult, err := runCloudAccountHealthChecks(accounts, options, false, cloudAccountHealthSystemContext)
+	if err != nil {
+		return nil, true, err
+	}
+	result.TotalCount = checkResult.TotalCount
+	result.CheckedCount = checkResult.CheckedCount
+	result.HealthyCount = checkResult.HealthyCount
+	result.WarningCount = checkResult.WarningCount
+	result.UnhealthyCount = checkResult.UnhealthyCount
+	result.List = checkResult.List
+	for idx := range result.List {
+		shardIndex := cloudAccountHealthShardIndex(result.List[idx].Id, options.ShardTotal)
+		if shardIndex < 0 || shardIndex >= len(result.Shards) {
+			continue
+		}
+		cloudAccountHealthAccumulateShard(&result.Shards[shardIndex], result.List[idx])
+	}
+	return result, true, nil
+}
+
+func runCloudAccountHealthChecks(accounts []models.CloudAccount, options cloudAccountHealthCheckOptions, forceEvent bool, contextFn func(models.CloudAccount) *ctx.ServiceContext) (*resps.CloudAccountHealthSummaryResp, e.Error) {
+	options = cloudAccountHealthNormalizeOptions(options, cloudAccountHealthManualConcurrency)
+	result := cloudAccountHealthNewSummary(options, len(accounts))
+	if len(accounts) == 0 {
+		return result, nil
+	}
+	concurrency := options.Concurrency
+	if concurrency > len(accounts) {
+		concurrency = len(accounts)
+	}
+	type healthResult struct {
+		index int
+		item  *resps.CloudAccountHealthResp
+		err   e.Error
+	}
+	jobs := make(chan int)
+	results := make(chan healthResult, len(accounts))
+	var wg sync.WaitGroup
+	for workerIndex := 0; workerIndex < concurrency; workerIndex++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				account := accounts[index]
+				if account.OrgId == "" {
+					results <- healthResult{index: index}
+					continue
+				}
+				workerCtx := contextFn(account)
+				item, err := checkCloudAccountHealth(workerCtx, &account, forceEvent)
+				results <- healthResult{index: index, item: item, err: err}
+			}
+		}()
+	}
+	for idx := range accounts {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	ordered := make([]healthResult, len(accounts))
+	for item := range results {
+		ordered[item.index] = item
+	}
+	for idx := range ordered {
+		item := ordered[idx]
+		if item.err != nil {
+			return nil, item.err
+		}
+		if item.item == nil {
+			continue
+		}
+		cloudAccountHealthAccumulateSummary(result, *item.item)
+		result.List = append(result.List, *item.item)
+	}
+	if options.sharded() {
+		shard := resps.CloudAccountHealthShardResp{
+			ShardIndex: options.ShardIndex,
+			ShardTotal: options.ShardTotal,
+			TotalCount: result.TotalCount,
+		}
+		for idx := range result.List {
+			cloudAccountHealthAccumulateShard(&shard, result.List[idx])
+		}
+		result.Shards = []resps.CloudAccountHealthShardResp{shard}
+	}
+	return result, nil
+}
+
+func cloudAccountHealthNewSummary(options cloudAccountHealthCheckOptions, capacity int) *resps.CloudAccountHealthSummaryResp {
+	options = cloudAccountHealthNormalizeOptions(options, cloudAccountHealthManualConcurrency)
+	return &resps.CloudAccountHealthSummaryResp{
+		TotalCount:  int64(capacity),
+		ShardIndex:  options.ShardIndex,
+		ShardTotal:  options.ShardTotal,
+		Concurrency: options.Concurrency,
+		List:        make([]resps.CloudAccountHealthResp, 0, capacity),
+	}
+}
+
+func cloudAccountHealthAccumulateSummary(result *resps.CloudAccountHealthSummaryResp, item resps.CloudAccountHealthResp) {
+	result.CheckedCount++
+	switch item.HealthStatus {
+	case models.CloudAccountHealthHealthy:
+		result.HealthyCount++
+	case models.CloudAccountHealthUnhealthy:
+		result.UnhealthyCount++
+	default:
+		result.WarningCount++
+	}
+}
+
+func cloudAccountHealthAccumulateShard(result *resps.CloudAccountHealthShardResp, item resps.CloudAccountHealthResp) {
+	result.CheckedCount++
+	switch item.HealthStatus {
+	case models.CloudAccountHealthHealthy:
+		result.HealthyCount++
+	case models.CloudAccountHealthUnhealthy:
+		result.UnhealthyCount++
+	default:
+		result.WarningCount++
+	}
+}
+
+func cloudAccountHealthChildContext(parent *ctx.ServiceContext, account models.CloudAccount) *ctx.ServiceContext {
+	child := &ctx.ServiceContext{
+		UserId:       parent.UserId,
+		OrgId:        account.OrgId,
+		ProjectId:    parent.ProjectId,
+		Email:        parent.Email,
+		Username:     parent.Username,
+		IsSuperAdmin: parent.IsSuperAdmin,
+		UserIpAddr:   parent.UserIpAddr,
+	}
+	if child.OrgId == "" {
+		child.OrgId = parent.OrgId
+	}
+	return child
+}
+
+func cloudAccountHealthSystemContext(account models.CloudAccount) *ctx.ServiceContext {
+	return &ctx.ServiceContext{
+		UserId:   consts.SysUserId,
+		OrgId:    account.OrgId,
+		Email:    consts.DefaultSysEmail,
+		Username: consts.DefaultSysName,
+	}
 }
 
 func CloudAccountRegions(c *ctx.ServiceContext, form *forms.CloudAccountParam) (*resps.CloudAccountRegionsResp, e.Error) {
@@ -280,7 +631,7 @@ func CloudAccountPermissions(c *ctx.ServiceContext, form *forms.CloudAccountPara
 	}, nil
 }
 
-func cloudAccountResp(account models.CloudAccount) resps.CloudAccountResp {
+func cloudAccountResp(c *ctx.ServiceContext, account models.CloudAccount) resps.CloudAccountResp {
 	validation := validateCloudAccount(&account)
 	account.Credentials = maskedCloudCredentials(account.Credentials)
 	if len(account.SupportedTypes) == 0 {
@@ -294,6 +645,939 @@ func cloudAccountResp(account models.CloudAccount) resps.CloudAccountResp {
 		Ready:                 validation.Ready,
 		RegionCount:           len(account.Regions),
 		MissingCredentialKeys: validation.MissingCredentialKeys,
+		HealthDetail:          cloudAccountHealthDetail(c, &account),
+	}
+}
+
+func checkCloudAccountHealth(c *ctx.ServiceContext, account *models.CloudAccount, forceEvent bool) (*resps.CloudAccountHealthResp, e.Error) {
+	previousStatus := account.HealthStatus
+	previousMessage := account.HealthMessage
+	previousCheckedAt := account.LastHealthCheckedAt
+	attrs := cloudAccountValidationAttrs(account)
+	applyCloudAccountAttrs(account, attrs)
+	health := cloudAccountHealthWithPolicies(c, account)
+	attrs["health_status"] = health.Status
+	attrs["health_message"] = health.Message
+	attrs["last_health_checked_at"] = models.Time(time.Now())
+	if _, err := c.DB().Model(&models.CloudAccount{}).
+		Where("id = ? and org_id = ?", account.Id, c.OrgId).
+		UpdateAttrs(attrs); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	applyCloudAccountAttrs(account, attrs)
+	if cloudAccountHealthShouldEmitEvent(forceEvent, previousStatus, previousMessage, health.Status, health.Message, previousCheckedAt) {
+		cloudAccountEvent(c, account, "cloud_account.health_checked", "云账号健康检查", account.HealthStatus, account.HealthMessage)
+	}
+	resp := cloudAccountHealthResp(c, *account)
+	return &resp, nil
+}
+
+func cloudAccountHealthResp(c *ctx.ServiceContext, account models.CloudAccount) resps.CloudAccountHealthResp {
+	return resps.CloudAccountHealthResp{
+		Id:                  account.Id,
+		Provider:            account.Provider,
+		AccountId:           account.AccountId,
+		HealthStatus:        account.HealthStatus,
+		HealthMessage:       account.HealthMessage,
+		ValidationStatus:    account.ValidationStatus,
+		ValidationMessage:   account.ValidationMessage,
+		LastHealthCheckedAt: account.LastHealthCheckedAt,
+		LastValidatedAt:     account.LastValidatedAt,
+		LastSyncAt:          account.LastSyncAt,
+		HealthDetail:        cloudAccountHealthDetail(c, &account),
+	}
+}
+
+func cloudAccountHealth(account *models.CloudAccount) cloudAccountHealthCheck {
+	return cloudAccountHealthWithWindow(account, cloudAccountSyncHealthWindow{
+		MaxAge: 24 * time.Hour,
+	})
+}
+
+func cloudAccountHealthWithPolicies(c *ctx.ServiceContext, account *models.CloudAccount) cloudAccountHealthCheck {
+	window := cloudAccountSyncHealthWindow{
+		MaxAge: 24 * time.Hour,
+	}
+	if c != nil && account != nil && account.Id != "" {
+		if policyWindow, ok := cloudAccountPolicyHealthWindow(c, account); ok {
+			window = policyWindow
+		}
+	}
+	health := cloudAccountHealthWithWindow(account, window)
+	if impact := cloudAccountHealthFailureImpact(c, account, window); impact != nil {
+		health = cloudAccountHealthApplyFailureImpact(health, impact, cloudAccountHealthTargetName(window))
+	}
+	return health
+}
+
+func cloudAccountHealthWithWindow(account *models.CloudAccount, syncWindow cloudAccountSyncHealthWindow) cloudAccountHealthCheck {
+	validation := validateCloudAccount(account)
+	if account.Status == models.CloudAccountStatusDisabled {
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthWarning,
+			Message: "云账号已禁用，不会参与同步或云操作",
+		}
+	}
+	if len(validation.SupportedAssetTypes) == 0 {
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthUnhealthy,
+			Message: validation.Message,
+		}
+	}
+	if len(validation.MissingCredentialKeys) > 0 {
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthUnhealthy,
+			Message: validation.Message,
+		}
+	}
+	if len(validation.Regions) == 0 {
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthWarning,
+			Message: "未配置或无法推断可用区域",
+		}
+	}
+	if syncWindow.MaxAge <= 0 {
+		syncWindow.MaxAge = 24 * time.Hour
+	}
+	lastSync := time.Time(account.LastSyncAt)
+	if windowLastSync := time.Time(syncWindow.LastSyncedAt); !windowLastSync.IsZero() && windowLastSync.Year() > 1 {
+		lastSync = windowLastSync
+	}
+	if syncWindow.LastSyncStatus == models.CmdbSyncTaskFailed {
+		target := cloudAccountHealthTargetName(syncWindow)
+		if target != "" {
+			return cloudAccountHealthCheck{
+				Status:  models.CloudAccountHealthWarning,
+				Message: fmt.Sprintf("%s 最近一次同步失败：%s", target, firstNonEmpty(syncWindow.LastError, "未返回错误详情")),
+			}
+		}
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthWarning,
+			Message: fmt.Sprintf("账号最近一次云采集同步失败：%s", firstNonEmpty(syncWindow.LastError, "未返回错误详情")),
+		}
+	}
+	if lastSync.IsZero() || lastSync.Year() <= 1 {
+		if target := cloudAccountHealthTargetName(syncWindow); target != "" {
+			return cloudAccountHealthCheck{
+				Status:  models.CloudAccountHealthWarning,
+				Message: fmt.Sprintf("%s 尚未完成云采集同步", target),
+			}
+		}
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthWarning,
+			Message: "账号尚未完成云采集同步",
+		}
+	}
+	if time.Since(lastSync) > syncWindow.MaxAge {
+		if syncWindow.ScheduleName != "" {
+			return cloudAccountHealthCheck{
+				Status: models.CloudAccountHealthWarning,
+				Message: fmt.Sprintf("同步策略 %s 的子周期 %s 最近同步时间超过健康阈值 %s：%s",
+					syncWindow.PolicyName, syncWindow.ScheduleName, formatCloudAccountDuration(syncWindow.MaxAge), lastSync.Format(time.RFC3339)),
+			}
+		}
+		if syncWindow.PolicyName != "" {
+			return cloudAccountHealthCheck{
+				Status: models.CloudAccountHealthWarning,
+				Message: fmt.Sprintf("账号最近同步时间超过同步策略 %s 的健康阈值 %s：%s",
+					syncWindow.PolicyName, formatCloudAccountDuration(syncWindow.MaxAge), lastSync.Format(time.RFC3339)),
+			}
+		}
+		return cloudAccountHealthCheck{
+			Status:  models.CloudAccountHealthWarning,
+			Message: fmt.Sprintf("账号最近同步时间超过 24 小时：%s", lastSync.Format(time.RFC3339)),
+		}
+	}
+	return cloudAccountHealthCheck{
+		Status:  models.CloudAccountHealthHealthy,
+		Message: "账号凭证、区域和同步状态正常",
+	}
+}
+
+func cloudAccountPolicyHealthWindow(c *ctx.ServiceContext, account *models.CloudAccount) (cloudAccountSyncHealthWindow, bool) {
+	policies, err := cloudAccountEnabledSyncPolicies(c, account)
+	if err != nil {
+		c.Logger().Warnf("query cloud sync policies for health check failed: %v", err)
+		return cloudAccountSyncHealthWindow{}, false
+	}
+	if len(policies) == 0 {
+		return cloudAccountSyncHealthWindow{}, false
+	}
+	windows := make([]cloudAccountSyncHealthWindow, 0, len(policies))
+	for idx := range policies {
+		windows = append(windows, cloudAccountPolicyHealthWindows(account, &policies[idx], int64(len(policies)))...)
+	}
+	if len(windows) == 0 {
+		return cloudAccountSyncHealthWindow{}, false
+	}
+	selected := windows[0]
+	selectedSeverity, selectedOverdue := cloudAccountHealthWindowSeverity(selected, time.Now())
+	for _, window := range windows[1:] {
+		severity, overdue := cloudAccountHealthWindowSeverity(window, time.Now())
+		switch {
+		case severity > selectedSeverity:
+			selected = window
+			selectedSeverity = severity
+			selectedOverdue = overdue
+		case severity == selectedSeverity && severity > 0 && overdue > selectedOverdue:
+			selected = window
+			selectedOverdue = overdue
+		case severity == 0 && selectedSeverity == 0 && window.MaxAge < selected.MaxAge:
+			selected = window
+		}
+	}
+	return selected, true
+}
+
+func cloudAccountPolicyHealthWindows(account *models.CloudAccount, policy *models.CloudSyncPolicy, policyCount int64) []cloudAccountSyncHealthWindow {
+	if policy == nil {
+		return nil
+	}
+	schedules := cloudSyncPolicyScheduleOverrides(policy)
+	if len(schedules) == 0 {
+		lastSyncedAt := policy.LastSyncedAt
+		if lastSynced := time.Time(lastSyncedAt); (lastSynced.IsZero() || lastSynced.Year() <= 1) && account != nil {
+			lastSyncedAt = account.LastSyncAt
+		}
+		return []cloudAccountSyncHealthWindow{cloudAccountBuildHealthWindow(
+			policy.Id,
+			policy.Name,
+			"",
+			"",
+			nil,
+			nil,
+			policy.SyncInterval,
+			policyCount,
+			policy.LastSyncTaskId,
+			policy.LastSyncStatus,
+			policy.LastError,
+			lastSyncedAt,
+			time.Time(policy.NextSyncAt),
+		)}
+	}
+	states := cloudSyncPolicyScheduleStates(policy)
+	windows := make([]cloudAccountSyncHealthWindow, 0, len(schedules))
+	for _, schedule := range schedules {
+		state := states[schedule.Key]
+		windows = append(windows, cloudAccountBuildHealthWindow(
+			policy.Id,
+			policy.Name,
+			schedule.Key,
+			schedule.Name,
+			schedule.Regions,
+			schedule.AssetTypes,
+			schedule.SyncInterval,
+			policyCount,
+			models.Id(state.LastSyncTaskId),
+			state.LastSyncStatus,
+			state.LastError,
+			models.Time(cloudAccountParseRFC3339(state.LastSyncedAt)),
+			cloudAccountParseRFC3339(state.NextSyncAt),
+		))
+	}
+	return windows
+}
+
+func cloudAccountBuildHealthWindow(policyId models.Id, policyName string, scheduleKey string, scheduleName string, regions []string, assetTypes []string, syncInterval int, policyCount int64, lastSyncTaskId models.Id, lastSyncStatus string, lastError string, lastSyncedAt models.Time, nextSyncAt time.Time) cloudAccountSyncHealthWindow {
+	intervalSeconds := cloudSyncPolicyIntervalSeconds(syncInterval)
+	interval := time.Duration(intervalSeconds) * time.Second
+	grace := interval / 5
+	if grace < 5*time.Minute {
+		grace = 5 * time.Minute
+	}
+	if grace > time.Hour {
+		grace = time.Hour
+	}
+	return cloudAccountSyncHealthWindow{
+		MaxAge:         interval + grace,
+		PolicyId:       policyId,
+		PolicyName:     policyName,
+		SyncInterval:   intervalSeconds,
+		PolicyCount:    policyCount,
+		ScheduleKey:    scheduleKey,
+		ScheduleName:   scheduleName,
+		Regions:        cloneStringSlice(regions),
+		AssetTypes:     cloneStringSlice(assetTypes),
+		LastSyncTaskId: lastSyncTaskId,
+		LastSyncStatus: lastSyncStatus,
+		LastError:      lastError,
+		LastSyncedAt:   lastSyncedAt,
+		NextSyncAt:     nextSyncAt,
+	}
+}
+
+func cloudAccountHealthDetail(c *ctx.ServiceContext, account *models.CloudAccount) resps.CloudAccountHealthDetailResp {
+	window := cloudAccountSyncHealthWindow{MaxAge: 24 * time.Hour}
+	var policyResp *resps.CloudAccountHealthPolicyResp
+	schedules := make([]resps.CloudAccountHealthScheduleResp, 0)
+	if c != nil && account != nil && account.Id != "" {
+		if policyWindow, ok := cloudAccountPolicyHealthWindow(c, account); ok {
+			window = policyWindow
+			if policy := cloudAccountHealthPolicy(c, account.OrgId, policyWindow.PolicyId); policy != nil {
+				policyResp = &resps.CloudAccountHealthPolicyResp{
+					Id:                  policy.Id,
+					Name:                policy.Name,
+					SyncInterval:        policy.SyncInterval,
+					HealthWindowSeconds: int64(policyWindow.MaxAge / time.Second),
+					HealthWindowText:    formatCloudAccountDuration(policyWindow.MaxAge),
+					EnabledPolicyCount:  policyWindow.PolicyCount,
+					LastSyncTaskId:      policy.LastSyncTaskId,
+					LastSyncStatus:      policy.LastSyncStatus,
+					LastSyncedAt:        policy.LastSyncedAt,
+				}
+			}
+		}
+		schedules = cloudAccountHealthSchedules(c, account)
+	}
+	return resps.CloudAccountHealthDetailResp{
+		HealthWindowSeconds: int64(window.MaxAge / time.Second),
+		HealthWindowText:    formatCloudAccountDuration(window.MaxAge),
+		EnabledPolicyCount:  window.PolicyCount,
+		Policy:              policyResp,
+		Schedules:           schedules,
+		LastSuccessTask:     cloudAccountLatestSyncTask(c, account, models.CmdbSyncTaskComplete),
+		LastFailureTask:     cloudAccountLatestSyncTask(c, account, models.CmdbSyncTaskFailed),
+		FailureImpact:       cloudAccountHealthFailureImpact(c, account, window),
+	}
+}
+
+func cloudAccountHealthSchedules(c *ctx.ServiceContext, account *models.CloudAccount) []resps.CloudAccountHealthScheduleResp {
+	policies, err := cloudAccountEnabledSyncPolicies(c, account)
+	if err != nil {
+		c.Logger().Warnf("query cloud sync policy schedules for health detail failed: %v", err)
+		return []resps.CloudAccountHealthScheduleResp{}
+	}
+	resp := make([]resps.CloudAccountHealthScheduleResp, 0)
+	now := time.Now()
+	for idx := range policies {
+		windows := cloudAccountPolicyHealthWindows(account, &policies[idx], int64(len(policies)))
+		for _, window := range windows {
+			if window.ScheduleKey == "" {
+				continue
+			}
+			resp = append(resp, resps.CloudAccountHealthScheduleResp{
+				PolicyId:            window.PolicyId,
+				PolicyName:          window.PolicyName,
+				ScheduleKey:         window.ScheduleKey,
+				ScheduleName:        window.ScheduleName,
+				Regions:             cloneStringSlice(window.Regions),
+				AssetTypes:          cloneStringSlice(window.AssetTypes),
+				SyncInterval:        window.SyncInterval,
+				HealthWindowSeconds: int64(window.MaxAge / time.Second),
+				HealthWindowText:    formatCloudAccountDuration(window.MaxAge),
+				LastSyncTaskId:      window.LastSyncTaskId,
+				LastSyncStatus:      window.LastSyncStatus,
+				LastError:           window.LastError,
+				LastSyncedAt:        window.LastSyncedAt,
+				Stale:               cloudAccountHealthWindowIsStale(window, now),
+				DueNow:              window.NextSyncAt.IsZero() || !window.NextSyncAt.After(now),
+				LastSuccessTask:     cloudAccountLatestSyncTaskForSchedule(c, account, window.PolicyId, window.ScheduleKey, models.CmdbSyncTaskComplete),
+				LastFailureTask:     cloudAccountLatestSyncTaskForSchedule(c, account, window.PolicyId, window.ScheduleKey, models.CmdbSyncTaskFailed),
+			})
+		}
+	}
+	return resp
+}
+
+func cloudAccountHealthFailureImpact(c *ctx.ServiceContext, account *models.CloudAccount, window cloudAccountSyncHealthWindow) *resps.CloudAccountHealthFailureImpactResp {
+	if c == nil || account == nil || account.Id == "" {
+		return nil
+	}
+	var failureTask *resps.CloudAccountSyncTaskBriefResp
+	var successTask *resps.CloudAccountSyncTaskBriefResp
+	switch {
+	case window.PolicyId != "" && window.ScheduleKey != "":
+		failureTask = cloudAccountLatestSyncTaskForSchedule(c, account, window.PolicyId, window.ScheduleKey, models.CmdbSyncTaskFailed)
+		successTask = cloudAccountLatestSyncTaskForSchedule(c, account, window.PolicyId, window.ScheduleKey, models.CmdbSyncTaskComplete)
+	case window.PolicyId != "":
+		failureTask = cloudAccountLatestSyncTaskForPolicy(c, account, window.PolicyId, models.CmdbSyncTaskFailed)
+		successTask = cloudAccountLatestSyncTaskForPolicy(c, account, window.PolicyId, models.CmdbSyncTaskComplete)
+	default:
+		failureTask = cloudAccountLatestSyncTask(c, account, models.CmdbSyncTaskFailed)
+		successTask = cloudAccountLatestSyncTask(c, account, models.CmdbSyncTaskComplete)
+	}
+	if failureTask == nil {
+		return nil
+	}
+	failureAt := cloudAccountSyncTaskOccurredAt(failureTask)
+	successAt := cloudAccountSyncTaskOccurredAt(successTask)
+	if !successAt.IsZero() && !failureAt.After(successAt) {
+		return nil
+	}
+	return cloudAccountHealthFailureImpactFromTask(failureTask)
+}
+
+func cloudAccountHealthApplyFailureImpact(base cloudAccountHealthCheck, impact *resps.CloudAccountHealthFailureImpactResp, target string) cloudAccountHealthCheck {
+	if impact == nil {
+		return base
+	}
+	if base.Status == models.CloudAccountHealthUnhealthy {
+		return base
+	}
+	if cloudAccountHealthStatusSeverity(impact.Status) < cloudAccountHealthStatusSeverity(base.Status) {
+		return base
+	}
+	prefix := "账号最近一次云采集失败"
+	if target != "" {
+		prefix = target + " 最近一次同步失败"
+	}
+	message := fmt.Sprintf("%s（%s）：%s", prefix, cloudAccountFailureCategoryLabel(impact.Category), firstNonEmpty(impact.Message, "未返回错误详情"))
+	if impact.RetryHint != "" {
+		message = fmt.Sprintf("%s；建议：%s", message, impact.RetryHint)
+	}
+	return cloudAccountHealthCheck{
+		Status:  impact.Status,
+		Message: message,
+	}
+}
+
+func cloudAccountHealthStatusSeverity(status string) int {
+	switch status {
+	case models.CloudAccountHealthUnhealthy:
+		return 2
+	case models.CloudAccountHealthWarning:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func cloudAccountEnabledSyncPolicies(c *ctx.ServiceContext, account *models.CloudAccount) ([]models.CloudSyncPolicy, error) {
+	policies := make([]models.CloudSyncPolicy, 0)
+	if c == nil || account == nil || account.Id == "" {
+		return policies, nil
+	}
+	err := c.DB().Model(&models.CloudSyncPolicy{}).
+		Where("org_id = ? and cloud_account_id = ? and status = ?", c.OrgId, account.Id, models.CloudSyncPolicyStatusEnabled).
+		Find(&policies)
+	return policies, err
+}
+
+func cloudAccountHealthWindowSeverity(window cloudAccountSyncHealthWindow, now time.Time) (int, time.Duration) {
+	if window.LastSyncStatus == models.CmdbSyncTaskFailed {
+		return 3, 0
+	}
+	lastSyncedAt := time.Time(window.LastSyncedAt)
+	if lastSyncedAt.IsZero() || lastSyncedAt.Year() <= 1 {
+		return 2, 0
+	}
+	overdue := now.Sub(lastSyncedAt) - window.MaxAge
+	if overdue > 0 {
+		return 1, overdue
+	}
+	return 0, 0
+}
+
+func cloudAccountHealthWindowIsStale(window cloudAccountSyncHealthWindow, now time.Time) bool {
+	severity, _ := cloudAccountHealthWindowSeverity(window, now)
+	return severity > 0
+}
+
+func cloudAccountHealthTargetName(window cloudAccountSyncHealthWindow) string {
+	if window.PolicyName == "" {
+		return ""
+	}
+	if window.ScheduleName != "" {
+		return fmt.Sprintf("同步策略 %s 的子周期 %s", window.PolicyName, window.ScheduleName)
+	}
+	return fmt.Sprintf("同步策略 %s", window.PolicyName)
+}
+
+func cloudAccountParseRFC3339(value string) time.Time {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func cloudAccountHealthPolicy(c *ctx.ServiceContext, orgId models.Id, policyId models.Id) *models.CloudSyncPolicy {
+	if c == nil || policyId == "" {
+		return nil
+	}
+	policy := models.CloudSyncPolicy{}
+	if err := c.DB().Model(&models.CloudSyncPolicy{}).
+		Where("id = ? and org_id = ?", policyId, orgId).
+		First(&policy); err != nil {
+		c.Logger().Warnf("query cloud sync policy health detail failed: %v", err)
+		return nil
+	}
+	return &policy
+}
+
+func cloudAccountLatestSyncTask(c *ctx.ServiceContext, account *models.CloudAccount, status string) *resps.CloudAccountSyncTaskBriefResp {
+	if c == nil || account == nil || account.Id == "" {
+		return nil
+	}
+	tasks := make([]models.CmdbSyncTask, 0, 1)
+	if err := c.DB().Model(&models.CmdbSyncTask{}).
+		Where("org_id = ? and account_source = ? and account_id = ? and provider = ? and status = ?",
+			c.OrgId, models.CmdbCloudAccountSourceCloudAccount, account.Id, account.Provider, status).
+		Order("ended_at desc").
+		Order("created_at desc").
+		Limit(1).
+		Find(&tasks); err != nil {
+		c.Logger().Warnf("query cloud account latest sync task failed: %v", err)
+		return nil
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+	return cloudAccountSyncTaskBrief(tasks[0])
+}
+
+func cloudAccountLatestSyncTaskForPolicy(c *ctx.ServiceContext, account *models.CloudAccount, policyId models.Id, status string) *resps.CloudAccountSyncTaskBriefResp {
+	if c == nil || account == nil || account.Id == "" || policyId == "" {
+		return nil
+	}
+	tasks := make([]models.CmdbSyncTask, 0, 1)
+	if err := c.DB().Model(&models.CmdbSyncTask{}).
+		Where("org_id = ? and account_source = ? and account_id = ? and sync_policy_id = ? and status = ?",
+			c.OrgId, models.CmdbCloudAccountSourceCloudAccount, account.Id, policyId, status).
+		Order("ended_at desc").
+		Order("created_at desc").
+		Limit(1).
+		Find(&tasks); err != nil {
+		c.Logger().Warnf("query cloud account policy latest sync task failed: %v", err)
+		return nil
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+	return cloudAccountSyncTaskBrief(tasks[0])
+}
+
+func cloudAccountLatestSyncTaskForSchedule(c *ctx.ServiceContext, account *models.CloudAccount, policyId models.Id, scheduleKey string, status string) *resps.CloudAccountSyncTaskBriefResp {
+	if c == nil || account == nil || account.Id == "" || policyId == "" || scheduleKey == "" {
+		return nil
+	}
+	tasks := make([]models.CmdbSyncTask, 0, 1)
+	if err := c.DB().Model(&models.CmdbSyncTask{}).
+		Where("org_id = ? and account_source = ? and account_id = ? and sync_policy_id = ? and status = ?",
+			c.OrgId, models.CmdbCloudAccountSourceCloudAccount, account.Id, policyId, status).
+		Where("JSON_UNQUOTE(JSON_EXTRACT(stats, '$.syncPolicyScheduleKey')) = ?", scheduleKey).
+		Order("ended_at desc").
+		Order("created_at desc").
+		Limit(1).
+		Find(&tasks); err != nil {
+		c.Logger().Warnf("query cloud account schedule latest sync task failed: %v", err)
+		return nil
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+	return cloudAccountSyncTaskBrief(tasks[0])
+}
+
+func cloudAccountSyncTaskBrief(task models.CmdbSyncTask) *resps.CloudAccountSyncTaskBriefResp {
+	return &resps.CloudAccountSyncTaskBriefResp{
+		Id:           task.Id,
+		SyncPolicyId: task.SyncPolicyId,
+		Status:       task.Status,
+		ErrorMessage: task.ErrorMessage,
+		Stats:        task.Stats,
+		StartedAt:    task.StartedAt,
+		EndedAt:      task.EndedAt,
+		CreatedAt:    task.CreatedAt,
+	}
+}
+
+func cloudAccountHealthFailureImpactFromTask(task *resps.CloudAccountSyncTaskBriefResp) *resps.CloudAccountHealthFailureImpactResp {
+	if task == nil {
+		return nil
+	}
+	category, message, retryable, retryHint := cloudAccountSyncFailureDetail(task)
+	if strings.TrimSpace(message) == "" {
+		message = task.ErrorMessage
+	}
+	if strings.TrimSpace(message) == "" {
+		message = "未返回错误详情"
+	}
+	if category == "" {
+		category, retryable, retryHint = cloudAccountClassifySyncFailure(message)
+	}
+	occurredAt := cloudAccountSyncTaskOccurredAt(task)
+	return &resps.CloudAccountHealthFailureImpactResp{
+		TaskId:     task.Id,
+		Status:     cloudAccountHealthStatusForFailureCategory(category, retryable),
+		Category:   category,
+		Message:    message,
+		Retryable:  retryable,
+		RetryHint:  retryHint,
+		OccurredAt: models.Time(occurredAt),
+	}
+}
+
+func cloudAccountSyncFailureDetail(task *resps.CloudAccountSyncTaskBriefResp) (string, string, bool, string) {
+	if task == nil || task.Stats == nil {
+		return "", "", false, ""
+	}
+	raw := task.Stats["failureDetails"]
+	switch details := raw.(type) {
+	case []models.ResAttrs:
+		for _, detail := range details {
+			if category := strings.TrimSpace(fmt.Sprint(detail["category"])); category != "" {
+				return category, strings.TrimSpace(fmt.Sprint(detail["message"])), cloudAccountBoolValue(detail["retryable"]), strings.TrimSpace(fmt.Sprint(detail["retryHint"]))
+			}
+		}
+	case []map[string]interface{}:
+		for _, detail := range details {
+			if category := strings.TrimSpace(fmt.Sprint(detail["category"])); category != "" {
+				return category, strings.TrimSpace(fmt.Sprint(detail["message"])), cloudAccountBoolValue(detail["retryable"]), strings.TrimSpace(fmt.Sprint(detail["retryHint"]))
+			}
+		}
+	case []interface{}:
+		for _, item := range details {
+			if detail, ok := item.(map[string]interface{}); ok {
+				if category := strings.TrimSpace(fmt.Sprint(detail["category"])); category != "" {
+					return category, strings.TrimSpace(fmt.Sprint(detail["message"])), cloudAccountBoolValue(detail["retryable"]), strings.TrimSpace(fmt.Sprint(detail["retryHint"]))
+				}
+			}
+			if detail, ok := item.(models.ResAttrs); ok {
+				if category := strings.TrimSpace(fmt.Sprint(detail["category"])); category != "" {
+					return category, strings.TrimSpace(fmt.Sprint(detail["message"])), cloudAccountBoolValue(detail["retryable"]), strings.TrimSpace(fmt.Sprint(detail["retryHint"]))
+				}
+			}
+		}
+	case models.ResAttrs:
+		if category := strings.TrimSpace(fmt.Sprint(details["category"])); category != "" {
+			return category, strings.TrimSpace(fmt.Sprint(details["message"])), cloudAccountBoolValue(details["retryable"]), strings.TrimSpace(fmt.Sprint(details["retryHint"]))
+		}
+	case map[string]interface{}:
+		if category := strings.TrimSpace(fmt.Sprint(details["category"])); category != "" {
+			return category, strings.TrimSpace(fmt.Sprint(details["message"])), cloudAccountBoolValue(details["retryable"]), strings.TrimSpace(fmt.Sprint(details["retryHint"]))
+		}
+	}
+	return "", "", false, ""
+}
+
+func cloudAccountBoolValue(value interface{}) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true") || strings.TrimSpace(typed) == "1"
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case float64:
+		return typed != 0
+	default:
+		return false
+	}
+}
+
+func cloudAccountSyncTaskOccurredAt(task *resps.CloudAccountSyncTaskBriefResp) time.Time {
+	if task == nil {
+		return time.Time{}
+	}
+	for _, value := range []models.Time{task.EndedAt, task.StartedAt, task.CreatedAt} {
+		occurredAt := time.Time(value)
+		if !occurredAt.IsZero() && occurredAt.Year() > 1 {
+			return occurredAt
+		}
+	}
+	return time.Time{}
+}
+
+func cloudAccountClassifySyncFailure(message string) (string, bool, string) {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "rate") || strings.Contains(lower, "throttl") ||
+		strings.Contains(lower, "too many requests") || strings.Contains(lower, "request limit"):
+		return "rate_limit", true, "等待限流窗口恢复后重试，或缩小 regions/assetTypes 范围"
+	case strings.Contains(lower, "timeout") || strings.Contains(lower, "connection") ||
+		strings.Contains(lower, "no such host") || strings.Contains(lower, "temporary"):
+		return "network", true, "网络或云 API 临时异常，可直接重试"
+	case strings.Contains(lower, "unauthorized") || strings.Contains(lower, "forbidden") ||
+		strings.Contains(lower, "permission") || strings.Contains(lower, "denied"):
+		return "permission", false, "检查云账号权限策略后再重试"
+	case strings.Contains(lower, "expired") || strings.Contains(lower, "invalid token") ||
+		strings.Contains(lower, "invalid access") || strings.Contains(lower, "signature"):
+		return "credential", false, "更新云账号凭证后再重试"
+	case strings.Contains(lower, "missing") || strings.Contains(lower, "requires"):
+		return "configuration", false, "补齐云账号必需配置后再重试"
+	default:
+		return "unknown", true, "确认错误原因后可按相同 regions/assetTypes 重试"
+	}
+}
+
+func cloudAccountHealthStatusForFailureCategory(category string, retryable bool) string {
+	switch category {
+	case "credential", "permission", "configuration":
+		return models.CloudAccountHealthUnhealthy
+	case "rate_limit", "network", "unknown":
+		return models.CloudAccountHealthWarning
+	default:
+		if retryable {
+			return models.CloudAccountHealthWarning
+		}
+		return models.CloudAccountHealthUnhealthy
+	}
+}
+
+func cloudAccountFailureCategoryLabel(category string) string {
+	switch category {
+	case "credential":
+		return "凭证异常"
+	case "permission":
+		return "权限异常"
+	case "configuration":
+		return "配置异常"
+	case "rate_limit":
+		return "API 限流"
+	case "network":
+		return "网络异常"
+	case "unknown":
+		return "未分类异常"
+	default:
+		if category == "" {
+			return "未分类异常"
+		}
+		return category
+	}
+}
+
+func formatCloudAccountDuration(value time.Duration) string {
+	if value%time.Hour == 0 {
+		return fmt.Sprintf("%d 小时", int(value/time.Hour))
+	}
+	if value%time.Minute == 0 {
+		return fmt.Sprintf("%d 分钟", int(value/time.Minute))
+	}
+	return fmt.Sprintf("%d 秒", int(value/time.Second))
+}
+
+func cloudAccountHealthCheckOptionsFromForm(form *forms.CheckCloudAccountsHealthForm, defaultConcurrency int) (cloudAccountHealthCheckOptions, e.Error) {
+	options := cloudAccountHealthCheckOptions{
+		ShardTotal:  1,
+		Concurrency: defaultConcurrency,
+	}
+	if form == nil {
+		return cloudAccountHealthNormalizeOptions(options, defaultConcurrency), nil
+	}
+	if form.ShardIndex < 0 || form.ShardTotal < 0 || form.Concurrency < 0 {
+		return cloudAccountHealthCheckOptions{}, e.New(e.BadParam, fmt.Errorf("shardIndex, shardTotal and concurrency must be non-negative"), http.StatusBadRequest)
+	}
+	if form.ShardTotal > 0 {
+		if form.ShardTotal > cloudAccountHealthMaxShardTotal {
+			return cloudAccountHealthCheckOptions{}, e.New(e.BadParam, fmt.Errorf("shardTotal cannot exceed %d", cloudAccountHealthMaxShardTotal), http.StatusBadRequest)
+		}
+		if form.ShardIndex >= form.ShardTotal {
+			return cloudAccountHealthCheckOptions{}, e.New(e.BadParam, fmt.Errorf("shardIndex must be less than shardTotal"), http.StatusBadRequest)
+		}
+		options.ShardIndex = form.ShardIndex
+		options.ShardTotal = form.ShardTotal
+	} else if form.ShardIndex != 0 {
+		return cloudAccountHealthCheckOptions{}, e.New(e.BadParam, fmt.Errorf("shardTotal is required when shardIndex is set"), http.StatusBadRequest)
+	}
+	if form.Concurrency > 0 {
+		if form.Concurrency > cloudAccountHealthMaxConcurrency {
+			return cloudAccountHealthCheckOptions{}, e.New(e.BadParam, fmt.Errorf("concurrency cannot exceed %d", cloudAccountHealthMaxConcurrency), http.StatusBadRequest)
+		}
+		options.Concurrency = form.Concurrency
+	}
+	return cloudAccountHealthNormalizeOptions(options, defaultConcurrency), nil
+}
+
+func cloudAccountHealthNormalizeOptions(options cloudAccountHealthCheckOptions, defaultConcurrency int) cloudAccountHealthCheckOptions {
+	if options.ShardTotal <= 0 {
+		options.ShardTotal = 1
+	}
+	if options.ShardTotal > cloudAccountHealthMaxShardTotal {
+		options.ShardTotal = cloudAccountHealthMaxShardTotal
+	}
+	if options.ShardIndex < 0 {
+		options.ShardIndex = 0
+	}
+	if options.ShardIndex >= options.ShardTotal {
+		options.ShardIndex = options.ShardTotal - 1
+	}
+	if defaultConcurrency <= 0 {
+		defaultConcurrency = cloudAccountHealthManualConcurrency
+	}
+	if options.Concurrency <= 0 {
+		options.Concurrency = defaultConcurrency
+	}
+	if options.Concurrency > cloudAccountHealthMaxConcurrency {
+		options.Concurrency = cloudAccountHealthMaxConcurrency
+	}
+	return options
+}
+
+func cloudAccountHealthWorkerOptions() cloudAccountHealthCheckOptions {
+	return cloudAccountHealthCheckOptions{
+		ShardTotal:  cloudAccountHealthIntEnv(cloudAccountHealthWorkerShardsEnv, cloudAccountHealthDefaultShardTotal, 1, cloudAccountHealthMaxShardTotal),
+		Concurrency: cloudAccountHealthIntEnv(cloudAccountHealthWorkerConcurrencyEnv, cloudAccountHealthWorkerConcurrency, 1, cloudAccountHealthMaxConcurrency),
+	}
+}
+
+func cloudAccountHealthIntEnv(env string, defaultValue int, minValue int, maxValue int) int {
+	raw := strings.TrimSpace(os.Getenv(env))
+	if raw == "" {
+		return defaultValue
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minValue {
+		return defaultValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+func applyCloudAccountHealthShard(query *db.Session, options cloudAccountHealthCheckOptions) *db.Session {
+	if !options.sharded() {
+		return query
+	}
+	return query.Where("cast(conv(substr(md5(id), 1, 8), 16, 10) as unsigned) % ? = ?", options.ShardTotal, options.ShardIndex)
+}
+
+func applyCloudAccountHealthShardIndexes(query *db.Session, shardTotal int, shardIndexes []int) *db.Session {
+	if shardTotal <= 1 || len(shardIndexes) == 0 {
+		return query
+	}
+	clauses := make([]string, 0, len(shardIndexes))
+	args := make([]interface{}, 0, len(shardIndexes)*2)
+	for _, shardIndex := range shardIndexes {
+		clauses = append(clauses, "cast(conv(substr(md5(id), 1, 8), 16, 10) as unsigned) % ? = ?")
+		args = append(args, shardTotal, shardIndex)
+	}
+	return query.Where("("+strings.Join(clauses, " or ")+")", args...)
+}
+
+func cloudAccountHealthShardIndex(id models.Id, shardTotal int) int {
+	if shardTotal <= 1 {
+		return 0
+	}
+	sum := md5.Sum([]byte(id.String()))
+	return int(binary.BigEndian.Uint32(sum[:4]) % uint32(shardTotal))
+}
+
+func cloudAccountHealthWorkerInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(cloudAccountHealthWorkerIntervalEnv))
+	if raw == "" {
+		return cloudAccountHealthWorkerDefaultInterval
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return cloudAccountHealthWorkerDefaultInterval
+	}
+	interval := time.Duration(seconds) * time.Second
+	if interval < cloudAccountHealthWorkerMinInterval {
+		return cloudAccountHealthWorkerMinInterval
+	}
+	if interval > cloudAccountHealthWorkerMaxInterval {
+		return cloudAccountHealthWorkerMaxInterval
+	}
+	return interval
+}
+
+func cloudAccountHealthEventQuietWindow() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(cloudAccountHealthEventQuietEnv))
+	if raw == "" {
+		return cloudAccountHealthEventDefaultQuiet
+	}
+	hours, err := strconv.Atoi(raw)
+	if err != nil || hours <= 0 {
+		return cloudAccountHealthEventDefaultQuiet
+	}
+	window := time.Duration(hours) * time.Hour
+	if window < cloudAccountHealthEventMinQuiet {
+		return cloudAccountHealthEventMinQuiet
+	}
+	if window > cloudAccountHealthEventMaxQuiet {
+		return cloudAccountHealthEventMaxQuiet
+	}
+	return window
+}
+
+func cloudAccountHealthShouldEmitEvent(force bool, previousStatus, previousMessage, nextStatus, nextMessage string, previousCheckedAt models.Time) bool {
+	if force {
+		return true
+	}
+	if previousStatus != nextStatus || previousMessage != nextMessage {
+		return true
+	}
+	lastChecked := time.Time(previousCheckedAt)
+	if lastChecked.IsZero() || lastChecked.Year() <= 1 {
+		return true
+	}
+	return time.Since(lastChecked) >= cloudAccountHealthEventQuietWindow()
+}
+
+func cloudAccountHealthLockName(options cloudAccountHealthCheckOptions) string {
+	if options.sharded() {
+		return fmt.Sprintf("cloudiac:cloud_account_health:all:shard:%d:%d", options.ShardTotal, options.ShardIndex)
+	}
+	return "cloudiac:cloud_account_health:all"
+}
+
+func cloudAccountEvent(c *ctx.ServiceContext, account *models.CloudAccount, eventType string, title string, status string, message string) {
+	if account == nil {
+		return
+	}
+	level := models.CloudEventLevelInfo
+	if status == models.CloudAccountValidationInvalid || status == models.CloudAccountHealthUnhealthy {
+		level = models.CloudEventLevelError
+	} else if status == models.CloudAccountValidationPending || status == models.CloudAccountHealthWarning {
+		level = models.CloudEventLevelWarning
+	}
+	recordCloudEventBestEffort(c, models.CloudEvent{
+		OrgId:          account.OrgId,
+		CloudAccountId: account.Id,
+		Source:         models.CloudEventSourceAccount,
+		EventType:      eventType,
+		Level:          level,
+		Status:         status,
+		Provider:       account.Provider,
+		AccountId:      account.AccountId,
+		ResourceType:   "cloud_account",
+		ResourceId:     account.Id.String(),
+		ResourceName:   account.Name,
+		Title:          title,
+		Message:        message,
+		Payload: models.ResAttrs{
+			"cloudAccountId":      account.Id.String(),
+			"name":                account.Name,
+			"provider":            account.Provider,
+			"accountId":           account.AccountId,
+			"validationStatus":    account.ValidationStatus,
+			"validationMessage":   account.ValidationMessage,
+			"healthStatus":        account.HealthStatus,
+			"healthMessage":       account.HealthMessage,
+			"lastValidatedAt":     account.LastValidatedAt,
+			"lastHealthCheckedAt": account.LastHealthCheckedAt,
+			"lastSyncAt":          account.LastSyncAt,
+		},
+	})
+}
+
+func applyCloudAccountAttrs(account *models.CloudAccount, attrs map[string]interface{}) {
+	for key, value := range attrs {
+		switch key {
+		case "validation_status":
+			account.ValidationStatus = value.(string)
+		case "validation_message":
+			account.ValidationMessage = value.(string)
+		case "health_status":
+			account.HealthStatus = value.(string)
+		case "health_message":
+			account.HealthMessage = value.(string)
+		case "last_validated_at":
+			account.LastValidatedAt = value.(models.Time)
+		case "last_health_checked_at":
+			account.LastHealthCheckedAt = value.(models.Time)
+		case "supported_types":
+			account.SupportedTypes = value.(models.StrSlice)
+		case "regions":
+			account.Regions = value.(models.StrSlice)
+		}
 	}
 }
 
@@ -353,6 +1637,12 @@ func cloudAccountPermissionItems(account *models.CloudAccount, validation cloudA
 		assetStatus = "warn"
 		assetMessage = "资产采集能力已声明，但账号状态或凭证尚未满足执行条件"
 	}
+	operationPolicyStatus := "warn"
+	operationPolicyMessage := "未配置云账号操作授权策略，云操作仅受项目角色、审批和 provider 预检控制"
+	if policy := cloudAccountOperationPolicy(account); len(policy) > 0 {
+		operationPolicyStatus = "pass"
+		operationPolicyMessage = "已配置云账号操作授权策略，可按项目、动作、资源类型或资源标签约束云操作"
+	}
 
 	return []resps.CloudAccountPermissionResp{
 		{
@@ -387,6 +1677,14 @@ func cloudAccountPermissionItems(account *models.CloudAccount, validation cloudA
 			Status:   assetStatus,
 			Message:  assetMessage,
 		},
+		{
+			Key:      "operation_policy",
+			Name:     "操作授权策略",
+			Resource: "cloud_operation",
+			Action:   "write",
+			Status:   operationPolicyStatus,
+			Message:  operationPolicyMessage,
+		},
 	}
 }
 
@@ -399,6 +1697,10 @@ func applyCloudAccountValidation(account *models.CloudAccount) {
 	if regions, ok := attrs["regions"]; ok {
 		account.Regions = regions.(models.StrSlice)
 	}
+	health := cloudAccountHealth(account)
+	account.HealthStatus = health.Status
+	account.HealthMessage = health.Message
+	account.LastHealthCheckedAt = models.Time(time.Now())
 }
 
 func cloudAccountValidationAttrs(account *models.CloudAccount) map[string]interface{} {
@@ -483,12 +1785,37 @@ func marshalCloudCredentialParams(params []forms.Params, previous map[string]str
 func maskedCloudCredentials(credentials models.JSON) models.JSON {
 	params := cloudCredentialParams(credentials)
 	for index := range params {
-		if params[index].IsSecret != nil && *params[index].IsSecret {
+		if cloudCredentialParamSensitive(params[index]) || (params[index].IsSecret != nil && *params[index].IsSecret) {
 			params[index].Value = ""
+			isSecret := true
+			params[index].IsSecret = &isSecret
 		}
 	}
 	data, _ := json.Marshal(params)
 	return models.JSON(data)
+}
+
+func cloudCredentialParamSensitive(param forms.Params) bool {
+	key := strings.ToUpper(strings.TrimSpace(firstNonEmpty(param.Key, param.Id)))
+	if key == "" {
+		return false
+	}
+	sensitiveParts := []string{
+		"ACCESS_KEY",
+		"ACCOUNT_KEY",
+		"CLIENT_SECRET",
+		"PASSWORD",
+		"PASSPHRASE",
+		"PRIVATE_KEY",
+		"SECRET",
+		"TOKEN",
+	}
+	for _, part := range sensitiveParts {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return false
 }
 
 func credentialMapFromCloudCredentials(credentials models.JSON) map[string]string {
@@ -546,6 +1873,18 @@ func credentialMapWithRegions(provider string, credentials map[string]string, re
 	case "alicloud":
 		result["ALICLOUD_REGIONS"] = firstNonEmpty(result["ALICLOUD_REGIONS"], joined)
 		result["ALICLOUD_REGION"] = firstNonEmpty(result["ALICLOUD_REGION"], regions[0])
+	case "azure":
+		result["AZURE_REGIONS"] = firstNonEmpty(result["AZURE_REGIONS"], joined)
+		result["AZURE_REGION"] = firstNonEmpty(result["AZURE_REGION"], regions[0])
+	case "gcp":
+		result["GCP_REGIONS"] = firstNonEmpty(result["GCP_REGIONS"], joined)
+		result["GCP_REGION"] = firstNonEmpty(result["GCP_REGION"], regions[0])
+	case "tencentcloud":
+		result["TENCENTCLOUD_REGIONS"] = firstNonEmpty(result["TENCENTCLOUD_REGIONS"], joined)
+		result["TENCENTCLOUD_REGION"] = firstNonEmpty(result["TENCENTCLOUD_REGION"], regions[0])
+	case "huawei":
+		result["HUAWEI_REGIONS"] = firstNonEmpty(result["HUAWEI_REGIONS"], joined)
+		result["HUAWEI_REGION"] = firstNonEmpty(result["HUAWEI_REGION"], regions[0])
 	}
 	return result
 }
@@ -558,6 +1897,14 @@ func inferCloudAccountId(provider, accountId, tenantId string, credentials map[s
 		return firstNonEmpty(accountId, tenantId, credentials["OCI_TENANCY_OCID"])
 	case "alicloud":
 		return firstNonEmpty(accountId, credentials["ALICLOUD_ACCOUNT_ID"])
+	case "azure":
+		return firstNonEmpty(accountId, tenantId, credentials["AZURE_SUBSCRIPTION_ID"], credentials["ARM_SUBSCRIPTION_ID"])
+	case "gcp":
+		return firstNonEmpty(accountId, tenantId, credentials["GCP_PROJECT_ID"], credentials["GOOGLE_CLOUD_PROJECT"])
+	case "tencentcloud":
+		return firstNonEmpty(accountId, tenantId, credentials["TENCENTCLOUD_ACCOUNT_ID"], credentials["TENCENT_ACCOUNT_ID"])
+	case "huawei":
+		return firstNonEmpty(accountId, tenantId, credentials["HUAWEI_ACCOUNT_ID"], credentials["HUAWEICLOUD_ACCOUNT_ID"])
 	default:
 		return firstNonEmpty(accountId, tenantId)
 	}

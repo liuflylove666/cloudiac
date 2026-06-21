@@ -20,6 +20,7 @@ const breadcrumbNameMap = {
   'm-cloud-overview': { text: '多云总览' },
   'm-cloud-account': { text: '云账号' },
   'm-cloud-assets': { text: '云资产' },
+  'm-cloud-operations': { text: '操作任务' },
   'm-other-resource': { text: '资产 CMDB' },
   'createCT': { text: '新建云模板' },
   'updateCT': { text: '编辑云模板' },

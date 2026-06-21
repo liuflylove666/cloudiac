@@ -11,6 +11,10 @@ const (
 	CloudAccountValidationPending = "pending"
 	CloudAccountValidationValid   = "valid"
 	CloudAccountValidationInvalid = "invalid"
+
+	CloudAccountHealthHealthy   = "healthy"
+	CloudAccountHealthWarning   = "warning"
+	CloudAccountHealthUnhealthy = "unhealthy"
 )
 
 type CloudAccount struct {
@@ -29,12 +33,15 @@ type CloudAccount struct {
 	Credentials JSON     `json:"credentials" gorm:"type:json;comment:云账号凭证"`
 	Metadata    ResAttrs `json:"metadata,omitempty" gorm:"type:json;comment:扩展信息"`
 
-	Status            string   `json:"status" gorm:"index;size:32;not null;default:'enable';comment:状态"`
-	ValidationStatus  string   `json:"validationStatus" gorm:"index;size:32;not null;default:'pending';comment:验证状态"`
-	ValidationMessage string   `json:"validationMessage" gorm:"type:text;comment:验证信息"`
-	LastValidatedAt   Time     `json:"lastValidatedAt" gorm:"type:datetime;default:null;comment:最近验证时间"`
-	LastSyncAt        Time     `json:"lastSyncAt" gorm:"type:datetime;default:null;comment:最近同步时间"`
-	SupportedTypes    StrSlice `json:"supportedTypes" gorm:"type:json;comment:支持采集的资产类型"`
+	Status              string   `json:"status" gorm:"index;size:32;not null;default:'enable';comment:状态"`
+	ValidationStatus    string   `json:"validationStatus" gorm:"index;size:32;not null;default:'pending';comment:验证状态"`
+	ValidationMessage   string   `json:"validationMessage" gorm:"type:text;comment:验证信息"`
+	HealthStatus        string   `json:"healthStatus" gorm:"index;size:32;not null;default:'warning';comment:健康状态"`
+	HealthMessage       string   `json:"healthMessage" gorm:"type:text;comment:健康信息"`
+	LastValidatedAt     Time     `json:"lastValidatedAt" gorm:"type:datetime;default:null;comment:最近验证时间"`
+	LastHealthCheckedAt Time     `json:"lastHealthCheckedAt" gorm:"type:datetime;default:null;comment:最近健康检查时间"`
+	LastSyncAt          Time     `json:"lastSyncAt" gorm:"type:datetime;default:null;comment:最近同步时间"`
+	SupportedTypes      StrSlice `json:"supportedTypes" gorm:"type:json;comment:支持采集的资产类型"`
 }
 
 func (CloudAccount) TableName() string {

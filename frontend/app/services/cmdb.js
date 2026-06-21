@@ -66,8 +66,23 @@ const cmdbAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  syncTaskRerunGroupDetail: ({ orgId, groupId }) => {
+    return getWithArgs(`/api/v1/cmdb/sync-task-rerun-groups/${groupId}`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
   startSyncTask: ({ orgId, ...restParams }) => {
     return post('/api/v1/cmdb/sync-tasks', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  batchRerunFailedSyncTasks: ({ orgId, ...restParams }) => {
+    return post('/api/v1/cmdb/sync-tasks/rerun-failed', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  approveSyncTaskRerunGroup: ({ orgId, groupId, ...restParams }) => {
+    return post(`/api/v1/cmdb/sync-task-rerun-groups/${groupId}/approve`, restParams, {
       'IaC-Org-Id': orgId
     });
   }

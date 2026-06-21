@@ -183,11 +183,12 @@ const (
 	TemplateSourceVcs      = "vcs"
 	TemplateSourceRegistry = "registry"
 
-	OperatorObjectTypeStack   = "stack"
-	OperatorObjectTypeOrg     = "org"
-	OperatorObjectTypeUser    = "user"
-	OperatorObjectTypeEnv     = "env"
-	OperatorObjectTypeProject = "project"
+	OperatorObjectTypeStack           = "stack"
+	OperatorObjectTypeOrg             = "org"
+	OperatorObjectTypeUser            = "user"
+	OperatorObjectTypeEnv             = "env"
+	OperatorObjectTypeProject         = "project"
+	OperatorObjectTypeWebhookDelivery = "webhook_delivery"
 
 	// 发生漂移后，给 kafka 发送消息时 eventType 的固定值
 	DriftEventType = "drift_detection"
@@ -241,12 +242,13 @@ var (
 	}
 
 	UserOperationLogAttr = map[string]string{
-		"user.login":     "用户登录",
-		"env.create":     "部署新环境",
-		"env.deploy":     "环境部署",
-		"env.destroy":    "环境销毁",
-		"org.create":     "创建组织",
-		"project.create": "创建项目",
-		"stack.create":   "创建stack",
+		"user.login":            "用户登录",
+		"env.create":            "部署新环境",
+		"env.deploy":            "环境部署",
+		"env.destroy":           "环境销毁",
+		"org.create":            "创建组织",
+		"project.create":        "创建项目",
+		"stack.create":          "创建stack",
+		"webhook_delivery.view": "查看 Webhook 投递详情",
 	}
 )

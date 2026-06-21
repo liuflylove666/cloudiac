@@ -302,13 +302,57 @@ func collectOciBuckets(ctx context.Context, account *cmdbCloudAccount, region, c
 }
 
 func collectOciOkeClusters(ctx context.Context, account *cmdbCloudAccount, region, compartmentId string) ([]*models.CmdbAsset, error) {
-	return collectOciSimpleAssets(ctx, account, region, compartmentId, models.CmdbAssetTypeKubernetesCluster, "oci_containerengine_cluster",
+	assets, err := collectOciSimpleAssets(ctx, account, region, compartmentId, models.CmdbAssetTypeKubernetesCluster, "oci_containerengine_cluster",
 		"containerengine", ociContainerEngineAPIVersion, "/clusters", nil, func(asset *models.CmdbAsset, item models.ResAttrs) {
 			asset.Attributes["kubernetesVersion"] = ociAttrString(item, "kubernetesVersion")
 			asset.Attributes["vcnId"] = ociAttrString(item, "vcnId")
 			asset.Attributes["endpointConfig"] = item["endpointConfig"]
 			asset.Attributes["options"] = item["options"]
 		})
+	if err != nil {
+		return assets, err
+	}
+	for _, asset := range assets {
+		nodePools, nodePoolErr := collectOciOkeNodePools(ctx, account, region, compartmentId, asset.NativeId)
+		if nodePoolErr != nil {
+			asset.Attributes["nodePoolCollectError"] = nodePoolErr.Error()
+			continue
+		}
+		asset.Attributes["nodePools"] = nodePools
+		asset.Attributes["nodePoolCount"] = len(nodePools)
+	}
+	return assets, nil
+}
+
+func collectOciOkeNodePools(ctx context.Context, account *cmdbCloudAccount, region, compartmentId, clusterId string) ([]models.ResAttrs, error) {
+	query := url.Values{
+		"compartmentId": []string{compartmentId},
+		"clusterId":     []string{clusterId},
+	}
+	items, err := ociListAPI(ctx, account, region, "containerengine", ociContainerEngineAPIVersion, "/nodePools", query)
+	if err != nil {
+		return nil, err
+	}
+	nodePools := make([]models.ResAttrs, 0, len(items))
+	for _, item := range items {
+		nodePools = append(nodePools, models.ResAttrs{
+			"id":                  ociAttrString(item, "id"),
+			"name":                firstNonEmpty(ociAttrString(item, "name"), ociAttrString(item, "displayName")),
+			"status":              ociAttrString(item, "lifecycleState"),
+			"kubernetesVersion":   ociAttrString(item, "kubernetesVersion"),
+			"nodeShape":           ociAttrString(item, "nodeShape"),
+			"nodeShapeConfig":     item["nodeShapeConfig"],
+			"nodeSourceDetails":   item["nodeSourceDetails"],
+			"nodeConfigDetails":   item["nodeConfigDetails"],
+			"initialNodeLabels":   item["initialNodeLabels"],
+			"quantityPerSubnet":   item["quantityPerSubnet"],
+			"subnetIds":           item["subnetIds"],
+			"availabilityDomains": item["availabilityDomains"],
+			"timeCreated":         item["timeCreated"],
+			"timeUpdated":         item["timeUpdated"],
+		})
+	}
+	return nodePools, nil
 }
 
 func collectOciDatabases(ctx context.Context, account *cmdbCloudAccount, region, compartmentId string) ([]*models.CmdbAsset, error) {
@@ -513,11 +557,21 @@ func signOCIRequest(req *http.Request, account *cmdbCloudAccount, now time.Time)
 	req.Header.Set("Host", req.URL.Host)
 
 	requestTarget := strings.ToLower(req.Method) + " " + req.URL.RequestURI()
-	signingString := strings.Join([]string{
+	signingLines := []string{
 		"date: " + date,
 		"(request-target): " + requestTarget,
 		"host: " + req.URL.Host,
-	}, "\n")
+	}
+	signedHeaders := []string{"date", "(request-target)", "host"}
+	if contentHash := req.Header.Get("X-Content-Sha256"); contentHash != "" {
+		signingLines = append(signingLines,
+			"x-content-sha256: "+contentHash,
+			"content-type: "+req.Header.Get("Content-Type"),
+			"content-length: "+req.Header.Get("Content-Length"),
+		)
+		signedHeaders = append(signedHeaders, "x-content-sha256", "content-type", "content-length")
+	}
+	signingString := strings.Join(signingLines, "\n")
 
 	key, err := parseOCIRSAPrivateKey(privateKey, account.Credentials["OCI_PRIVATE_KEY_PASSPHRASE"])
 	if err != nil {
@@ -529,9 +583,15 @@ func signOCIRequest(req *http.Request, account *cmdbCloudAccount, now time.Time)
 		return err
 	}
 	keyId := strings.Join([]string{tenancy, user, fingerprint}, "/")
-	req.Header.Set("Authorization", fmt.Sprintf(`Signature version="1",keyId="%s",algorithm="rsa-sha256",headers="date (request-target) host",signature="%s"`,
-		keyId, base64.StdEncoding.EncodeToString(signature)))
+	req.Header.Set("Authorization", fmt.Sprintf(`Signature version="1",keyId="%s",algorithm="rsa-sha256",headers="%s",signature="%s"`,
+		keyId, strings.Join(signedHeaders, " "), base64.StdEncoding.EncodeToString(signature)))
 	return nil
+}
+
+func setOCIRequestBodyHeaders(req *http.Request, body []byte) {
+	hash := sha256.Sum256(body)
+	req.Header.Set("X-Content-Sha256", base64.StdEncoding.EncodeToString(hash[:]))
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 }
 
 func parseOCIRSAPrivateKey(value, passphrase string) (*rsa.PrivateKey, error) {

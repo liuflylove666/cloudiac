@@ -12,7 +12,7 @@ const FL = {
   wrapperCol: { span: 12 }
 };
 
-export default ({ orgId, operation, visible, toggleVisible, notificationId }) => {
+export default ({ orgId, projectId, operation, visible, toggleVisible, notificationId }) => {
 
   const leftTableColumns = [
     {
@@ -60,7 +60,8 @@ export default ({ orgId, operation, visible, toggleVisible, notificationId }) =>
     try {
       const res = await notificationsAPI.detailNotification({
         notificationId,
-        orgId
+        orgId,
+        projectId
       });
       if (res.code !== 200) {
         throw new Error(res.message);
@@ -158,6 +159,18 @@ export default ({ orgId, operation, visible, toggleVisible, notificationId }) =>
       </>,
       slack: () => <Form.Item
         name='slack-url'
+        label={'URL'}
+        rules={[
+          {
+            required: true,
+            message: '请输入url'
+          }
+        ]}
+      >
+        <Input />
+      </Form.Item>,
+      webhook: () => <Form.Item
+        name='webhook-url'
         label={'URL'}
         rules={[
           {

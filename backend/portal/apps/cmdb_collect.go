@@ -26,13 +26,15 @@ func collectCmdbCloudAssets(account *cmdbCloudAccount, regions, assetTypes []str
 	case "oci":
 		return collectCmdbOciAssets(account, regions, assetTypes)
 	case "alicloud":
-		return cmdbCloudCollectResult{
-			Stats: models.ResAttrs{
-				"regions":    regions,
-				"assetTypes": assetTypes,
-			},
-			Err: fmt.Errorf("alicloud collector sdk is not wired yet; IaC resource backfill is available"),
-		}
+		return collectCmdbAlicloudAssets(account, regions, assetTypes)
+	case "azure":
+		return collectCmdbAzureAssets(account, regions, assetTypes)
+	case "gcp":
+		return collectCmdbGcpAssets(account, regions, assetTypes)
+	case "tencentcloud":
+		return collectCmdbTencentAssets(account, regions, assetTypes)
+	case "huawei":
+		return collectCmdbHuaweiAssets(account, regions, assetTypes)
 	default:
 		return cmdbCloudCollectResult{
 			Stats: models.ResAttrs{
@@ -103,6 +105,18 @@ func selectedCmdbAssetTypes(assetTypes []string) map[string]bool {
 			continue
 		}
 		selected[assetType] = true
+	}
+	return selected
+}
+
+func selectedCloudRegions(regions []string) map[string]bool {
+	selected := make(map[string]bool)
+	for _, region := range regions {
+		region = strings.ToLower(strings.TrimSpace(region))
+		if region == "" {
+			continue
+		}
+		selected[region] = true
 	}
 	return selected
 }

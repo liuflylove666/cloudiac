@@ -67,6 +67,24 @@ func (CloudAccount) Validate(c *ctx.GinRequest) {
 	c.JSONResult(apps.ValidateCloudAccount(c.Service(), form))
 }
 
+// HealthCheck 检查单个云账号健康状态
+func (CloudAccount) HealthCheck(c *ctx.GinRequest) {
+	form := &forms.CloudAccountParam{}
+	if err := c.Bind(form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CheckCloudAccountHealth(c.Service(), form))
+}
+
+// HealthCheckAll 批量检查云账号健康状态
+func (CloudAccount) HealthCheckAll(c *ctx.GinRequest) {
+	form := &forms.CheckCloudAccountsHealthForm{}
+	if err := c.Bind(form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CheckCloudAccountsHealth(c.Service(), form))
+}
+
 // Regions 查询云账号区域配置
 func (CloudAccount) Regions(c *ctx.GinRequest) {
 	form := &forms.CloudAccountParam{}

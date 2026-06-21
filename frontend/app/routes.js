@@ -134,6 +134,36 @@ export default function createRoutes() {
           exact: true
         },
         {
+          path: '/org/:orgId/m-cloud-operations',
+          name: '操作任务',
+          component: loadable(() => import('containers/org/cloud-operation'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-risks',
+          name: '风险合规',
+          component: loadable(() => import('containers/org/cloud-risk'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-costs',
+          name: '成本中心',
+          component: loadable(() => import('containers/org/cloud-cost'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-events',
+          name: '事件中心',
+          component: loadable(() => import('containers/org/cloud-event'), asyncLoadFallback),
+          exact: true
+        },
+        {
+          path: '/org/:orgId/m-cloud-itsm',
+          name: 'ITSM 工单',
+          component: loadable(() => import('containers/org/cloud-itsm'), asyncLoadFallback),
+          exact: true
+        },
+        {
           path: '/org/:orgId/m-other-resource',
           name: '资产 CMDB',
           component: loadable(() => import('containers/org/resource-query'), asyncLoadFallback),

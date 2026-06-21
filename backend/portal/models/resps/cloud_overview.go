@@ -22,7 +22,10 @@ type CloudOverviewMetricResp struct {
 	AccountUnsynced      int64       `json:"accountUnsynced"`
 	AssetTotal           int64       `json:"assetTotal"`
 	IacManagedAssets     int64       `json:"iacManagedAssets"`
+	IacDirectAssets      int64       `json:"iacDirectAssets"`
+	IacLinkedAssets      int64       `json:"iacLinkedAssets"`
 	CloudCollectedAssets int64       `json:"cloudCollectedAssets"`
+	CloudLinkedAssets    int64       `json:"cloudLinkedAssets"`
 	CloudOnlyAssets      int64       `json:"cloudOnlyAssets"`
 	UnownedAssets        int64       `json:"unownedAssets"`
 	HighRiskAssets       int64       `json:"highRiskAssets"`
@@ -30,17 +33,21 @@ type CloudOverviewMetricResp struct {
 	RunningSyncTasks     int64       `json:"runningSyncTasks"`
 	FailedSyncTasks      int64       `json:"failedSyncTasks"`
 	CoverageRate         float64     `json:"coverageRate"`
+	GovernanceRate       float64     `json:"governanceRate"`
+	CloudOnlyRate        float64     `json:"cloudOnlyRate"`
 	LastSyncAt           models.Time `json:"lastSyncAt"`
 }
 
 type CloudOverviewProviderResp struct {
-	Provider            string      `json:"provider" gorm:"column:provider"`
-	AccountCount        int64       `json:"accountCount" gorm:"column:account_count"`
-	EnabledAccountCount int64       `json:"enabledAccountCount" gorm:"column:enabled_account_count"`
-	InvalidAccountCount int64       `json:"invalidAccountCount" gorm:"column:invalid_account_count"`
-	AssetCount          int64       `json:"assetCount" gorm:"column:asset_count"`
-	CloudOnlyAssetCount int64       `json:"cloudOnlyAssetCount" gorm:"column:cloud_only_asset_count"`
-	LastSyncAt          models.Time `json:"lastSyncAt" gorm:"column:last_sync_at"`
+	Provider              string      `json:"provider" gorm:"column:provider"`
+	AccountCount          int64       `json:"accountCount" gorm:"column:account_count"`
+	EnabledAccountCount   int64       `json:"enabledAccountCount" gorm:"column:enabled_account_count"`
+	InvalidAccountCount   int64       `json:"invalidAccountCount" gorm:"column:invalid_account_count"`
+	AssetCount            int64       `json:"assetCount" gorm:"column:asset_count"`
+	IacManagedAssetCount  int64       `json:"iacManagedAssetCount" gorm:"column:iac_managed_asset_count"`
+	CloudLinkedAssetCount int64       `json:"cloudLinkedAssetCount" gorm:"column:cloud_linked_asset_count"`
+	CloudOnlyAssetCount   int64       `json:"cloudOnlyAssetCount" gorm:"column:cloud_only_asset_count"`
+	LastSyncAt            models.Time `json:"lastSyncAt" gorm:"column:last_sync_at"`
 }
 
 type CloudOverviewCountResp struct {

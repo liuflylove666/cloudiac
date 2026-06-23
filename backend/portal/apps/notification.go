@@ -1108,6 +1108,7 @@ func notificationTemplateSampleData(c *ctx.ServiceContext, eventType string) map
 		"Payload":      map[string]interface{}{},
 	}
 	notificationTemplateApplyBatchRerunEventSample(sample, eventType, true)
+	notificationTemplateApplySlowAPIEventSample(sample, eventType, true)
 	event := notificationTemplateLatestCloudEvent(c, eventType)
 	if event == nil {
 		return sample
@@ -1138,6 +1139,7 @@ func notificationTemplateSampleData(c *ctx.ServiceContext, eventType string) map
 		sample["Payload"] = map[string]interface{}(event.Payload)
 	}
 	notificationTemplateApplyBatchRerunEventSample(sample, event.EventType, false)
+	notificationTemplateApplySlowAPIEventSample(sample, event.EventType, false)
 	return sample
 }
 
@@ -1194,6 +1196,9 @@ func notificationTemplateVariableGroups(c *ctx.ServiceContext, eventType string,
 	groups := []resps.NotificationTemplateVariableGroup{eventGroup}
 	if batchRerunGroup := notificationTemplateBatchRerunVariableGroup(eventType, sampleData); batchRerunGroup != nil {
 		groups = append(groups, *batchRerunGroup)
+	}
+	if slowAPIGroup := notificationTemplateSlowAPIVariableGroup(eventType, sampleData); slowAPIGroup != nil {
+		groups = append(groups, *slowAPIGroup)
 	}
 	if dynamicPayloadGroup != nil {
 		groups = append(groups, *dynamicPayloadGroup)
@@ -1302,6 +1307,83 @@ func notificationTemplateIsBatchRerunEventType(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func notificationTemplateApplySlowAPIEventSample(sample map[string]interface{}, eventType string, overwrite bool) {
+	if sample == nil || !notificationTemplateIsSlowAPIEventType(eventType) {
+		return
+	}
+	setNotificationTemplateSampleValue(sample, "Source", "sync", overwrite)
+	setNotificationTemplateSampleValue(sample, "EventType", cmdbSyncTaskSlowAPIEventType, overwrite)
+	setNotificationTemplateSampleValue(sample, "Provider", "oci", overwrite)
+	setNotificationTemplateSampleValue(sample, "AccountId", "ocid1.tenancy.oc1..sample", overwrite)
+	setNotificationTemplateSampleValue(sample, "Region", "ap-singapore-1", overwrite)
+	setNotificationTemplateSampleValue(sample, "ResourceType", "cmdb_sync_task", overwrite)
+	setNotificationTemplateSampleValue(sample, "ResourceId", "cst-sample-slow-api", overwrite)
+	setNotificationTemplateSampleValue(sample, "ResourceName", "示例 OCI 云账号", overwrite)
+	setNotificationTemplateSampleValue(sample, "Status", models.CmdbSyncTaskComplete, overwrite)
+	setNotificationTemplateSampleValue(sample, "Level", models.CloudEventLevelWarning, overwrite)
+	setNotificationTemplateSampleValue(sample, "Title", "云采集任务存在慢 API 调用", overwrite)
+	setNotificationTemplateSampleValue(sample, "Message", "任务 cst-sample-slow-api 发现 3 次 API 调用耗时不低于 1000ms，最慢 ap-singapore-1 iaas /20160918/instances 耗时 2500ms", overwrite)
+
+	slowest := map[string]interface{}{
+		"provider":   "oci",
+		"region":     "ap-singapore-1",
+		"service":    "iaas",
+		"path":       "/20160918/instances",
+		"status":     "failed",
+		"durationMs": 2500,
+		"attempts":   2,
+		"retryCount": 1,
+		"requestId":  "req-slow-api",
+	}
+	payload := notificationTemplateEnsurePayloadSample(sample)
+	setNotificationTemplateSampleValue(payload, "taskId", "cst-sample-slow-api", overwrite)
+	setNotificationTemplateSampleValue(payload, "status", models.CmdbSyncTaskComplete, overwrite)
+	setNotificationTemplateSampleValue(payload, "thresholdMs", 1000, overwrite)
+	setNotificationTemplateSampleValue(payload, "slowCount", 3, overwrite)
+	setNotificationTemplateSampleValue(payload, "failedCount", 1, overwrite)
+	setNotificationTemplateSampleValue(payload, "retriedCount", 2, overwrite)
+	setNotificationTemplateSampleValue(payload, "maxDurationMs", 2500, overwrite)
+	setNotificationTemplateSampleValue(payload, "slowest", slowest, overwrite)
+	setNotificationTemplateSampleValue(payload, "top", []map[string]interface{}{slowest}, overwrite)
+	setNotificationTemplateSampleValue(payload, "regions", []string{"ap-singapore-1"}, overwrite)
+	setNotificationTemplateSampleValue(payload, "assetTypes", []string{"compute_instance", "kubernetes_cluster"}, overwrite)
+	setNotificationTemplateSampleValue(payload, "syncPolicyId", "csp-sample", overwrite)
+	setNotificationTemplateSampleValue(payload, "syncPolicyScheduleKey", "daily", overwrite)
+	setNotificationTemplateSampleValue(payload, "syncPolicyScheduleName", "每日同步", overwrite)
+}
+
+func notificationTemplateSlowAPIVariableGroup(eventType string, sampleData map[string]interface{}) *resps.NotificationTemplateVariableGroup {
+	if !notificationTemplateIsSlowAPIEventType(eventType) {
+		return nil
+	}
+	payload := notificationTemplatePayloadSample(sampleData)
+	variables := []resps.NotificationTemplateVariable{
+		{Name: "Payload.taskId", Label: "采集任务 ID", Description: "触发慢 API 告警的云采集任务 ID", Sample: payload["taskId"]},
+		{Name: "Payload.status", Label: "任务状态", Description: "慢 API 事件产生时的云采集任务状态", Sample: payload["status"]},
+		{Name: "Payload.thresholdMs", Label: "慢调用阈值", Description: "判定慢 API 调用的毫秒阈值", Sample: payload["thresholdMs"]},
+		{Name: "Payload.slowCount", Label: "慢调用数", Description: "不低于阈值的 API 调用次数", Sample: payload["slowCount"]},
+		{Name: "Payload.failedCount", Label: "失败慢调用数", Description: "慢 API 调用中失败的次数", Sample: payload["failedCount"]},
+		{Name: "Payload.retriedCount", Label: "重试慢调用数", Description: "慢 API 调用中发生重试的次数", Sample: payload["retriedCount"]},
+		{Name: "Payload.maxDurationMs", Label: "最大耗时", Description: "最慢 API 调用耗时，单位毫秒", Sample: payload["maxDurationMs"]},
+		{Name: "Payload.slowest", Label: "最慢 API", Description: "最慢 API 调用的 region、service、path、requestId 等信息", Sample: payload["slowest"]},
+		{Name: "Payload.top", Label: "慢调用 Top 列表", Description: "按耗时倒序保留的慢 API 调用样本", Sample: payload["top"]},
+		{Name: "Payload.regions", Label: "采集区域", Description: "本次采集任务的区域范围", Sample: payload["regions"]},
+		{Name: "Payload.assetTypes", Label: "资产类型", Description: "本次采集任务的资产类型范围", Sample: payload["assetTypes"]},
+		{Name: "Payload.syncPolicyId", Label: "同步策略 ID", Description: "触发任务的同步策略 ID，手动任务为空", Sample: payload["syncPolicyId"]},
+		{Name: "Payload.syncPolicyScheduleKey", Label: "子周期键", Description: "触发任务的同步策略子周期键", Sample: payload["syncPolicyScheduleKey"]},
+		{Name: "Payload.syncPolicyScheduleName", Label: "子周期名称", Description: "触发任务的同步策略子周期名称", Sample: payload["syncPolicyScheduleName"]},
+	}
+	return &resps.NotificationTemplateVariableGroup{
+		Name:      "syncSlowAPI",
+		Label:     "云采集慢 API 变量",
+		Variables: variables,
+	}
+}
+
+func notificationTemplateIsSlowAPIEventType(eventType string) bool {
+	return strings.TrimSpace(eventType) == cmdbSyncTaskSlowAPIEventType
 }
 
 func notificationTemplateEnsurePayloadSample(sample map[string]interface{}) map[string]interface{} {

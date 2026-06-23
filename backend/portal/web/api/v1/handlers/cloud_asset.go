@@ -34,6 +34,16 @@ func (CloudAsset) AssetFilters(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbAssetFilters(c.Service(), &form))
 }
 
+// AssetPermissions 查询多云资产编辑、导出和治理权限。
+func (CloudAsset) AssetPermissions(c *ctx.GinRequest) {
+	c.JSONResult(apps.CmdbAssetPermissions(c.Service()))
+}
+
+// AssetGovernanceReport 查询多云资产成本、合规和生命周期治理报表。
+func (CloudAsset) AssetGovernanceReport(c *ctx.GinRequest) {
+	c.JSONResult(apps.CmdbAssetGovernanceReport(c.Service()))
+}
+
 // AssetDetail 查询多云资产详情，当前复用 CMDB 资产详情。
 func (CloudAsset) AssetDetail(c *ctx.GinRequest) {
 	form := forms.CmdbAssetParam{}
@@ -41,6 +51,15 @@ func (CloudAsset) AssetDetail(c *ctx.GinRequest) {
 		return
 	}
 	c.JSONResult(apps.CmdbAssetDetail(c.Service(), &form))
+}
+
+// AssetRelations 查询多云资产关系图关系和摘要。
+func (CloudAsset) AssetRelations(c *ctx.GinRequest) {
+	form := forms.CmdbAssetRelationsForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CmdbAssetRelations(c.Service(), &form))
 }
 
 // SecurityRules 查询多云资产安全组/安全列表规则视图。
@@ -102,6 +121,16 @@ func (CloudAsset) ImportAssets(c *ctx.GinRequest) {
 	c.JSONResult(apps.ImportCmdbAssets(c.Service(), &form))
 }
 
+// ImportTemplate 下载多云资产导入模板，当前复用 CMDB 资产导入模板。
+func (CloudAsset) ImportTemplate(c *ctx.GinRequest) {
+	file, err := apps.CmdbAssetImportTemplate()
+	if err != nil {
+		c.JSONError(err)
+		return
+	}
+	c.FileDownloadResponse(file.Data, file.Filename, file.ContentType)
+}
+
 // UpdateAssetOwnership 更新多云资产归属信息，当前复用 CMDB 资产归属。
 func (CloudAsset) UpdateAssetOwnership(c *ctx.GinRequest) {
 	form := forms.UpdateCmdbAssetOwnershipForm{}
@@ -122,6 +151,10 @@ func (CloudAsset) BatchUpdateAssetOwnership(c *ctx.GinRequest) {
 
 // BackfillIacResources 从 CloudIaC 现有 IaC 资源回填多云资产中心。
 func (CloudAsset) BackfillIacResources(c *ctx.GinRequest) {
+	if err := apps.EnsureCmdbOrgAdminPermission(c.Service(), "同步 IaC 资源"); err != nil {
+		c.JSONError(err)
+		return
+	}
 	c.JSONResult(apps.BackfillCmdbAssetsFromIac(c.Service()))
 }
 
@@ -156,6 +189,10 @@ func (CloudAsset) SyncTaskRerunGroupDetail(c *ctx.GinRequest) {
 func (CloudAsset) StartSyncTask(c *ctx.GinRequest) {
 	form := forms.CreateCmdbSyncTaskForm{}
 	if err := c.Bind(&form); err != nil {
+		return
+	}
+	if err := apps.EnsureCmdbOrgAdminPermission(c.Service(), "启动多云资产采集任务"); err != nil {
+		c.JSONError(err)
 		return
 	}
 	c.JSONResult(apps.StartCmdbSyncTask(c.Service(), &form))

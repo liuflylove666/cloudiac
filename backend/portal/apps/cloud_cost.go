@@ -82,6 +82,8 @@ const (
 	cloudCostSyncScheduleWorkerDefault   = 5 * time.Minute
 	cloudCostSyncScheduleWorkerMin       = 30 * time.Second
 	cloudCostSyncScheduleWorkerMax       = 24 * time.Hour
+	cloudCostSyncScheduleMaxSilenceMins  = 7 * 24 * 60
+	cloudCostSyncScheduleMaxEscalateAt   = 100
 )
 
 func CloudCostSummary(c *ctx.ServiceContext, form *forms.CloudCostSummaryForm) (*resps.CloudCostSummaryResp, e.Error) {
@@ -724,7 +726,7 @@ func runCloudCostSyncSchedule(c *ctx.ServiceContext, schedule *models.CloudCostS
 		attrs["last_sync_status"] = taskDetail.Status
 		attrs["last_error"] = taskDetail.Error
 		if taskDetail.Status == models.CloudCostSyncTaskStatusFailed {
-			failureErr = fmt.Errorf(firstNonEmpty(taskDetail.Error, taskDetail.Message, "成本同步任务失败"))
+			failureErr = fmt.Errorf("%s", firstNonEmpty(taskDetail.Error, taskDetail.Message, "成本同步任务失败"))
 		} else {
 			cloudCostResetScheduleFailureParams(params)
 		}
@@ -1061,6 +1063,7 @@ func cloudCostSyncScheduleFromForm(c *ctx.ServiceContext, form *forms.CreateClou
 	if form.AutoPauseOnFailure {
 		params["autoPauseOnFailure"] = true
 	}
+	params = cloudCostSyncScheduleNormalizeNotificationParams(params)
 	nextSyncAt := form.NextSyncAt
 	if time.Time(nextSyncAt).IsZero() || time.Time(nextSyncAt).Year() <= 1 {
 		nextSyncAt = models.Time(time.Now())
@@ -1139,19 +1142,27 @@ func cloudCostSyncScheduleResp(c *ctx.ServiceContext, schedule models.CloudCostS
 		displaySchedule.Params["sourceObjectBaseUrl"] = cloudCostSourceURLPreview(sourceObjectBaseURL)
 	}
 	return resps.CloudCostSyncScheduleResp{
-		CloudCostSyncSchedule:       displaySchedule,
-		CreatorName:                 lookupName(c, &models.User{}, schedule.CreatorId),
-		CloudAccountName:            lookupName(c, &models.CloudAccount{}, schedule.CloudAccountId),
-		SourceURLPreview:            cloudCostSourceURLPreview(attrString(schedule.Params, "sourceUrl")),
-		SourceIndexURLPreview:       cloudCostSourceURLPreview(attrString(schedule.Params, "sourceIndexUrl")),
-		SourceObjectEndpointPreview: cloudCostSourceURLPreview(attrString(schedule.Params, "sourceObjectEndpoint")),
-		FailureCount:                attrInt(params, "failureCount"),
-		MaxRetryAttempts:            cloudCostSyncScheduleMaxRetryAttempts(attrInt(params, "maxRetryAttempts")),
-		RetryBackoffSeconds:         cloudCostSyncScheduleRetryBackoffSeconds(attrInt(params, "retryBackoffSeconds")),
-		NotifyOnFailure:             attrBool(params, "notifyOnFailure"),
-		AutoPauseOnFailure:          attrBool(params, "autoPauseOnFailure"),
-		NextRetryAt:                 attrString(params, "nextRetryAt"),
-		AutoPausedAt:                attrString(params, "autoPausedAt"),
+		CloudCostSyncSchedule:        displaySchedule,
+		CreatorName:                  lookupName(c, &models.User{}, schedule.CreatorId),
+		CloudAccountName:             lookupName(c, &models.CloudAccount{}, schedule.CloudAccountId),
+		SourceURLPreview:             cloudCostSourceURLPreview(attrString(schedule.Params, "sourceUrl")),
+		SourceIndexURLPreview:        cloudCostSourceURLPreview(attrString(schedule.Params, "sourceIndexUrl")),
+		SourceObjectEndpointPreview:  cloudCostSourceURLPreview(attrString(schedule.Params, "sourceObjectEndpoint")),
+		FailureCount:                 attrInt(params, "failureCount"),
+		MaxRetryAttempts:             cloudCostSyncScheduleMaxRetryAttempts(attrInt(params, "maxRetryAttempts")),
+		RetryBackoffSeconds:          cloudCostSyncScheduleRetryBackoffSeconds(attrInt(params, "retryBackoffSeconds")),
+		NotifyOnFailure:              attrBool(params, "notifyOnFailure"),
+		AutoPauseOnFailure:           attrBool(params, "autoPauseOnFailure"),
+		NotificationOwner:            attrString(params, "notificationOwner"),
+		NotificationRoutes:           cloudCostSyncScheduleNotificationValues(params, "notificationRoutes"),
+		NotificationAssignees:        cloudCostSyncScheduleNotificationValues(params, "notificationAssignees"),
+		NotificationSilenceMinutes:   cloudCostSyncScheduleNotificationSilenceMinutes(params),
+		NotificationWindows:          cloudCostSyncScheduleNotificationWindows(params),
+		NotificationFailureRoutes:    cloudCostSyncScheduleNotificationFailureRoutes(params),
+		NotificationEscalationAt:     cloudCostSyncScheduleNotificationEscalationAt(params),
+		NotificationEscalationRoutes: cloudCostSyncScheduleNotificationValues(params, "notificationEscalationRoutes"),
+		NextRetryAt:                  attrString(params, "nextRetryAt"),
+		AutoPausedAt:                 attrString(params, "autoPausedAt"),
 	}
 }
 
@@ -1192,6 +1203,343 @@ func cloudCostResetScheduleFailureParams(params models.ResAttrs) {
 	delete(params, "autoPauseReason")
 }
 
+func cloudCostSyncScheduleNormalizeNotificationParams(params models.ResAttrs) models.ResAttrs {
+	if params == nil {
+		params = models.ResAttrs{}
+	}
+	owner := strings.TrimSpace(attrString(params, "notificationOwner"))
+	if owner != "" {
+		params["notificationOwner"] = cloudSyncPolicyTruncateString(owner, 80)
+	} else {
+		delete(params, "notificationOwner")
+	}
+	routes := cloudCostSyncScheduleNotificationValues(params, "notificationRoutes")
+	if len(routes) > 0 {
+		params["notificationRoutes"] = routes
+	} else {
+		delete(params, "notificationRoutes")
+	}
+	assignees := cloudCostSyncScheduleNotificationValues(params, "notificationAssignees")
+	if len(assignees) > 0 {
+		params["notificationAssignees"] = assignees
+	} else {
+		delete(params, "notificationAssignees")
+	}
+	silenceMinutes := cloudCostSyncScheduleNotificationSilenceMinutes(params)
+	if silenceMinutes > 0 {
+		params["notificationSilenceMinutes"] = silenceMinutes
+	} else {
+		delete(params, "notificationSilenceMinutes")
+	}
+	windows := cloudCostSyncScheduleNotificationWindows(params)
+	if len(windows) > 0 {
+		params["notificationWindows"] = windows
+	} else {
+		delete(params, "notificationWindows")
+	}
+	failureRoutes := cloudCostSyncScheduleNotificationFailureRoutes(params)
+	if len(failureRoutes) > 0 {
+		params["notificationFailureRoutes"] = failureRoutes
+	} else {
+		delete(params, "notificationFailureRoutes")
+	}
+	escalationAt := cloudCostSyncScheduleNotificationEscalationAt(params)
+	if escalationAt > 0 {
+		params["notificationEscalationAt"] = escalationAt
+	} else {
+		delete(params, "notificationEscalationAt")
+	}
+	escalationRoutes := cloudCostSyncScheduleNotificationValues(params, "notificationEscalationRoutes")
+	if len(escalationRoutes) > 0 {
+		params["notificationEscalationRoutes"] = escalationRoutes
+	} else {
+		delete(params, "notificationEscalationRoutes")
+	}
+	return params
+}
+
+func cloudCostSyncScheduleNotificationValues(params models.ResAttrs, key string) []string {
+	if params == nil {
+		return nil
+	}
+	return cloudSyncPolicyNormalizeRoutingValues(params[key])
+}
+
+func cloudCostSyncScheduleNotificationSilenceMinutes(params models.ResAttrs) int {
+	if params == nil {
+		return 0
+	}
+	minutes := attrInt(params, "notificationSilenceMinutes")
+	if minutes <= 0 {
+		return 0
+	}
+	if minutes > cloudCostSyncScheduleMaxSilenceMins {
+		return cloudCostSyncScheduleMaxSilenceMins
+	}
+	return minutes
+}
+
+func cloudCostSyncScheduleNotificationWindows(params models.ResAttrs) []string {
+	if params == nil {
+		return nil
+	}
+	raw := normalizeStringList(cloudSyncPolicyAttrStringSlice(params["notificationWindows"]))
+	windows := make([]string, 0, len(raw))
+	for _, value := range raw {
+		start, end, ok := cloudSyncPolicyParsePauseWindow(value)
+		if !ok {
+			continue
+		}
+		windows = append(windows, fmt.Sprintf("%02d:%02d-%02d:%02d", start/60, start%60, end/60, end%60))
+	}
+	return dedupeStrings(windows)
+}
+
+func cloudCostSyncScheduleNotificationFailureRoutes(params models.ResAttrs) models.ResAttrs {
+	if params == nil {
+		return models.ResAttrs{}
+	}
+	raw := cloudCostSyncScheduleNotificationFailureRouteMap(params["notificationFailureRoutes"])
+	result := models.ResAttrs{}
+	for category, value := range raw {
+		category = cloudCostSyncScheduleNormalizeFailureCategory(category)
+		if category == "" {
+			continue
+		}
+		routes := cloudSyncPolicyNormalizeRoutingValues(value)
+		if len(routes) == 0 {
+			continue
+		}
+		result[category] = routes
+	}
+	return result
+}
+
+func cloudCostSyncScheduleNotificationFailureRouteMap(value interface{}) models.ResAttrs {
+	switch typed := value.(type) {
+	case string:
+		return cloudCostSyncScheduleParseFailureRouteText(typed)
+	default:
+		return cloudSyncPolicyAttrMap(value)
+	}
+}
+
+func cloudCostSyncScheduleParseFailureRouteText(value string) models.ResAttrs {
+	result := models.ResAttrs{}
+	lines := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '\n' || r == ';'
+	})
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		idx := strings.IndexAny(line, "=:")
+		if idx <= 0 || idx >= len(line)-1 {
+			continue
+		}
+		result[strings.TrimSpace(line[:idx])] = strings.TrimSpace(line[idx+1:])
+	}
+	return result
+}
+
+func cloudCostSyncScheduleNotificationEscalationAt(params models.ResAttrs) int {
+	if params == nil {
+		return 0
+	}
+	value := attrInt(params, "notificationEscalationAt")
+	if value <= 0 {
+		return 0
+	}
+	if value > cloudCostSyncScheduleMaxEscalateAt {
+		return cloudCostSyncScheduleMaxEscalateAt
+	}
+	return value
+}
+
+func cloudCostSyncScheduleApplyNotificationRouting(schedule *models.CloudCostSyncSchedule, params models.ResAttrs, payload models.ResAttrs, reason string, autoPaused bool) models.ResAttrs {
+	if payload == nil {
+		payload = models.ResAttrs{}
+	}
+	if schedule != nil && schedule.Id != "" {
+		payload["notificationSource"] = "cloud_cost_sync_schedule"
+	}
+	failureCategory := cloudCostSyncScheduleFailureCategory(reason)
+	if failureCategory != "" {
+		payload["failureCategory"] = failureCategory
+	}
+	if owner := strings.TrimSpace(attrString(params, "notificationOwner")); owner != "" {
+		payload["notificationOwner"] = owner
+	}
+	routes := cloudCostSyncScheduleNotificationValues(params, "notificationRoutes")
+	if categoryRoutes := cloudCostSyncScheduleNotificationFailureRoutesForCategory(params, failureCategory); len(categoryRoutes) > 0 {
+		routes = append(routes, categoryRoutes...)
+		payload["notificationFailureRoutes"] = categoryRoutes
+	}
+	escalated, escalationReason := cloudCostSyncScheduleNotificationEscalated(params, attrInt(payload, "failureCount"), autoPaused)
+	if escalated {
+		payload["notificationEscalated"] = true
+		payload["notificationEscalationReason"] = escalationReason
+		if escalationAt := cloudCostSyncScheduleNotificationEscalationAt(params); escalationAt > 0 {
+			payload["notificationEscalationAt"] = escalationAt
+		}
+		if escalationRoutes := cloudCostSyncScheduleNotificationValues(params, "notificationEscalationRoutes"); len(escalationRoutes) > 0 {
+			routes = append(routes, escalationRoutes...)
+			payload["notificationEscalationRoutes"] = escalationRoutes
+		}
+	}
+	if len(routes) > 0 {
+		payload["notificationRoutes"] = dedupeStrings(routes)
+	}
+	if assignees := cloudCostSyncScheduleNotificationValues(params, "notificationAssignees"); len(assignees) > 0 {
+		payload["notificationAssignees"] = assignees
+	}
+	if silenceMinutes := cloudCostSyncScheduleNotificationSilenceMinutes(params); silenceMinutes > 0 {
+		payload["notificationSilenceMinutes"] = silenceMinutes
+	}
+	if windows := cloudCostSyncScheduleNotificationWindows(params); len(windows) > 0 {
+		payload["notificationWindows"] = windows
+	}
+	return payload
+}
+
+func cloudCostSyncScheduleNotificationFailureRoutesForCategory(params models.ResAttrs, category string) []string {
+	category = cloudCostSyncScheduleNormalizeFailureCategory(category)
+	if category == "" {
+		return nil
+	}
+	routes := cloudCostSyncScheduleNotificationFailureRoutes(params)
+	return cloudSyncPolicyNormalizeRoutingValues(routes[category])
+}
+
+func cloudCostSyncScheduleNotificationEscalated(params models.ResAttrs, failureCount int, autoPaused bool) (bool, string) {
+	if autoPaused {
+		return true, "auto_paused"
+	}
+	escalationAt := cloudCostSyncScheduleNotificationEscalationAt(params)
+	if escalationAt > 0 && failureCount >= escalationAt {
+		return true, "failure_count"
+	}
+	return false, ""
+}
+
+func cloudCostSyncScheduleNormalizeFailureCategory(value string) string {
+	switch cloudEventNotificationRouteKey(value) {
+	case "rate_limit", "rate-limit", "ratelimit", "throttle", "throttling":
+		return "rate_limit"
+	case "credential", "credentials", "auth", "authentication", "token", "secret":
+		return "credential"
+	case "permission", "permissions", "forbidden", "denied", "authorization", "unauthorized":
+		return "permission"
+	case "network", "timeout", "temporary", "unavailable", "connection":
+		return "network"
+	case "not_found", "not-found", "notfound", "missing", "404":
+		return "not_found"
+	case "config", "configuration", "invalid", "unsupported", "bad_request", "bad-request":
+		return "config"
+	case "unknown", "other", "default":
+		return "unknown"
+	default:
+		return ""
+	}
+}
+
+func cloudCostSyncScheduleFailureCategory(reason string) string {
+	text := strings.ToLower(strings.TrimSpace(reason))
+	switch {
+	case text == "":
+		return "unknown"
+	case strings.Contains(text, "429") ||
+		strings.Contains(text, "too many request") ||
+		strings.Contains(text, "rate limit") ||
+		strings.Contains(text, "ratelimit") ||
+		strings.Contains(text, "throttl") ||
+		strings.Contains(text, "limitexceeded"):
+		return "rate_limit"
+	case strings.Contains(text, "invalid token") ||
+		strings.Contains(text, "expired token") ||
+		strings.Contains(text, "expiredtoken") ||
+		strings.Contains(text, "invalid access key") ||
+		strings.Contains(text, "invalidaccesskey") ||
+		strings.Contains(text, "credential") ||
+		strings.Contains(text, "signature") ||
+		strings.Contains(text, "notauthenticated") ||
+		strings.Contains(text, "unauthenticated"):
+		return "credential"
+	case strings.Contains(text, "access denied") ||
+		strings.Contains(text, "accessdenied") ||
+		strings.Contains(text, "forbidden") ||
+		strings.Contains(text, "not authorized") ||
+		strings.Contains(text, "notauthorized") ||
+		strings.Contains(text, "unauthorized") ||
+		strings.Contains(text, "permission") ||
+		strings.Contains(text, "denied"):
+		return "permission"
+	case strings.Contains(text, "404") ||
+		strings.Contains(text, "not found") ||
+		strings.Contains(text, "notfound") ||
+		strings.Contains(text, "no such") ||
+		strings.Contains(text, "nosuch") ||
+		strings.Contains(text, "does not exist"):
+		return "not_found"
+	case strings.Contains(text, "timeout") ||
+		strings.Contains(text, "timed out") ||
+		strings.Contains(text, "connection") ||
+		strings.Contains(text, "temporary") ||
+		strings.Contains(text, "no such host") ||
+		strings.Contains(text, "dns") ||
+		strings.Contains(text, "eof") ||
+		strings.Contains(text, "503") ||
+		strings.Contains(text, "502") ||
+		strings.Contains(text, "500"):
+		return "network"
+	case strings.Contains(text, "invalid") ||
+		strings.Contains(text, "malformed") ||
+		strings.Contains(text, "parse") ||
+		strings.Contains(text, "unsupported") ||
+		strings.Contains(text, "bad request") ||
+		strings.Contains(text, "empty"):
+		return "config"
+	default:
+		return "unknown"
+	}
+}
+
+func cloudCostSyncScheduleNotificationSuppressed(c *ctx.ServiceContext, schedule *models.CloudCostSyncSchedule, params models.ResAttrs, eventType string, now time.Time) bool {
+	if c == nil || schedule == nil || schedule.Id == "" {
+		return false
+	}
+	windows := cloudCostSyncScheduleNotificationWindows(params)
+	if len(windows) > 0 && !cloudCostSyncScheduleNotificationWindowActive(windows, now) {
+		return true
+	}
+	silenceMinutes := cloudCostSyncScheduleNotificationSilenceMinutes(params)
+	if silenceMinutes <= 0 {
+		return false
+	}
+	since := now.Add(-time.Duration(silenceMinutes) * time.Minute)
+	exists, err := c.DB().Model(&models.CloudEvent{}).
+		Where("org_id = ? and event_type = ? and resource_type = ? and resource_id = ? and occurred_at >= ?",
+			schedule.OrgId, eventType, "cloud_cost_sync_schedule", schedule.Id.String(), since).
+		Exists()
+	if err != nil {
+		logs.Get().WithField("cloudCostSyncScheduleId", schedule.Id.String()).
+			Warnf("check cloud cost sync schedule notification silence failed: %v", err)
+		return false
+	}
+	return exists
+}
+
+func cloudCostSyncScheduleNotificationWindowActive(windows []string, now time.Time) bool {
+	for _, window := range windows {
+		start, end, ok := cloudSyncPolicyParsePauseWindow(window)
+		if ok && cloudSyncPolicyTimeInWindow(now, start, end) {
+			return true
+		}
+	}
+	return false
+}
+
 func cloudCostSyncScheduleFailureEvent(c *ctx.ServiceContext, schedule *models.CloudCostSyncSchedule, params models.ResAttrs, reason string, autoPaused bool, taskDetail *resps.CloudCostSyncTaskDetailResp) {
 	if schedule == nil {
 		return
@@ -1202,7 +1550,10 @@ func cloudCostSyncScheduleFailureEvent(c *ctx.ServiceContext, schedule *models.C
 		eventType = "cost.sync.schedule.auto_paused"
 		title = "成本同步计划已自动暂停"
 	}
-	payload := models.ResAttrs{
+	if !autoPaused && cloudCostSyncScheduleNotificationSuppressed(c, schedule, params, eventType, time.Now()) {
+		return
+	}
+	payload := cloudCostSyncScheduleApplyNotificationRouting(schedule, params, models.ResAttrs{
 		"scheduleId":          schedule.Id.String(),
 		"scheduleName":        schedule.Name,
 		"provider":            schedule.Provider,
@@ -1215,7 +1566,7 @@ func cloudCostSyncScheduleFailureEvent(c *ctx.ServiceContext, schedule *models.C
 		"nextRetryAt":         attrString(params, "nextRetryAt"),
 		"autoPaused":          autoPaused,
 		"reason":              reason,
-	}
+	}, reason, autoPaused)
 	if taskDetail != nil {
 		payload["taskId"] = taskDetail.Id.String()
 		payload["taskStatus"] = taskDetail.Status

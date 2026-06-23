@@ -73,7 +73,7 @@ func newCmdbCloudRelationIndex(assets []models.CmdbAsset) *cmdbCloudRelationInde
 		index.add(asset.Name, asset)
 		index.add(asset.PublicIp, asset)
 		index.add(asset.PrivateIp, asset)
-		for _, key := range []string{"selfLink", "azureId", "id", "ipAddress"} {
+		for _, key := range []string{"selfLink", "azureId", "id", "uid", "name", "ipAddress", "publicIp", "publicIpAddress", "allocationId", "vcnId", "vpcId", "subnetId", "routeTableId", "clusterId", "clusterName", "namespace", "namespaceId", "namespaceName", "ownerUid", "ownerName"} {
 			index.add(attrString(asset.Attributes, key), asset)
 		}
 	}
@@ -144,31 +144,82 @@ func (b *cmdbCloudRelationBuilder) inferForAsset(asset models.CmdbAsset) {
 	case models.CmdbAssetTypeNetworkVpc:
 		b.addContainsRefs(asset, asset, []string{"subnetworks", "subnetIds"}, []string{models.CmdbAssetTypeNetworkSubnet}, "vpc_subnets")
 	case models.CmdbAssetTypeNetworkSubnet:
-		b.addReverseContainsRefs(asset, []string{"vnetId", "vpcId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "subnet_parent_network")
-		b.addDependsOnRefs(asset, []string{"networkSecurityGroupId", "securityGroupId", "securityGroupIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "subnet_security")
+		b.addReverseContainsRefs(asset, []string{"vnetId", "vpcId", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "subnet_parent_network")
+		b.addDependsOnRefs(asset, []string{"networkSecurityGroupId", "networkSecurityGroupIds", "securityGroupId", "securityGroupIds", "securityListIds", "nsgIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "subnet_security")
+	case models.CmdbAssetTypeNetworkRouteTable:
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "route_table_parent_network")
+		b.addDependsOnRefs(asset, []string{"subnetIds"}, []string{models.CmdbAssetTypeNetworkSubnet}, "route_table_subnets")
+		b.addDependsOnRefs(asset, []string{"natGatewayIds"}, []string{models.CmdbAssetTypeNetworkNatGateway}, "route_table_nat_gateway")
+		b.addDependsOnRefs(asset, []string{"internetGatewayIds", "gatewayIds"}, []string{models.CmdbAssetTypeNetworkInternetGateway}, "route_table_internet_gateway")
+		b.addDependsOnRefs(asset, []string{"serviceGatewayIds"}, []string{models.CmdbAssetTypeNetworkServiceGateway}, "route_table_service_gateway")
+		b.addDependsOnRefs(asset, []string{"drgIds"}, []string{models.CmdbAssetTypeNetworkDrg}, "route_table_drg")
+	case models.CmdbAssetTypeNetworkNatGateway:
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "nat_gateway_parent_network")
+		b.addReverseContainsRefs(asset, []string{"subnetId", "subnetIds"}, []string{models.CmdbAssetTypeNetworkSubnet}, "nat_gateway_subnet")
+		b.addDependsOnRefs(asset, []string{"publicIpIds", "allocationIds"}, []string{models.CmdbAssetTypePublicIP}, "nat_gateway_public_ip")
+	case models.CmdbAssetTypeNetworkInternetGateway:
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vpcIds", "vcnId", "vcnIds", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "internet_gateway_parent_network")
+	case models.CmdbAssetTypeNetworkServiceGateway:
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vpcIds", "vcnId", "vcnIds", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "service_gateway_parent_network")
+	case models.CmdbAssetTypeNetworkDrg:
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vpcIds", "vcnId", "vcnIds", "network", "networkId", "attachedVcnIds"}, []string{models.CmdbAssetTypeNetworkVpc}, "drg_parent_network")
 	case models.CmdbAssetTypeNetworkSecurityGroup:
-		b.addReverseContainsRefs(asset, []string{"vpcId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "security_parent_network")
+		b.addReverseContainsRefs(asset, []string{"vpcId", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "security_parent_network")
 		b.addDependsOnRefs(asset, []string{"subnetIds"}, []string{models.CmdbAssetTypeNetworkSubnet}, "security_subnets")
 	case models.CmdbAssetTypeComputeInstance:
-		b.addReverseContainsRefs(asset, []string{"networkIds", "vpcIds", "vpcId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "compute_network")
+		b.addReverseContainsRefs(asset, []string{"networkIds", "vpcIds", "vpcId", "vcnIds", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "compute_network")
 		b.addReverseContainsRefs(asset, []string{"subnetIds", "subnetwork", "subnetworkIds", "subnetId"}, []string{models.CmdbAssetTypeNetworkSubnet}, "compute_subnet")
-		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "compute_security")
+		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId", "networkSecurityGroupIds", "nsgIds", "securityListIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "compute_security")
 		b.addDependsOnRefs(asset, []string{"publicIpIds", "publicIpId", "publicIPAddressId"}, []string{models.CmdbAssetTypePublicIP}, "compute_public_ip")
 		b.addDependsOnRefs(asset, []string{"diskIds", "diskId", "volumeIds", "volumeId"}, []string{models.CmdbAssetTypeBlockVolume}, "compute_storage")
 	case models.CmdbAssetTypeBlockVolume:
 		b.addReverseDependsOnRefs(asset, []string{"users", "attachedInstanceIds", "instanceIds"}, []string{models.CmdbAssetTypeComputeInstance}, "storage_users")
 	case models.CmdbAssetTypeLoadBalancer:
-		b.addReverseContainsRefs(asset, []string{"networkIds", "vpcIds", "vpcId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "lb_network")
+		b.addReverseContainsRefs(asset, []string{"networkIds", "vpcIds", "vpcId", "vcnIds", "vcnId", "network", "networkId"}, []string{models.CmdbAssetTypeNetworkVpc}, "lb_network")
 		b.addReverseContainsRefs(asset, []string{"subnetIds", "subnetwork", "subnetworkIds", "subnetId"}, []string{models.CmdbAssetTypeNetworkSubnet}, "lb_subnet")
+		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId", "networkSecurityGroupIds", "nsgIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "lb_security")
 		b.addDependsOnRefs(asset, []string{"publicIpIds", "publicIpId", "publicIPAddressId"}, []string{models.CmdbAssetTypePublicIP}, "lb_public_ip")
+		b.addDependsOnRefs(asset, []string{"targetInstanceIds", "targetIds", "targetIpAddresses"}, []string{models.CmdbAssetTypeComputeInstance}, "lb_targets")
 	case models.CmdbAssetTypeKubernetesCluster:
-		b.addReverseContainsRefs(asset, []string{"network", "networkId", "networkIds", "vpcId", "vpcIds"}, []string{models.CmdbAssetTypeNetworkVpc}, "kubernetes_network")
+		b.addReverseContainsRefs(asset, []string{"network", "networkId", "networkIds", "vpcId", "vpcIds", "vcnId", "vcnIds"}, []string{models.CmdbAssetTypeNetworkVpc}, "kubernetes_network")
 		b.addReverseContainsRefs(asset, []string{"subnetIds", "subnetwork", "subnetworkIds", "subnetId"}, []string{models.CmdbAssetTypeNetworkSubnet}, "kubernetes_subnet")
-		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "kubernetes_security")
+		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId", "networkSecurityGroupIds", "nsgIds", "securityListIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "kubernetes_security")
+		b.addContainsRefs(asset, asset, []string{"namespaceIds", "namespaces"}, []string{models.CmdbAssetTypeKubernetesNamespace}, "kubernetes_namespaces")
+		b.addContainsRefs(asset, asset, []string{"nodeIds", "nodes"}, []string{models.CmdbAssetTypeKubernetesNode}, "kubernetes_nodes")
+		b.addContainsRefs(asset, asset, []string{"workloadIds", "workloads", "deployments", "statefulSets", "daemonSets", "replicaSets", "jobs", "cronJobs"}, []string{models.CmdbAssetTypeKubernetesWorkload}, "kubernetes_workloads")
+		b.addContainsRefs(asset, asset, []string{"podIds", "pods"}, []string{models.CmdbAssetTypeKubernetesPod}, "kubernetes_pods")
+		b.addContainsRefs(asset, asset, []string{"serviceIds", "services"}, []string{models.CmdbAssetTypeKubernetesService}, "kubernetes_services")
+		b.addContainsRefs(asset, asset, []string{"ingressIds", "ingresses"}, []string{models.CmdbAssetTypeKubernetesIngress}, "kubernetes_ingresses")
+	case models.CmdbAssetTypeKubernetesNamespace:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_namespace_cluster")
+		b.addContainsRefs(asset, asset, []string{"workloadIds", "workloads", "deployments", "statefulSets", "daemonSets", "replicaSets", "jobs", "cronJobs"}, []string{models.CmdbAssetTypeKubernetesWorkload}, "kubernetes_namespace_workloads")
+		b.addContainsRefs(asset, asset, []string{"podIds", "pods"}, []string{models.CmdbAssetTypeKubernetesPod}, "kubernetes_namespace_pods")
+		b.addContainsRefs(asset, asset, []string{"serviceIds", "services"}, []string{models.CmdbAssetTypeKubernetesService}, "kubernetes_namespace_services")
+		b.addContainsRefs(asset, asset, []string{"ingressIds", "ingresses"}, []string{models.CmdbAssetTypeKubernetesIngress}, "kubernetes_namespace_ingresses")
+	case models.CmdbAssetTypeKubernetesNode:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_node_cluster")
+	case models.CmdbAssetTypeKubernetesWorkload:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_workload_cluster")
+		b.addReverseContainsRefs(asset, []string{"namespaceId", "namespace", "namespaceName"}, []string{models.CmdbAssetTypeKubernetesNamespace}, "kubernetes_workload_namespace")
+		b.addContainsRefs(asset, asset, []string{"podIds", "pods"}, []string{models.CmdbAssetTypeKubernetesPod}, "kubernetes_workload_pods")
+	case models.CmdbAssetTypeKubernetesPod:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_pod_cluster")
+		b.addReverseContainsRefs(asset, []string{"namespaceId", "namespace", "namespaceName"}, []string{models.CmdbAssetTypeKubernetesNamespace}, "kubernetes_pod_namespace")
+		b.addReverseContainsRefs(asset, []string{"ownerUid", "ownerName", "workloadId", "workloadName"}, []string{models.CmdbAssetTypeKubernetesWorkload}, "kubernetes_pod_owner")
+		b.addDependsOnRefs(asset, []string{"nodeId", "nodeName"}, []string{models.CmdbAssetTypeKubernetesNode}, "kubernetes_pod_node")
+	case models.CmdbAssetTypeKubernetesService:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_service_cluster")
+		b.addReverseContainsRefs(asset, []string{"namespaceId", "namespace", "namespaceName"}, []string{models.CmdbAssetTypeKubernetesNamespace}, "kubernetes_service_namespace")
+		b.addDependsOnRefs(asset, []string{"workloadIds", "workloadNames", "targetWorkloads", "selectorWorkloads"}, []string{models.CmdbAssetTypeKubernetesWorkload}, "kubernetes_service_workloads")
+		b.addDependsOnRefs(asset, []string{"podIds", "podNames", "targetPods", "endpoints"}, []string{models.CmdbAssetTypeKubernetesPod}, "kubernetes_service_pods")
+	case models.CmdbAssetTypeKubernetesIngress:
+		b.addReverseContainsRefs(asset, []string{"clusterId", "clusterName"}, []string{models.CmdbAssetTypeKubernetesCluster}, "kubernetes_ingress_cluster")
+		b.addReverseContainsRefs(asset, []string{"namespaceId", "namespace", "namespaceName"}, []string{models.CmdbAssetTypeKubernetesNamespace}, "kubernetes_ingress_namespace")
+		b.addDependsOnRefs(asset, []string{"serviceIds", "serviceNames", "backendServices", "rules"}, []string{models.CmdbAssetTypeKubernetesService}, "kubernetes_ingress_services")
 	case models.CmdbAssetTypeRelationalDatabase, models.CmdbAssetTypeRedisCache:
-		b.addReverseContainsRefs(asset, []string{"network", "networkId", "networkIds", "vpcId", "vpcIds"}, []string{models.CmdbAssetTypeNetworkVpc}, "data_network")
+		b.addReverseContainsRefs(asset, []string{"network", "networkId", "networkIds", "vpcId", "vpcIds", "vcnId", "vcnIds"}, []string{models.CmdbAssetTypeNetworkVpc}, "data_network")
 		b.addReverseContainsRefs(asset, []string{"subnetIds", "subnetwork", "subnetworkIds", "subnetId", "vSwitchId"}, []string{models.CmdbAssetTypeNetworkSubnet}, "data_subnet")
-		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "data_security")
+		b.addDependsOnRefs(asset, []string{"securityGroupIds", "securityGroupId", "networkSecurityGroupId", "networkSecurityGroupIds", "nsgIds", "securityListIds"}, []string{models.CmdbAssetTypeNetworkSecurityGroup}, "data_security")
 	}
 }
 
@@ -253,10 +304,12 @@ func cmdbCloudStringRefs(value interface{}) []string {
 		}
 	case []models.ResAttrs:
 		for _, item := range typed {
-			refs = append(refs, attrString(item, "id"), attrString(item, "selfLink"))
+			refs = append(refs, cmdbCloudObjectRefs(item)...)
 		}
+	case map[string]interface{}:
+		refs = append(refs, cmdbCloudObjectRefs(models.ResAttrs(typed))...)
 	case models.ResAttrs:
-		refs = append(refs, attrString(typed, "id"), attrString(typed, "selfLink"), attrString(typed, "network"), attrString(typed, "subnetwork"))
+		refs = append(refs, cmdbCloudObjectRefs(typed)...)
 	default:
 		text := strings.TrimSpace(fmt.Sprintf("%v", typed))
 		if text != "" && text != "<nil>" {
@@ -264,6 +317,14 @@ func cmdbCloudStringRefs(value interface{}) []string {
 		}
 	}
 	return nonEmptyStrings(refs)
+}
+
+func cmdbCloudObjectRefs(attrs models.ResAttrs) []string {
+	refs := make([]string, 0)
+	for _, key := range []string{"id", "selfLink", "uid", "name", "namespace", "namespaceId", "namespaceName", "network", "networkId", "vpcId", "vcnId", "subnetwork", "subnetId", "routeTableId", "networkEntityId", "serviceId", "clusterId", "clusterName", "ownerUid", "ownerName", "workloadId", "workloadName", "nodeId", "nodeName", "serviceName"} {
+		refs = append(refs, attrString(attrs, key))
+	}
+	return refs
 }
 
 func cmdbCloudLastPathSegment(value string) string {

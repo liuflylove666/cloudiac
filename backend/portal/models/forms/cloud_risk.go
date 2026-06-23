@@ -42,3 +42,25 @@ type SuppressCloudRiskForm struct {
 	SuppressedUntil string    `form:"suppressedUntil" json:"suppressedUntil" binding:"required"`
 	Reason          string    `form:"reason" json:"reason" binding:"required,max=255"`
 }
+
+type CreateCloudRiskRemediationTicketForm struct {
+	BaseForm
+
+	Id          models.Id       `uri:"id" json:"id" binding:"required,max=32" swaggerignore:"true"`
+	ConnectorId models.Id       `form:"connectorId" json:"connectorId" binding:"max=32"`
+	Title       string          `form:"title" json:"title" binding:"max=255"`
+	Description string          `form:"description" json:"description"`
+	Priority    string          `form:"priority" json:"priority" binding:"max=32"`
+	Params      models.ResAttrs `form:"params" json:"params"`
+	DryRun      bool            `form:"dryRun" json:"dryRun"`
+}
+
+type AdoptCloudRiskRecommendationForm struct {
+	BaseForm
+
+	Id         models.Id `uri:"id" json:"id" binding:"required,max=32" swaggerignore:"true"`
+	Action     string    `form:"action" json:"action" binding:"required,max=64"`
+	TargetType string    `form:"targetType" json:"targetType" binding:"max=64"`
+	TargetId   string    `form:"targetId" json:"targetId" binding:"max=128"`
+	Comment    string    `form:"comment" json:"comment" binding:"max=255"`
+}

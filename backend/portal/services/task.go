@@ -118,6 +118,14 @@ func GetResourceIdByAddressAndTaskId(sess *db.Session, address string, lastResTa
 }
 
 func CloneNewDriftTask(tx *db.Session, src models.Task, env *models.Env) (*models.Task, e.Error) {
+	return cloneNewDriftTask(tx, src, env, env.AutoApproval)
+}
+
+func CloneNewDriftTaskWithAutoApprove(tx *db.Session, src models.Task, env *models.Env, autoApprove bool) (*models.Task, e.Error) {
+	return cloneNewDriftTask(tx, src, env, autoApprove)
+}
+
+func cloneNewDriftTask(tx *db.Session, src models.Task, env *models.Env, autoApprove bool) (*models.Task, e.Error) {
 	// logger := logs.Get().WithField("func", "CreateTask")
 	// logger = logger.WithField("taskId", pt.Id)
 	tpl, err := GetTemplateById(tx, src.TplId)
@@ -155,7 +163,7 @@ func CloneNewDriftTask(tx *db.Session, src models.Task, env *models.Env) (*model
 	task.RepoAddr = repoAddr
 	task.CommitId = src.CommitId
 	task.CreatorId = consts.SysUserId
-	task.AutoApprove = env.AutoApproval
+	task.AutoApprove = autoApprove
 	task.StopOnViolation = env.StopOnViolation
 	// newCommonTask方法完成了对keyId赋值，这里不需要在进行一次赋值了
 	//task.KeyId = env.KeyId
@@ -550,7 +558,8 @@ func changeTaskStatusSetAttrs(dbSess *db.Session, task *models.Task, status, mes
 
 // ChangeTaskStatus 修改任务状态(同步修改 StartAt、EndAt 等)，并同步修改 env 状态
 // 该函数只修改以下字段:
-// 	status, message, start_at, end_at, aborting
+//
+//	status, message, start_at, end_at, aborting
 func ChangeTaskStatus(dbSess *db.Session, task *models.Task, status, message string, skipUpdateEnv bool) e.Error {
 	preStatus := task.Status
 	if preStatus == status && message == "" {
@@ -1095,6 +1104,7 @@ func TaskStatusChangeSendMessage(task *models.Task, status string) {
 
 // ChangeScanTaskStatus 修改扫描任务状态
 // 该函数只更新以下字段:
+//
 //	"status", "policy_status", "message", "start_at", "end_at"
 func ChangeScanTaskStatus(dbSess *db.Session, task *models.ScanTask, status, policyStatus, message string) e.Error {
 	if task.Status == status && task.PolicyStatus == policyStatus && message == "" {

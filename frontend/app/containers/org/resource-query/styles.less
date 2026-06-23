@@ -11,6 +11,7 @@
   display: flex !important;
   flex-wrap: wrap;
   align-items: center;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
@@ -18,8 +19,20 @@
 .actionBar {
   display: flex !important;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-end;
   width: 100%;
+
+  :global(.ant-upload) {
+    display: inline-flex;
+  }
+}
+
+.selectFilter {
+  flex: 1 1 180px;
+  min-width: 180px;
+  max-width: 100%;
 }
 
 .keywordSearch {
@@ -34,10 +47,170 @@
   max-width: 100%;
 }
 
+.assetListContent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+
+  > :global(.ant-space-item) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  :global(.ant-table-wrapper),
+  :global(.ant-table),
+  :global(.ant-table-container),
+  :global(.ant-spin-nested-loading),
+  :global(.ant-spin-container) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  :global(.ant-table-content) {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto !important;
+  }
+}
+
+.cloudAssetListContent {
+  .toolbar,
+  .assetInsightCollapse,
+  .assetTableShell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .filterBar {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .keywordSearch,
+  .dslSearch,
+  .selectFilter {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    flex: none;
+  }
+
+  .actionBar {
+    min-width: 0;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+
+  .actionBar :global(.ant-checkbox-wrapper) {
+    min-width: 0;
+  }
+
+  .actionBar :global(.ant-btn),
+  .actionBar :global(.ant-upload) {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .actionBar :global(.ant-btn) {
+    white-space: normal;
+  }
+}
+
+.assetTableShell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+
+  :global(.ant-table-wrapper) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  :global(.ant-table) {
+    min-width: 100%;
+  }
+
+  :global(.ant-table-placeholder .ant-empty) {
+    width: 100%;
+    min-width: 240px;
+  }
+}
+
+.assetInsightCollapse {
+  overflow: hidden;
+  border: 1px solid #e3edf8;
+  border-radius: 4px;
+  background: #fff;
+
+  :global(.ant-collapse-item) {
+    border-bottom-color: #edf2f7;
+  }
+
+  :global(.ant-collapse-header) {
+    padding: 10px 14px !important;
+  }
+
+  :global(.ant-collapse-content-box) {
+    padding: 12px !important;
+    background: #fff;
+  }
+}
+
+.assetInsightHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.assetInsightHeaderMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.assetInsightHeaderDesc {
+  margin-top: 2px;
+  color: #6b778c;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.assetInsightHeaderStats {
+  flex: 0 0 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .coveragePanel {
   padding: 14px;
   background: #f8fbff;
   border: 1px solid #e3edf8;
+  border-radius: 4px;
+}
+
+.kubernetesPanel {
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 4px;
+}
+
+.governancePanel {
+  padding: 14px;
+  background: #fbfcf8;
+  border: 1px solid #e5edda;
   border-radius: 4px;
 }
 
@@ -106,12 +279,44 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
+
+  > div {
+    min-width: 0;
+  }
+}
+
+.governanceTableGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+
+  > div {
+    min-width: 0;
+  }
 }
 
 .coverageTableTitle {
   margin-bottom: 8px;
   color: #172b4d;
   font-weight: 600;
+}
+
+.coveragePanel,
+.kubernetesPanel,
+.governancePanel {
+  :global(.ant-table-small .ant-table-thead > tr > th),
+  :global(.ant-table-small .ant-table-tbody > tr > td) {
+    padding: 8px 7px;
+  }
+
+  :global(.ant-tag) {
+    margin-right: 0;
+  }
+}
+
+.kubernetesTable {
+  margin-top: 14px;
 }
 
 .syncTaskSummary {
@@ -277,6 +482,22 @@
   justify-content: center;
 }
 
+.relationFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.relationLoadMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 .ownershipForm {
   max-width: 640px;
 }
@@ -327,16 +548,22 @@
   .coverageMetricGrid,
   .syncTaskSummary,
   .coverageProgressGrid,
-  .coverageTableGrid {
+  .coverageTableGrid,
+  .governanceTableGrid {
     display: flex;
     flex-direction: column;
   }
 
   .coverageHeader,
   .coverageProgressMeta,
+  .assetInsightHeader,
   .syncTaskTrendHeader {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .assetInsightHeaderStats {
+    justify-content: flex-start;
   }
 
   .syncTaskBreakdownGrid {
@@ -349,10 +576,127 @@
   }
 }
 
+@media (max-width: 980px) {
+  .assetInsightHeader,
+  .coverageHeader,
+  .coverageProgressMeta {
+    align-items: flex-start;
+  }
+
+  .assetInsightHeader {
+    flex-wrap: wrap;
+  }
+
+  .assetInsightHeaderMain {
+    flex: 1 1 260px;
+  }
+
+  .assetInsightHeaderStats {
+    flex: 1 1 180px;
+    justify-content: flex-start;
+  }
+
+  .coverageProgressGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .keywordSearch,
+  .dslSearch {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+  }
+
+  .selectFilter {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+  }
+
+  .actionBar {
+    justify-content: flex-start;
+  }
+
+  .actionBar :global(.ant-btn),
+  .actionBar :global(.ant-upload) {
+    flex: 0 0 auto;
+  }
+
+  .actionBar :global(.ant-btn) {
+    min-width: 112px;
+  }
+
+  .actionBar :global(.ant-upload) :global(.ant-btn) {
+    width: 112px;
+  }
+}
+
+@media (max-width: 900px) {
+  .cloudAssetListContent {
+    .filterBar {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .actionBar {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+    }
+
+    .actionBar :global(.ant-checkbox-wrapper) {
+      grid-column: 1 / -1;
+      align-items: center;
+    }
+
+    .actionBar :global(.ant-btn),
+    .actionBar :global(.ant-upload) {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .actionBar :global(.ant-upload) {
+      display: flex;
+    }
+
+    .assetInsightHeaderStats {
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
+}
+
+@media (max-width: 760px) {
+  .assetInsightHeader,
+  .coverageHeader,
+  .coverageProgressMeta {
+    flex-direction: column;
+  }
+
+  .assetInsightHeaderMain,
+  .assetInsightHeaderStats {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .keywordSearch,
+  .dslSearch,
+  .selectFilter {
+    flex: 1 1 100%;
+  }
+
+  .cloudAssetListContent {
+    .actionBar {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
+
 @media (max-width: 1180px) {
   .coverageMetricGrid,
-  .syncTaskSummary,
-  .coverageTableGrid {
+  .syncTaskSummary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coverageTableGrid,
+  .governanceTableGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

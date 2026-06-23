@@ -29,6 +29,15 @@ func (Cmdb) AssetDetail(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbAssetDetail(c.Service(), &form))
 }
 
+// AssetRelations 查询 CMDB 资产关系图关系和摘要
+func (Cmdb) AssetRelations(c *ctx.GinRequest) {
+	form := forms.CmdbAssetRelationsForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CmdbAssetRelations(c.Service(), &form))
+}
+
 // ExportAssets 导出组织 CMDB 资产
 func (Cmdb) ExportAssets(c *ctx.GinRequest) {
 	form := forms.ExportCmdbAssetForm{}
@@ -50,6 +59,16 @@ func (Cmdb) ImportAssets(c *ctx.GinRequest) {
 		return
 	}
 	c.JSONResult(apps.ImportCmdbAssets(c.Service(), &form))
+}
+
+// ImportTemplate 下载组织 CMDB 资产导入模板
+func (Cmdb) ImportTemplate(c *ctx.GinRequest) {
+	file, err := apps.CmdbAssetImportTemplate()
+	if err != nil {
+		c.JSONError(err)
+		return
+	}
+	c.FileDownloadResponse(file.Data, file.Filename, file.ContentType)
 }
 
 // SearchApplications 查询 CMDB 应用依赖视图
@@ -79,6 +98,20 @@ func (Cmdb) UpdateApplicationRelations(c *ctx.GinRequest) {
 	c.JSONResult(apps.UpdateCmdbApplicationRelations(c.Service(), &form))
 }
 
+// RiskRuleConfig 查询 CMDB 应用风险规则配置
+func (Cmdb) RiskRuleConfig(c *ctx.GinRequest) {
+	c.JSONResult(apps.CmdbRiskRuleConfig(c.Service()))
+}
+
+// UpdateRiskRuleConfig 更新 CMDB 应用风险规则配置
+func (Cmdb) UpdateRiskRuleConfig(c *ctx.GinRequest) {
+	form := forms.UpdateCmdbRiskRuleConfigForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.UpdateCmdbRiskRuleConfig(c.Service(), &form))
+}
+
 // UpdateAssetOwnership 更新 CMDB 资产归属信息
 func (Cmdb) UpdateAssetOwnership(c *ctx.GinRequest) {
 	form := forms.UpdateCmdbAssetOwnershipForm{}
@@ -106,8 +139,22 @@ func (Cmdb) AssetFilters(c *ctx.GinRequest) {
 	c.JSONResult(apps.CmdbAssetFilters(c.Service(), &form))
 }
 
+// AssetPermissions 查询 CMDB 资产编辑、导出和治理权限
+func (Cmdb) AssetPermissions(c *ctx.GinRequest) {
+	c.JSONResult(apps.CmdbAssetPermissions(c.Service()))
+}
+
+// AssetGovernanceReport 查询 CMDB 资产成本、合规和生命周期治理报表
+func (Cmdb) AssetGovernanceReport(c *ctx.GinRequest) {
+	c.JSONResult(apps.CmdbAssetGovernanceReport(c.Service()))
+}
+
 // BackfillIacResources 从 CloudIaC 现有 IaC 资源回填 CMDB
 func (Cmdb) BackfillIacResources(c *ctx.GinRequest) {
+	if err := apps.EnsureCmdbOrgAdminPermission(c.Service(), "同步 IaC 资源"); err != nil {
+		c.JSONError(err)
+		return
+	}
 	c.JSONResult(apps.BackfillCmdbAssetsFromIac(c.Service()))
 }
 
@@ -147,6 +194,10 @@ func (Cmdb) SyncTaskRerunGroupDetail(c *ctx.GinRequest) {
 func (Cmdb) StartSyncTask(c *ctx.GinRequest) {
 	form := forms.CreateCmdbSyncTaskForm{}
 	if err := c.Bind(&form); err != nil {
+		return
+	}
+	if err := apps.EnsureCmdbOrgAdminPermission(c.Service(), "启动 CMDB 云采集任务"); err != nil {
+		c.JSONError(err)
 		return
 	}
 	c.JSONResult(apps.StartCmdbSyncTask(c.Service(), &form))

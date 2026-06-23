@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,10 +79,14 @@ func SearchCmdbSyncTasks(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskFo
 		query = form.Order(query)
 	}
 
-	tasks := make([]resps.CmdbSyncTaskResp, 0)
+	modelTasks := make([]models.CmdbSyncTask, 0)
 	p := page.New(form.CurrentPage(), form.PageSize(), query)
-	if err := p.Scan(&tasks); err != nil {
+	if err := p.Scan(&modelTasks); err != nil {
 		return nil, e.New(e.DBError, err)
+	}
+	tasks := make([]resps.CmdbSyncTaskResp, 0, len(modelTasks))
+	for _, task := range modelTasks {
+		tasks = append(tasks, cmdbSyncTaskResp(task))
 	}
 
 	return &resps.CmdbSyncTaskPageResp{
@@ -151,16 +156,25 @@ func cmdbSyncTaskSummary(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskFo
 		summary.FailureRate = cmdbSyncTaskRate(summary.FailedCount, summary.TotalCount)
 	}
 	cmdbSyncTaskApplyFailureAlert(&summary)
-	if summary.LastSuccessAt, dbErr = cmdbSyncTaskLastStatusAt(c, form, models.CmdbSyncTaskComplete); dbErr != nil {
+	if summary.LastSuccessTask, dbErr = cmdbSyncTaskLastStatusTask(c, form, models.CmdbSyncTaskComplete); dbErr != nil {
 		return summary, e.New(e.DBError, dbErr)
 	}
-	if summary.LastFailureAt, dbErr = cmdbSyncTaskLastStatusAt(c, form, models.CmdbSyncTaskFailed); dbErr != nil {
+	if summary.LastSuccessTask != nil {
+		summary.LastSuccessAt = cmdbSyncTaskBriefOccurredAt(summary.LastSuccessTask)
+	}
+	if summary.LastFailureTask, dbErr = cmdbSyncTaskLastStatusTask(c, form, models.CmdbSyncTaskFailed); dbErr != nil {
 		return summary, e.New(e.DBError, dbErr)
+	}
+	if summary.LastFailureTask != nil {
+		summary.LastFailureAt = cmdbSyncTaskBriefOccurredAt(summary.LastFailureTask)
 	}
 	if summary.Trend, dbErr = cmdbSyncTaskTrend(c, form, trendRange); dbErr != nil {
 		return summary, e.New(e.DBError, dbErr)
 	}
 	if summary.Regions, summary.AssetTypes, dbErr = cmdbSyncTaskBreakdowns(c, form); dbErr != nil {
+		return summary, e.New(e.DBError, dbErr)
+	}
+	if summary.ApiMetrics, dbErr = cmdbSyncTaskAPIMetricBreakdowns(c, form, trendRange); dbErr != nil {
 		return summary, e.New(e.DBError, dbErr)
 	}
 	return summary, nil
@@ -186,6 +200,21 @@ func cmdbSyncTaskLastStatusAt(c *ctx.ServiceContext, form *forms.SearchCmdbSyncT
 		return task.CreatedAt, nil
 	}
 	return task.EndedAt, nil
+}
+
+func cmdbSyncTaskLastStatusTask(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskForm, status string) (*resps.CmdbSyncTaskBriefResp, error) {
+	task := models.CmdbSyncTask{}
+	if err := cmdbSyncTaskSearchQuery(c, form).
+		Where("status = ?", status).
+		Order("ended_at desc").
+		Order("created_at desc").
+		First(&task); err != nil {
+		if e.IsRecordNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return cmdbSyncTaskBriefResp(task), nil
 }
 
 func cmdbSyncTaskTrendDays(form *forms.SearchCmdbSyncTaskForm) int {
@@ -350,6 +379,13 @@ type cmdbSyncTaskBreakdownAccumulator struct {
 	Collected     int64
 }
 
+const cmdbSyncTaskAPIMetricBreakdownLimit = 10
+const cmdbSyncTaskSlowAPIThresholdMs int64 = 1000
+const cmdbSyncTaskSlowAPIThresholdMaxMs int64 = 600000
+const cmdbSyncTaskSlowAPIEventSilenceMaxMinutes int64 = 10080
+const cmdbSyncTaskSlowAPIEventType = "cloud.sync.task.slow_api_detected"
+const cmdbSyncTaskSlowAPIEventTopLimit = 10
+
 func cmdbSyncTaskBreakdowns(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskForm) ([]resps.CmdbSyncTaskBreakdown, []resps.CmdbSyncTaskBreakdown, error) {
 	tasks := make([]models.CmdbSyncTask, 0)
 	if err := cmdbSyncTaskSearchQuery(c, form).
@@ -364,6 +400,331 @@ func cmdbSyncTaskBreakdowns(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTas
 		cmdbSyncTaskAddMetricBreakdown(assetTypeAcc, task.Status, task.Stats, "assetTypeMetrics", "assetType", []string(task.AssetTypes))
 	}
 	return cmdbSyncTaskBreakdownList(regionAcc), cmdbSyncTaskBreakdownList(assetTypeAcc), nil
+}
+
+type cmdbSyncTaskAPIMetricAccumulator struct {
+	Key             string
+	Provider        string
+	Region          string
+	Service         string
+	Path            string
+	CallCount       int64
+	FailedCount     int64
+	RetriedCount    int64
+	TotalDurationMs int64
+	MaxDurationMs   int64
+	Trend           map[string]*cmdbSyncTaskAPIMetricTrendAccumulator
+}
+
+type cmdbSyncTaskAPIMetricTrendAccumulator struct {
+	Date            string
+	CallCount       int64
+	FailedCount     int64
+	RetriedCount    int64
+	TotalDurationMs int64
+	MaxDurationMs   int64
+}
+
+func cmdbSyncTaskAPIMetricBreakdowns(c *ctx.ServiceContext, form *forms.SearchCmdbSyncTaskForm, trendRange cmdbSyncTaskTrendRange) ([]resps.CmdbSyncTaskApiMetric, error) {
+	tasks := make([]models.CmdbSyncTask, 0)
+	if err := cmdbSyncTaskSearchQuery(c, form).
+		Where("created_at >= ? and created_at < ?", trendRange.Start, trendRange.End.AddDate(0, 0, 1)).
+		Select("created_at, stats").
+		Scan(&tasks); err != nil {
+		return nil, err
+	}
+	acc := make(map[string]*cmdbSyncTaskAPIMetricAccumulator)
+	for _, task := range tasks {
+		date := time.Time(task.CreatedAt).Format("2006-01-02")
+		for _, metric := range cmdbSyncTaskAPIMetricAttrsList(task.Stats) {
+			provider := cmdbSyncTaskMetricText(metric["provider"])
+			region := cmdbSyncTaskMetricText(metric["region"])
+			service := cmdbSyncTaskMetricText(metric["service"])
+			path := cmdbSyncTaskMetricText(metric["path"])
+			if provider == "" {
+				provider = "unknown"
+			}
+			if region == "" {
+				region = "unknown"
+			}
+			if service == "" {
+				service = "unknown"
+			}
+			if path == "" {
+				path = "unknown"
+			}
+			key := strings.Join([]string{provider, region, service, path}, "|")
+			item, ok := acc[key]
+			if !ok {
+				item = &cmdbSyncTaskAPIMetricAccumulator{
+					Key:      key,
+					Provider: provider,
+					Region:   region,
+					Service:  service,
+					Path:     path,
+					Trend:    make(map[string]*cmdbSyncTaskAPIMetricTrendAccumulator),
+				}
+				acc[key] = item
+			}
+			durationMs := cmdbSyncTaskMetricInt64(metric["durationMs"])
+			retried := cmdbSyncTaskMetricInt64(metric["retryCount"]) > 0 || cmdbSyncTaskMetricInt64(metric["attempts"]) > 1
+			failed := cmdbSyncTaskMetricText(metric["status"]) == "failed"
+			item.CallCount++
+			item.TotalDurationMs += durationMs
+			if durationMs > item.MaxDurationMs {
+				item.MaxDurationMs = durationMs
+			}
+			if retried {
+				item.RetriedCount++
+			}
+			if failed {
+				item.FailedCount++
+			}
+			trend := item.Trend[date]
+			if trend == nil {
+				trend = &cmdbSyncTaskAPIMetricTrendAccumulator{Date: date}
+				item.Trend[date] = trend
+			}
+			trend.CallCount++
+			trend.TotalDurationMs += durationMs
+			if durationMs > trend.MaxDurationMs {
+				trend.MaxDurationMs = durationMs
+			}
+			if retried {
+				trend.RetriedCount++
+			}
+			if failed {
+				trend.FailedCount++
+			}
+		}
+	}
+	list := make([]resps.CmdbSyncTaskApiMetric, 0, len(acc))
+	for _, item := range acc {
+		list = append(list, resps.CmdbSyncTaskApiMetric{
+			Key:           item.Key,
+			Provider:      item.Provider,
+			Region:        item.Region,
+			Service:       item.Service,
+			Path:          item.Path,
+			CallCount:     item.CallCount,
+			FailedCount:   item.FailedCount,
+			RetriedCount:  item.RetriedCount,
+			AvgDurationMs: cmdbSyncTaskAverageDuration(item.TotalDurationMs, item.CallCount),
+			MaxDurationMs: item.MaxDurationMs,
+			FailureRate:   cmdbSyncTaskRate(item.FailedCount, item.CallCount),
+			Trend:         cmdbSyncTaskAPIMetricTrendList(item.Trend, trendRange),
+		})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].CallCount != list[j].CallCount {
+			return list[i].CallCount > list[j].CallCount
+		}
+		if list[i].FailedCount != list[j].FailedCount {
+			return list[i].FailedCount > list[j].FailedCount
+		}
+		if list[i].MaxDurationMs != list[j].MaxDurationMs {
+			return list[i].MaxDurationMs > list[j].MaxDurationMs
+		}
+		return list[i].Key < list[j].Key
+	})
+	if len(list) > cmdbSyncTaskAPIMetricBreakdownLimit {
+		list = list[:cmdbSyncTaskAPIMetricBreakdownLimit]
+	}
+	return list, nil
+}
+
+func cmdbSyncTaskAPIMetricAttrsList(stats models.ResAttrs) []models.ResAttrs {
+	rawMetrics := stats["apiMetrics"]
+	if rawMetrics == nil {
+		return nil
+	}
+	if metrics := cmdbSyncTaskMetricAttrsList(rawMetrics); len(metrics) > 0 {
+		return metrics
+	}
+	result := make([]models.ResAttrs, 0)
+	switch typed := rawMetrics.(type) {
+	case map[string][]models.ResAttrs:
+		for region, items := range typed {
+			for _, item := range items {
+				result = append(result, cmdbSyncTaskAPIMetricWithRegion(item, region))
+			}
+		}
+	case map[string]interface{}:
+		for region, items := range typed {
+			for _, item := range cmdbSyncTaskMetricAttrsList(items) {
+				result = append(result, cmdbSyncTaskAPIMetricWithRegion(item, region))
+			}
+		}
+	case models.ResAttrs:
+		for region, items := range typed {
+			for _, item := range cmdbSyncTaskMetricAttrsList(items) {
+				result = append(result, cmdbSyncTaskAPIMetricWithRegion(item, region))
+			}
+		}
+	}
+	return result
+}
+
+func cmdbSyncTaskAPIMetricWithRegion(metric models.ResAttrs, region string) models.ResAttrs {
+	if metric == nil {
+		metric = models.ResAttrs{}
+	}
+	if cmdbSyncTaskMetricText(metric["region"]) != "" {
+		return metric
+	}
+	copied := models.ResAttrs{}
+	for key, value := range metric {
+		copied[key] = value
+	}
+	copied["region"] = region
+	return copied
+}
+
+func cmdbSyncTaskAPIMetricTrendList(acc map[string]*cmdbSyncTaskAPIMetricTrendAccumulator, trendRange cmdbSyncTaskTrendRange) []resps.CmdbSyncTaskApiMetricTrend {
+	trend := make([]resps.CmdbSyncTaskApiMetricTrend, 0, trendRange.Days)
+	for i := 0; i < trendRange.Days; i++ {
+		date := trendRange.Start.AddDate(0, 0, i).Format("2006-01-02")
+		item := acc[date]
+		if item == nil {
+			trend = append(trend, resps.CmdbSyncTaskApiMetricTrend{Date: date})
+			continue
+		}
+		trend = append(trend, resps.CmdbSyncTaskApiMetricTrend{
+			Date:          date,
+			CallCount:     item.CallCount,
+			FailedCount:   item.FailedCount,
+			RetriedCount:  item.RetriedCount,
+			AvgDurationMs: cmdbSyncTaskAverageDuration(item.TotalDurationMs, item.CallCount),
+			MaxDurationMs: item.MaxDurationMs,
+		})
+	}
+	return trend
+}
+
+func cmdbSyncTaskSlowAPISummary(stats models.ResAttrs, thresholdMs int64) (models.ResAttrs, bool) {
+	thresholdMs = cmdbSyncTaskEffectiveSlowAPIThresholdMs(thresholdMs)
+	metrics := cmdbSyncTaskAPIMetricAttrsList(stats)
+	if len(metrics) == 0 {
+		return nil, false
+	}
+
+	items := make([]models.ResAttrs, 0)
+	var slowest models.ResAttrs
+	slowCount := int64(0)
+	failedCount := int64(0)
+	retriedCount := int64(0)
+	maxDurationMs := int64(0)
+	for _, metric := range metrics {
+		durationMs := cmdbSyncTaskMetricInt64(metric["durationMs"])
+		if durationMs < thresholdMs {
+			continue
+		}
+		item := models.ResAttrs{
+			"provider":   firstNonEmpty(cmdbSyncTaskMetricText(metric["provider"]), "unknown"),
+			"region":     firstNonEmpty(cmdbSyncTaskMetricText(metric["region"]), "unknown"),
+			"service":    firstNonEmpty(cmdbSyncTaskMetricText(metric["service"]), "unknown"),
+			"path":       firstNonEmpty(cmdbSyncTaskMetricText(metric["path"]), "unknown"),
+			"status":     cmdbSyncTaskMetricText(metric["status"]),
+			"durationMs": durationMs,
+			"attempts":   cmdbSyncTaskMetricInt64(metric["attempts"]),
+			"retryCount": cmdbSyncTaskMetricInt64(metric["retryCount"]),
+		}
+		for _, key := range []string{"httpStatus", "providerCode", "errorCategory", "retryable", "retryHint", "requestId", "retryAfter", "compartmentId", "pageTokenUsed"} {
+			if value, ok := metric[key]; ok && value != nil {
+				item[key] = value
+			}
+		}
+
+		slowCount++
+		if strings.EqualFold(cmdbSyncTaskMetricText(metric["status"]), "failed") {
+			failedCount++
+		}
+		if cmdbSyncTaskMetricInt64(metric["retryCount"]) > 0 || cmdbSyncTaskMetricInt64(metric["attempts"]) > 1 {
+			retriedCount++
+		}
+		if durationMs > maxDurationMs {
+			maxDurationMs = durationMs
+			slowest = item
+		}
+		items = append(items, item)
+	}
+	if slowCount == 0 {
+		return nil, false
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		left := cmdbSyncTaskMetricInt64(items[i]["durationMs"])
+		right := cmdbSyncTaskMetricInt64(items[j]["durationMs"])
+		if left != right {
+			return left > right
+		}
+		return cmdbSyncTaskSlowAPIEndpoint(items[i]) < cmdbSyncTaskSlowAPIEndpoint(items[j])
+	})
+	if len(items) > cmdbSyncTaskSlowAPIEventTopLimit {
+		items = items[:cmdbSyncTaskSlowAPIEventTopLimit]
+	}
+
+	return models.ResAttrs{
+		"thresholdMs":   thresholdMs,
+		"slowCount":     slowCount,
+		"failedCount":   failedCount,
+		"retriedCount":  retriedCount,
+		"maxDurationMs": maxDurationMs,
+		"slowest":       slowest,
+		"top":           items,
+	}, true
+}
+
+func cmdbSyncTaskEffectiveSlowAPIThresholdMs(thresholdMs int64) int64 {
+	if thresholdMs <= 0 {
+		return cmdbSyncTaskSlowAPIThresholdMs
+	}
+	if thresholdMs > cmdbSyncTaskSlowAPIThresholdMaxMs {
+		return cmdbSyncTaskSlowAPIThresholdMaxMs
+	}
+	return thresholdMs
+}
+
+func cmdbSyncTaskSlowAPIThresholdFromStats(stats models.ResAttrs) int64 {
+	if stats == nil {
+		return cmdbSyncTaskSlowAPIThresholdMs
+	}
+	return cmdbSyncTaskEffectiveSlowAPIThresholdMs(cmdbSyncTaskMetricInt64(stats["slowApiThresholdMs"]))
+}
+
+func cmdbSyncTaskEffectiveSlowAPISilenceMinutes(minutes int64) int64 {
+	if minutes <= 0 {
+		return 0
+	}
+	if minutes > cmdbSyncTaskSlowAPIEventSilenceMaxMinutes {
+		return cmdbSyncTaskSlowAPIEventSilenceMaxMinutes
+	}
+	return minutes
+}
+
+func cmdbSyncTaskSlowAPISilenceFromStats(stats models.ResAttrs) int64 {
+	if stats == nil {
+		return 0
+	}
+	return cmdbSyncTaskEffectiveSlowAPISilenceMinutes(cmdbSyncTaskMetricInt64(stats["slowApiSilenceMinutes"]))
+}
+
+func cmdbSyncTaskSlowAPIEndpoint(metric models.ResAttrs) string {
+	if metric == nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join([]string{
+		cmdbSyncTaskMetricText(metric["region"]),
+		cmdbSyncTaskMetricText(metric["service"]),
+		cmdbSyncTaskMetricText(metric["path"]),
+	}, " "))
+}
+
+func cmdbSyncTaskAverageDuration(totalDurationMs int64, count int64) int64 {
+	if count <= 0 {
+		return 0
+	}
+	return int64(math.Round(float64(totalDurationMs) / float64(count)))
 }
 
 func cmdbSyncTaskAddMetricBreakdown(acc map[string]*cmdbSyncTaskBreakdownAccumulator, taskStatus string, stats models.ResAttrs, metricKey string, labelKey string, fallbackLabels []string) {
@@ -429,6 +790,24 @@ func cmdbSyncTaskMetricString(value interface{}) string {
 	}
 }
 
+func cmdbSyncTaskMetricText(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	default:
+		text := strings.TrimSpace(fmt.Sprint(typed))
+		if text == "<nil>" {
+			return ""
+		}
+		return text
+	}
+}
+
 func cmdbSyncTaskMetricInt64(value interface{}) int64 {
 	switch typed := value.(type) {
 	case int:
@@ -455,6 +834,9 @@ func cmdbSyncTaskMetricInt64(value interface{}) int64 {
 		return int64(typed)
 	case float64:
 		return int64(typed)
+	case string:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return parsed
 	default:
 		return 0
 	}
@@ -515,6 +897,238 @@ func cmdbSyncTaskBreakdownList(acc map[string]*cmdbSyncTaskBreakdownAccumulator)
 	return list
 }
 
+func cmdbSyncTaskResp(task models.CmdbSyncTask) resps.CmdbSyncTaskResp {
+	return resps.CmdbSyncTaskResp{
+		CmdbSyncTask:   task,
+		ScopeSummary:   cmdbSyncTaskScopeSummaryResp(task),
+		FailureSummary: cmdbSyncTaskFailureSummaryResp(task),
+	}
+}
+
+func cmdbSyncTaskBriefResp(task models.CmdbSyncTask) *resps.CmdbSyncTaskBriefResp {
+	scopeSummary := cmdbSyncTaskScopeSummaryResp(task)
+	failureSummary := cmdbSyncTaskFailureSummaryResp(task)
+	return &resps.CmdbSyncTaskBriefResp{
+		Id:             task.Id,
+		AccountName:    task.AccountName,
+		AccountSource:  task.AccountSource,
+		AccountId:      task.AccountId,
+		SyncPolicyId:   task.SyncPolicyId,
+		Provider:       task.Provider,
+		Regions:        normalizeStringList([]string(task.Regions)),
+		AssetTypes:     normalizeStringList([]string(task.AssetTypes)),
+		Status:         task.Status,
+		ErrorMessage:   task.ErrorMessage,
+		Stats:          task.Stats,
+		ScopeSummary:   scopeSummary,
+		FailureSummary: failureSummary,
+		StartedAt:      task.StartedAt,
+		EndedAt:        task.EndedAt,
+		CreatedAt:      task.CreatedAt,
+	}
+}
+
+func cmdbSyncTaskBriefOccurredAt(task *resps.CmdbSyncTaskBriefResp) models.Time {
+	if task == nil {
+		return models.Time{}
+	}
+	if !time.Time(task.EndedAt).IsZero() {
+		return task.EndedAt
+	}
+	if !time.Time(task.StartedAt).IsZero() {
+		return task.StartedAt
+	}
+	return task.CreatedAt
+}
+
+func cmdbSyncTaskScopeSummaryResp(task models.CmdbSyncTask) resps.CmdbSyncTaskScopeSummaryResp {
+	stats := task.Stats
+	regions := firstNonEmptyStringSlice(cmdbSyncTaskStringList(stats["regions"]), []string(task.Regions))
+	assetTypes := firstNonEmptyStringSlice(cmdbSyncTaskStringList(stats["assetTypes"]), []string(task.AssetTypes))
+	regionMetrics := cmdbSyncTaskMetricRespList(stats["regionMetrics"])
+	assetTypeMetrics := cmdbSyncTaskMetricRespList(stats["assetTypeMetrics"])
+	scopeMetrics := cmdbSyncTaskMetricRespList(stats["scopeMetrics"])
+	failedScopes := make([]resps.CmdbSyncTaskMetricResp, 0)
+	for _, item := range scopeMetrics {
+		if item.Status != "" && item.Status != "complete" {
+			failedScopes = append(failedScopes, item)
+		}
+	}
+	if len(failedScopes) == 0 {
+		for _, item := range regionMetrics {
+			if item.Status != "" && item.Status != "complete" {
+				failedScopes = append(failedScopes, item)
+			}
+		}
+		for _, item := range assetTypeMetrics {
+			if item.Status != "" && item.Status != "complete" {
+				failedScopes = append(failedScopes, item)
+			}
+		}
+	}
+	return resps.CmdbSyncTaskScopeSummaryResp{
+		Regions:             normalizeStringList(regions),
+		AssetTypes:          normalizeStringList(assetTypes),
+		RegionCount:         len(normalizeStringList(regions)),
+		AssetTypeCount:      len(normalizeStringList(assetTypes)),
+		ScopeCount:          cmdbSyncTaskScopeCount(regions, assetTypes, scopeMetrics),
+		Collected:           cmdbSyncTaskMetricInt64(stats["collected"]),
+		Created:             cmdbSyncTaskMetricInt64(stats["created"]),
+		Updated:             cmdbSyncTaskMetricInt64(stats["updated"]),
+		Skipped:             cmdbSyncTaskMetricInt64(stats["skipped"]),
+		DurationMs:          cmdbSyncTaskMetricInt64(stats["durationMs"]),
+		CollectorDurationMs: cmdbSyncTaskMetricInt64(stats["collectorDurationMs"]),
+		UpsertDurationMs:    cmdbSyncTaskMetricInt64(stats["upsertDurationMs"]),
+		RelationDurationMs:  cmdbSyncTaskMetricInt64(stats["relationDurationMs"]),
+		RegionMetrics:       regionMetrics,
+		AssetTypeMetrics:    assetTypeMetrics,
+		ScopeMetrics:        scopeMetrics,
+		FailedScopes:        failedScopes,
+	}
+}
+
+func cmdbSyncTaskScopeCount(regions []string, assetTypes []string, scopeMetrics []resps.CmdbSyncTaskMetricResp) int {
+	if len(scopeMetrics) > 0 {
+		return len(scopeMetrics)
+	}
+	regionCount := len(normalizeStringList(regions))
+	assetTypeCount := len(normalizeStringList(assetTypes))
+	if regionCount > 0 && assetTypeCount > 0 {
+		return regionCount * assetTypeCount
+	}
+	if regionCount > 0 {
+		return regionCount
+	}
+	return assetTypeCount
+}
+
+func cmdbSyncTaskStringList(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		return normalizeStringList(typed)
+	case models.StrSlice:
+		return normalizeStringList([]string(typed))
+	case []interface{}:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := strings.TrimSpace(fmt.Sprint(item)); text != "" {
+				items = append(items, text)
+			}
+		}
+		return normalizeStringList(items)
+	case string:
+		return normalizeStringList(strings.Split(typed, ","))
+	default:
+		return nil
+	}
+}
+
+func cmdbSyncTaskMetricRespList(value interface{}) []resps.CmdbSyncTaskMetricResp {
+	attrsList := cmdbSyncTaskMetricAttrsList(value)
+	result := make([]resps.CmdbSyncTaskMetricResp, 0, len(attrsList))
+	for _, attrs := range attrsList {
+		result = append(result, resps.CmdbSyncTaskMetricResp{
+			Region:     cmdbSyncTaskMetricString(attrs["region"]),
+			AssetType:  cmdbSyncTaskMetricString(attrs["assetType"]),
+			Status:     cmdbSyncTaskMetricString(attrs["status"]),
+			Collected:  cmdbSyncTaskMetricInt64(attrs["collected"]),
+			DurationMs: cmdbSyncTaskMetricInt64(attrs["durationMs"]),
+		})
+	}
+	return result
+}
+
+func cmdbSyncTaskFailureSummaryResp(task models.CmdbSyncTask) resps.CmdbSyncTaskFailureSummaryResp {
+	stats := task.Stats
+	details := cmdbSyncTaskFailureDetailRespList(stats["failureDetails"])
+	if len(details) == 0 && strings.TrimSpace(task.ErrorMessage) != "" {
+		category, retryable, retryHint := cmdbSyncClassifyFailure(task.ErrorMessage)
+		details = append(details, resps.CmdbSyncTaskFailureDetailResp{
+			Message:   task.ErrorMessage,
+			Category:  category,
+			Retryable: retryable,
+			RetryHint: retryHint,
+		})
+	}
+
+	summaryAttrs := attrResAttrs(stats, "failureSummary")
+	total := cmdbSyncTaskMetricInt64(summaryAttrs["total"])
+	retryableTotal := cmdbSyncTaskMetricInt64(summaryAttrs["retryableTotal"])
+	categories := make([]string, 0)
+	firstMessage := ""
+	retryHint := ""
+	computedRetryableTotal := int64(0)
+	for _, detail := range details {
+		if firstMessage == "" {
+			firstMessage = detail.Message
+		}
+		if retryHint == "" {
+			retryHint = detail.RetryHint
+		}
+		if detail.Category != "" {
+			categories = append(categories, detail.Category)
+		}
+		if detail.Retryable {
+			computedRetryableTotal++
+		}
+	}
+	if total == 0 && len(details) > 0 {
+		total = int64(len(details))
+	}
+	if retryableTotal == 0 {
+		retryableTotal = computedRetryableTotal
+	}
+	return resps.CmdbSyncTaskFailureSummaryResp{
+		Total:          total,
+		RetryableTotal: retryableTotal,
+		Retryable:      retryableTotal > 0,
+		Categories:     dedupeStrings(categories),
+		FirstMessage:   firstMessage,
+		RetryHint:      retryHint,
+		Details:        details,
+	}
+}
+
+func cmdbSyncTaskFailureDetailRespList(value interface{}) []resps.CmdbSyncTaskFailureDetailResp {
+	attrsList := cmdbSyncTaskMetricAttrsList(value)
+	result := make([]resps.CmdbSyncTaskFailureDetailResp, 0, len(attrsList))
+	for _, attrs := range attrsList {
+		message := cmdbSyncTaskMetricString(attrs["message"])
+		category := cmdbSyncTaskMetricString(attrs["category"])
+		retryable := cmdbSyncTaskMetricBool(attrs["retryable"])
+		retryHint := cmdbSyncTaskMetricString(attrs["retryHint"])
+		if message == "" && category == "" && retryHint == "" {
+			continue
+		}
+		result = append(result, resps.CmdbSyncTaskFailureDetailResp{
+			Message:   message,
+			Category:  category,
+			Retryable: retryable,
+			RetryHint: retryHint,
+		})
+	}
+	return result
+}
+
+func cmdbSyncTaskMetricBool(value interface{}) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case int:
+		return typed > 0
+	case int64:
+		return typed > 0
+	case float64:
+		return typed > 0
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "1", "true", "yes", "y", "on", "enable", "enabled":
+			return true
+		}
+	}
+	return false
+}
+
 func CmdbSyncTaskDetail(c *ctx.ServiceContext, form *forms.CmdbSyncTaskParam) (*resps.CmdbSyncTaskDetailResp, e.Error) {
 	task := models.CmdbSyncTask{}
 	if err := c.DB().Model(&models.CmdbSyncTask{}).
@@ -535,8 +1149,8 @@ func CmdbSyncTaskDetail(c *ctx.ServiceContext, form *forms.CmdbSyncTaskParam) (*
 	}
 
 	return &resps.CmdbSyncTaskDetailResp{
-		CmdbSyncTask: task,
-		Logs:         logs,
+		CmdbSyncTaskResp: cmdbSyncTaskResp(task),
+		Logs:             logs,
 	}, nil
 }
 
@@ -602,7 +1216,7 @@ func CmdbSyncTaskRerunGroupDetail(c *ctx.ServiceContext, form *forms.CmdbSyncTas
 		resp.EndedAt = cmdbSyncTaskMaxTime(resp.EndedAt, task.EndedAt)
 		resp.TaskIds = append(resp.TaskIds, task.Id)
 		resp.Tasks = append(resp.Tasks, resps.CmdbSyncTaskRerunGroupTask{
-			CmdbSyncTask:     task,
+			CmdbSyncTaskResp: cmdbSyncTaskResp(task),
 			SourceTaskId:     sourceTaskId,
 			SourceTaskStatus: sourceTaskStatus,
 		})
@@ -652,6 +1266,11 @@ type cmdbSyncTaskRerunMeta struct {
 	Mode       string
 }
 
+type cmdbSyncTaskScope struct {
+	Region    string
+	AssetType string
+}
+
 type cmdbSyncTaskLaunch struct {
 	TaskId                 models.Id
 	Account                *cmdbCloudAccount
@@ -660,6 +1279,8 @@ type cmdbSyncTaskLaunch struct {
 	SyncPolicyId           models.Id
 	SyncPolicyScheduleKey  string
 	SyncPolicyScheduleName string
+	SlowAPIThresholdMs     int64
+	SlowAPISilenceMinutes  int64
 	Reason                 string
 	RerunMeta              *cmdbSyncTaskRerunMeta
 }
@@ -675,6 +1296,11 @@ func StartCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskForm
 }
 
 func BatchRerunFailedCmdbSyncTasks(c *ctx.ServiceContext, form *forms.BatchRerunFailedCmdbSyncTasksForm) (*resps.CmdbSyncTaskBatchRerunResp, e.Error) {
+	if !form.RequiresApproval {
+		if err := EnsureCmdbOrgAdminPermission(c, "直接重跑失败云采集任务"); err != nil {
+			return nil, err
+		}
+	}
 	taskIds := cmdbSyncTaskUniqueIds(form.TaskIds)
 	resp := &resps.CmdbSyncTaskBatchRerunResp{
 		Total:  len(taskIds),
@@ -1069,6 +1695,8 @@ func cmdbSyncTaskLaunchFromPersistedTask(c *ctx.ServiceContext, task *models.Cmd
 		SyncPolicyId:           task.SyncPolicyId,
 		SyncPolicyScheduleKey:  attrString(task.Stats, "syncPolicyScheduleKey"),
 		SyncPolicyScheduleName: attrString(task.Stats, "syncPolicyScheduleName"),
+		SlowAPIThresholdMs:     cmdbSyncTaskSlowAPIThresholdFromStats(task.Stats),
+		SlowAPISilenceMinutes:  cmdbSyncTaskSlowAPISilenceFromStats(task.Stats),
 		Reason:                 attrString(task.Stats, "reason"),
 		RerunMeta:              rerunMeta,
 	}
@@ -1116,7 +1744,8 @@ func startCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskForm
 	}
 	launch.start(c)
 
-	return &resps.CmdbSyncTaskResp{CmdbSyncTask: *task}, nil
+	resp := cmdbSyncTaskResp(*task)
+	return &resp, nil
 }
 
 func prepareCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskForm, rerunMeta *cmdbSyncTaskRerunMeta) (*models.CmdbSyncTask, cmdbSyncTaskLaunch, e.Error) {
@@ -1141,6 +1770,12 @@ func prepareCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskFo
 		if policy.Provider != "" && account.Provider != "" && policy.Provider != account.Provider {
 			return nil, cmdbSyncTaskLaunch{}, e.New(e.BadParam, fmt.Errorf("同步策略厂商 %s 与采集任务厂商 %s 不匹配", policy.Provider, account.Provider), http.StatusBadRequest)
 		}
+		if form.SlowApiThresholdMs <= 0 {
+			form.SlowApiThresholdMs = cloudSyncPolicySlowAPIThresholdMs(policy)
+		}
+		if form.SlowApiSilenceMinutes <= 0 {
+			form.SlowApiSilenceMinutes = cloudSyncPolicySlowAPISilenceMinutes(policy)
+		}
 	}
 
 	regions := normalizeStringList(form.Regions)
@@ -1154,7 +1789,11 @@ func prepareCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskFo
 
 	now := models.Time(time.Now())
 	reason := strings.TrimSpace(form.Reason)
+	slowAPIThresholdMs := cmdbSyncTaskEffectiveSlowAPIThresholdMs(form.SlowApiThresholdMs)
+	slowAPISilenceMinutes := cmdbSyncTaskEffectiveSlowAPISilenceMinutes(form.SlowApiSilenceMinutes)
 	stats := initialCmdbSyncStats(regions, assetTypes)
+	stats["slowApiThresholdMs"] = slowAPIThresholdMs
+	stats["slowApiSilenceMinutes"] = slowAPISilenceMinutes
 	if form.SyncPolicyScheduleKey != "" {
 		stats["syncPolicyScheduleKey"] = form.SyncPolicyScheduleKey
 		stats["syncPolicyScheduleName"] = form.SyncPolicyScheduleName
@@ -1185,6 +1824,8 @@ func prepareCmdbSyncTask(c *ctx.ServiceContext, form *forms.CreateCmdbSyncTaskFo
 		SyncPolicyId:           task.SyncPolicyId,
 		SyncPolicyScheduleKey:  form.SyncPolicyScheduleKey,
 		SyncPolicyScheduleName: form.SyncPolicyScheduleName,
+		SlowAPIThresholdMs:     slowAPIThresholdMs,
+		SlowAPISilenceMinutes:  slowAPISilenceMinutes,
 		Reason:                 reason,
 		RerunMeta:              rerunMeta,
 	}
@@ -1205,6 +1846,8 @@ func createCmdbSyncTaskRecords(tx *db.Session, c *ctx.ServiceContext, task *mode
 		"assetTypes":             launch.AssetTypes,
 		"syncPolicyScheduleKey":  launch.SyncPolicyScheduleKey,
 		"syncPolicyScheduleName": launch.SyncPolicyScheduleName,
+		"slowApiThresholdMs":     launch.SlowAPIThresholdMs,
+		"slowApiSilenceMinutes":  launch.SlowAPISilenceMinutes,
 		"reason":                 launch.Reason,
 	}); err != nil {
 		return e.New(e.DBError, err)
@@ -1235,7 +1878,7 @@ func (launch cmdbSyncTaskLaunch) start(c *ctx.ServiceContext) {
 }
 
 func (launch cmdbSyncTaskLaunch) run(c *ctx.ServiceContext) {
-	runCmdbSyncTask(launch.TaskId, c, cloneCmdbCloudAccount(launch.Account), cloneStringSlice(launch.Regions), cloneStringSlice(launch.AssetTypes), launch.SyncPolicyId, launch.SyncPolicyScheduleKey, launch.SyncPolicyScheduleName, launch.Reason, launch.RerunMeta)
+	runCmdbSyncTask(launch.TaskId, c, cloneCmdbCloudAccount(launch.Account), cloneStringSlice(launch.Regions), cloneStringSlice(launch.AssetTypes), launch.SyncPolicyId, launch.SyncPolicyScheduleKey, launch.SyncPolicyScheduleName, launch.SlowAPIThresholdMs, launch.SlowAPISilenceMinutes, launch.Reason, launch.RerunMeta)
 }
 
 func startCmdbSyncTaskBatch(c *ctx.ServiceContext, launches []cmdbSyncTaskLaunch) {
@@ -1541,7 +2184,7 @@ func cmdbSyncTaskApplyRerunMeta(stats models.ResAttrs, rerunMeta *cmdbSyncTaskRe
 	}
 }
 
-func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *cmdbCloudAccount, regions, assetTypes []string, syncPolicyId models.Id, syncPolicyScheduleKey string, syncPolicyScheduleName string, reason string, rerunMeta *cmdbSyncTaskRerunMeta) {
+func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *cmdbCloudAccount, regions, assetTypes []string, syncPolicyId models.Id, syncPolicyScheduleKey string, syncPolicyScheduleName string, slowAPIThresholdMs int64, slowAPISilenceMinutes int64, reason string, rerunMeta *cmdbSyncTaskRerunMeta) {
 	taskStartedAt := time.Now()
 	workerCtx := &ctx.ServiceContext{
 		UserId:       requestCtx.UserId,
@@ -1553,6 +2196,10 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 	approval := cmdbSyncTaskExistingApproval(workerCtx, taskId)
 	rerunParameterDiffs := cmdbSyncTaskExistingRerunParameterDiffs(workerCtx, taskId)
 	stats := initialCmdbSyncStats(regions, assetTypes)
+	slowAPIThresholdMs = cmdbSyncTaskEffectiveSlowAPIThresholdMs(slowAPIThresholdMs)
+	slowAPISilenceMinutes = cmdbSyncTaskEffectiveSlowAPISilenceMinutes(slowAPISilenceMinutes)
+	stats["slowApiThresholdMs"] = slowAPIThresholdMs
+	stats["slowApiSilenceMinutes"] = slowAPISilenceMinutes
 	if syncPolicyScheduleKey != "" {
 		stats["syncPolicyScheduleKey"] = syncPolicyScheduleKey
 		stats["syncPolicyScheduleName"] = syncPolicyScheduleName
@@ -1590,6 +2237,8 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 			"ended_at":      endedAt,
 		}); err != nil {
 			logger.Errorf("update cmdb sync task finished status error: %v", err)
+		} else {
+			cmdbSyncTaskSlowAPIEvent(workerCtx, taskId, account, regions, assetTypes, syncPolicyId, syncPolicyScheduleKey, syncPolicyScheduleName, status, endedAt, stats)
 		}
 		if account.Source == models.CmdbCloudAccountSourceCloudAccount && status == models.CmdbSyncTaskComplete {
 			if err := updateCloudAccountLastSyncAt(workerCtx, account.Id, endedAt); err != nil {
@@ -1612,6 +2261,7 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 			"errorMessage": errorMessage,
 			"stats":        stats,
 		})
+		cmdbSyncTaskAutoRetryFailedScopes(workerCtx, taskId, account, regions, assetTypes, syncPolicyId, syncPolicyScheduleKey, syncPolicyScheduleName, slowAPIThresholdMs, slowAPISilenceMinutes, status, errorMessage, stats, rerunMeta)
 		if rerunMeta != nil && rerunMeta.GroupId != "" {
 			cmdbSyncTaskBatchRerunFinishedEvent(workerCtx, rerunMeta.GroupId)
 		}
@@ -1632,6 +2282,8 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 		"syncPolicyId":           syncPolicyId,
 		"syncPolicyScheduleKey":  syncPolicyScheduleKey,
 		"syncPolicyScheduleName": syncPolicyScheduleName,
+		"slowApiThresholdMs":     slowAPIThresholdMs,
+		"slowApiSilenceMinutes":  slowAPISilenceMinutes,
 		"reason":                 reason,
 	})
 
@@ -1648,6 +2300,8 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 		stats["syncPolicyScheduleKey"] = syncPolicyScheduleKey
 		stats["syncPolicyScheduleName"] = syncPolicyScheduleName
 	}
+	stats["slowApiThresholdMs"] = slowAPIThresholdMs
+	stats["slowApiSilenceMinutes"] = slowAPISilenceMinutes
 	if reason != "" {
 		stats["reason"] = reason
 	}
@@ -1669,6 +2323,436 @@ func runCmdbSyncTask(taskId models.Id, requestCtx *ctx.ServiceContext, account *
 			"stats": stats,
 		})
 	}
+}
+
+func cmdbSyncTaskAutoRetryFailedScopes(c *ctx.ServiceContext, sourceTaskId models.Id, account *cmdbCloudAccount, regions, assetTypes []string, syncPolicyId models.Id, syncPolicyScheduleKey string, syncPolicyScheduleName string, slowAPIThresholdMs int64, slowAPISilenceMinutes int64, status string, errorMessage string, stats models.ResAttrs, rerunMeta *cmdbSyncTaskRerunMeta) {
+	if c == nil || sourceTaskId == "" || account == nil || status != models.CmdbSyncTaskFailed || syncPolicyId == "" || rerunMeta != nil {
+		return
+	}
+	policy, err := getCloudSyncPolicy(c, syncPolicyId)
+	if err != nil {
+		logs.Get().WithField("cmdbSyncTaskId", sourceTaskId).Warnf("load cloud sync policy for auto scope retry failed: %v", err)
+		return
+	}
+	if !cloudSyncPolicyAutoRetryFailedScopes(policy) {
+		return
+	}
+	if !cmdbSyncTaskHasRetryableFailure(stats) {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelInfo, "auto_scope_rerun_skipped", "云采集失败不属于可重试类别，未触发自动局部重试", models.ResAttrs{
+			"errorMessage":   errorMessage,
+			"failureSummary": stats["failureSummary"],
+		})
+		return
+	}
+	exists, existsErr := cmdbSyncTaskAutoScopeRetryExists(c, sourceTaskId)
+	if existsErr != nil {
+		logs.Get().WithField("cmdbSyncTaskId", sourceTaskId).Warnf("check auto scope retry exists failed: %v", existsErr)
+		return
+	}
+	if exists {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelInfo, "auto_scope_rerun_skipped", "云采集任务已存在自动局部重试任务，跳过重复创建", models.ResAttrs{
+			"sourceTaskId": sourceTaskId.String(),
+		})
+		return
+	}
+
+	scopes, scopeSource := cmdbSyncTaskFailedRetryScopes(stats, regions, assetTypes, cloudSyncPolicyAutoRetryMaxScopes(policy))
+	if len(scopes) == 0 {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelInfo, "auto_scope_rerun_skipped", "未识别到可自动重试的失败 scope", models.ResAttrs{
+			"errorMessage": errorMessage,
+		})
+		return
+	}
+	sourceScopeCount := cmdbSyncTaskScopeCountFor(regions, assetTypes)
+	if scopeSource == "scope_metrics" && sourceScopeCount > 1 && len(scopes) >= sourceScopeCount {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelInfo, "auto_scope_rerun_skipped", "失败 scope 覆盖整个原任务范围，未自动执行全量重跑", models.ResAttrs{
+			"sourceScopeCount": sourceScopeCount,
+			"failedScopes":     cmdbSyncTaskScopeAttrsList(scopes),
+		})
+		return
+	}
+
+	targetRegions, targetAssetTypes := cmdbSyncTaskScopeLists(scopes)
+	groupId := models.NewId("csr")
+	reason := fmt.Sprintf("自动局部重试失败 scope：源任务 %s", sourceTaskId.String())
+	task, launch, createErr := prepareCmdbSyncTask(c, &forms.CreateCmdbSyncTaskForm{
+		AccountSource:          account.Source,
+		AccountId:              account.Id,
+		SyncPolicyId:           syncPolicyId,
+		SyncPolicyScheduleKey:  syncPolicyScheduleKey,
+		SyncPolicyScheduleName: syncPolicyScheduleName,
+		SlowApiThresholdMs:     slowAPIThresholdMs,
+		SlowApiSilenceMinutes:  slowAPISilenceMinutes,
+		Reason:                 reason,
+		Provider:               account.Provider,
+		Regions:                targetRegions,
+		AssetTypes:             targetAssetTypes,
+	}, &cmdbSyncTaskRerunMeta{
+		GroupId:    groupId,
+		FromTaskId: sourceTaskId,
+		Mode:       "auto_failed_scope",
+	})
+	if createErr != nil {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelError, "auto_scope_rerun_failed", "自动局部重试任务创建失败", models.ResAttrs{
+			"error":        createErr.Error(),
+			"failedScopes": cmdbSyncTaskScopeAttrsList(scopes),
+		})
+		return
+	}
+	if parameterDiffs := cmdbSyncTaskRerunParameterDiffs(normalizeStringList(regions), targetRegions, normalizeStringList(assetTypes), targetAssetTypes, true, true); parameterDiffs != nil {
+		task.Stats["rerunParameterDiffs"] = parameterDiffs
+	}
+	task.Stats["autoRetry"] = models.ResAttrs{
+		"enabled":         true,
+		"sourceTaskId":    sourceTaskId.String(),
+		"scopeSource":     scopeSource,
+		"failedScopes":    cmdbSyncTaskScopeAttrsList(scopes),
+		"maxScopes":       cloudSyncPolicyAutoRetryMaxScopes(policy),
+		"sourceTaskError": errorMessage,
+	}
+	if err := createCmdbSyncTaskRecords(c.DB(), c, task, launch); err != nil {
+		appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelError, "auto_scope_rerun_failed", "自动局部重试任务落库失败", models.ResAttrs{
+			"error":        err.Error(),
+			"failedScopes": cmdbSyncTaskScopeAttrsList(scopes),
+		})
+		return
+	}
+	appendCmdbSyncTaskLog(c, sourceTaskId, models.CmdbSyncLogLevelInfo, "auto_scope_rerun_created", "已创建失败 scope 自动局部重试任务", models.ResAttrs{
+		"rerunGroupId": groupId.String(),
+		"rerunTaskId":  task.Id.String(),
+		"scopeSource":  scopeSource,
+		"regions":      targetRegions,
+		"assetTypes":   targetAssetTypes,
+		"failedScopes": cmdbSyncTaskScopeAttrsList(scopes),
+	})
+	eventPayload := cloudSyncPolicyApplyNotificationRouting(policy, models.ResAttrs{
+		"rerunGroupId":           groupId.String(),
+		"sourceTaskId":           sourceTaskId.String(),
+		"taskId":                 task.Id.String(),
+		"mode":                   "auto_failed_scope",
+		"scopeSource":            scopeSource,
+		"regions":                targetRegions,
+		"assetTypes":             targetAssetTypes,
+		"failedScopes":           cmdbSyncTaskScopeAttrsList(scopes),
+		"syncPolicyId":           syncPolicyId.String(),
+		"syncPolicyScheduleKey":  syncPolicyScheduleKey,
+		"syncPolicyScheduleName": syncPolicyScheduleName,
+	})
+	recordCloudEventBestEffort(c, models.CloudEvent{
+		OrgId:          c.OrgId,
+		CloudAccountId: account.Id,
+		Source:         models.CloudEventSourceSync,
+		EventType:      "cloud.sync.task.auto_scope_rerun_started",
+		Level:          models.CloudEventLevelInfo,
+		Status:         models.CmdbSyncTaskRunning,
+		Provider:       account.Provider,
+		AccountId:      firstNonEmpty(account.AccountId, account.Id.String()),
+		ResourceType:   "cmdb_sync_task_group",
+		ResourceId:     groupId.String(),
+		ResourceName:   groupId.String(),
+		Title:          "云采集失败 scope 自动局部重试已启动",
+		Message:        fmt.Sprintf("源任务 %s 已创建失败 scope 自动重试任务 %s", sourceTaskId.String(), task.Id.String()),
+		Payload:        eventPayload,
+	})
+	launch.start(c)
+}
+
+func cmdbSyncTaskAutoScopeRetryExists(c *ctx.ServiceContext, sourceTaskId models.Id) (bool, error) {
+	if c == nil || sourceTaskId == "" {
+		return false, nil
+	}
+	return c.DB().Model(&models.CmdbSyncTask{}).
+		Where("org_id = ?", c.OrgId).
+		Where("JSON_UNQUOTE(JSON_EXTRACT(stats, '$.rerunFromTaskId')) = ?", sourceTaskId.String()).
+		Where("JSON_UNQUOTE(JSON_EXTRACT(stats, '$.rerunMode')) = ?", "auto_failed_scope").
+		Exists()
+}
+
+func cmdbSyncTaskHasRetryableFailure(stats models.ResAttrs) bool {
+	if stats == nil {
+		return false
+	}
+	for _, detail := range cmdbSyncTaskMetricAttrsList(stats["failureDetails"]) {
+		if cmdbSyncTaskMetricBool(detail["retryable"]) {
+			return true
+		}
+	}
+	if summary := attrResAttrs(stats, "failureSummary"); summary != nil {
+		return cmdbSyncTaskMetricInt64(summary["retryableTotal"]) > 0
+	}
+	return false
+}
+
+func cmdbSyncTaskFailedRetryScopes(stats models.ResAttrs, regions []string, assetTypes []string, maxScopes int) ([]cmdbSyncTaskScope, string) {
+	if maxScopes <= 0 {
+		maxScopes = cloudSyncPolicyDefaultAutoRetryScopes
+	}
+	if scopes := cmdbSyncTaskFailedRetryScopesFromDetails(stats, regions, assetTypes, maxScopes); len(scopes) > 0 {
+		return scopes, "failure_details"
+	}
+	if scopes := cmdbSyncTaskFailedRetryScopesFromMetrics(stats, maxScopes); len(scopes) > 0 {
+		return scopes, "scope_metrics"
+	}
+	return nil, ""
+}
+
+func cmdbSyncTaskFailedRetryScopesFromDetails(stats models.ResAttrs, regions []string, assetTypes []string, maxScopes int) []cmdbSyncTaskScope {
+	result := make([]cmdbSyncTaskScope, 0)
+	seen := make(map[string]bool)
+	for _, detail := range cmdbSyncTaskMetricAttrsList(stats["failureDetails"]) {
+		if !cmdbSyncTaskMetricBool(detail["retryable"]) {
+			continue
+		}
+		region := cmdbSyncTaskMetricString(detail["region"])
+		assetType := cmdbSyncTaskMetricString(detail["assetType"])
+		for _, scope := range cmdbSyncTaskExpandRetryScope(region, assetType, regions, assetTypes) {
+			result = cmdbSyncTaskAppendRetryScope(result, seen, scope, maxScopes)
+			if len(result) >= maxScopes {
+				return result
+			}
+		}
+	}
+	return result
+}
+
+func cmdbSyncTaskFailedRetryScopesFromMetrics(stats models.ResAttrs, maxScopes int) []cmdbSyncTaskScope {
+	result := make([]cmdbSyncTaskScope, 0)
+	seen := make(map[string]bool)
+	for _, metric := range cmdbSyncTaskMetricAttrsList(stats["scopeMetrics"]) {
+		status := cmdbSyncTaskMetricString(metric["status"])
+		if status == "" || status == "complete" {
+			continue
+		}
+		scope := cmdbSyncTaskScope{
+			Region:    cmdbSyncTaskMetricString(metric["region"]),
+			AssetType: cmdbSyncTaskMetricString(metric["assetType"]),
+		}
+		if scope.Region == "" && scope.AssetType == "" {
+			continue
+		}
+		result = cmdbSyncTaskAppendRetryScope(result, seen, scope, maxScopes)
+		if len(result) >= maxScopes {
+			return result
+		}
+	}
+	return result
+}
+
+func cmdbSyncTaskExpandRetryScope(region string, assetType string, regions []string, assetTypes []string) []cmdbSyncTaskScope {
+	regionList := normalizeStringList(regions)
+	assetTypeList := normalizeStringList(assetTypes)
+	if region != "" {
+		regionList = []string{region}
+	}
+	if assetType != "" {
+		assetTypeList = []string{assetType}
+	}
+	if len(regionList) == 0 {
+		regionList = []string{""}
+	}
+	if len(assetTypeList) == 0 {
+		assetTypeList = []string{""}
+	}
+	scopes := make([]cmdbSyncTaskScope, 0, len(regionList)*len(assetTypeList))
+	for _, itemRegion := range regionList {
+		for _, itemAssetType := range assetTypeList {
+			scopes = append(scopes, cmdbSyncTaskScope{Region: itemRegion, AssetType: itemAssetType})
+		}
+	}
+	return scopes
+}
+
+func cmdbSyncTaskAppendRetryScope(result []cmdbSyncTaskScope, seen map[string]bool, scope cmdbSyncTaskScope, maxScopes int) []cmdbSyncTaskScope {
+	scope.Region = strings.TrimSpace(scope.Region)
+	scope.AssetType = strings.TrimSpace(scope.AssetType)
+	key := cmdbSyncScopeKey(scope.Region, scope.AssetType)
+	if key == "\x00" || seen[key] || len(result) >= maxScopes {
+		return result
+	}
+	seen[key] = true
+	return append(result, scope)
+}
+
+func cmdbSyncTaskScopeLists(scopes []cmdbSyncTaskScope) ([]string, []string) {
+	regions := make([]string, 0, len(scopes))
+	assetTypes := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if scope.Region != "" {
+			regions = append(regions, scope.Region)
+		}
+		if scope.AssetType != "" {
+			assetTypes = append(assetTypes, scope.AssetType)
+		}
+	}
+	return normalizeStringList(regions), normalizeStringList(assetTypes)
+}
+
+func cmdbSyncTaskScopeCountFor(regions []string, assetTypes []string) int {
+	regionCount := len(normalizeStringList(regions))
+	assetTypeCount := len(normalizeStringList(assetTypes))
+	if regionCount > 0 && assetTypeCount > 0 {
+		return regionCount * assetTypeCount
+	}
+	if regionCount > 0 {
+		return regionCount
+	}
+	return assetTypeCount
+}
+
+func cmdbSyncTaskScopeAttrsList(scopes []cmdbSyncTaskScope) []models.ResAttrs {
+	items := make([]models.ResAttrs, 0, len(scopes))
+	for _, scope := range scopes {
+		item := models.ResAttrs{}
+		if scope.Region != "" {
+			item["region"] = scope.Region
+		}
+		if scope.AssetType != "" {
+			item["assetType"] = scope.AssetType
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func cmdbSyncTaskSlowAPIEvent(c *ctx.ServiceContext, taskId models.Id, account *cmdbCloudAccount, regions, assetTypes []string, syncPolicyId models.Id, syncPolicyScheduleKey string, syncPolicyScheduleName string, status string, endedAt models.Time, stats models.ResAttrs) {
+	if c == nil || taskId == "" || account == nil {
+		return
+	}
+	summary, ok := cmdbSyncTaskSlowAPISummary(stats, cmdbSyncTaskSlowAPIThresholdFromStats(stats))
+	if !ok {
+		return
+	}
+
+	exists, err := c.DB().Model(&models.CloudEvent{}).
+		Where("org_id = ? and event_type = ? and resource_type = ? and resource_id = ?",
+			c.OrgId, cmdbSyncTaskSlowAPIEventType, "cmdb_sync_task", taskId.String()).
+		Exists()
+	if err != nil {
+		logs.Get().WithField("cmdbSyncTaskId", taskId).Warnf("check cmdb sync slow api event exists failed: %v", err)
+		return
+	}
+	if exists {
+		return
+	}
+
+	slowCount := cmdbSyncTaskMetricInt64(summary["slowCount"])
+	failedCount := cmdbSyncTaskMetricInt64(summary["failedCount"])
+	retriedCount := cmdbSyncTaskMetricInt64(summary["retriedCount"])
+	thresholdMs := cmdbSyncTaskMetricInt64(summary["thresholdMs"])
+	silenceMinutes := cmdbSyncTaskSlowAPISilenceFromStats(stats)
+	maxDurationMs := cmdbSyncTaskMetricInt64(summary["maxDurationMs"])
+	slowest := attrResAttrs(summary, "slowest")
+	endpoint := cmdbSyncTaskSlowAPIEndpoint(slowest)
+	if endpoint == "" {
+		endpoint = "unknown"
+	}
+
+	level := models.CloudEventLevelWarning
+	title := "云采集任务存在慢 API 调用"
+	if failedCount > 0 {
+		level = models.CloudEventLevelError
+		title = "云采集慢 API 调用伴随失败"
+	}
+	cloudAccountId := models.Id("")
+	if account.Source == models.CmdbCloudAccountSourceCloudAccount {
+		cloudAccountId = account.Id
+	}
+	accountId := firstNonEmpty(account.AccountId, account.Id.String())
+	fingerprint := cmdbSyncTaskSlowAPIEventFingerprint(account.Provider, accountId, syncPolicyId, syncPolicyScheduleKey, endpoint)
+	if cmdbSyncTaskSlowAPIEventSilenced(c, taskId, account.Provider, accountId, cloudAccountId, syncPolicyId, syncPolicyScheduleKey, fingerprint, endedAt, silenceMinutes) {
+		appendCmdbSyncTaskLog(c, taskId, models.CmdbSyncLogLevelInfo, "slow_api_silenced", "云采集慢 API 告警处于静默窗口，已跳过事件写入", models.ResAttrs{
+			"slowApiSilenceMinutes": silenceMinutes,
+			"slowApiFingerprint":    fingerprint,
+			"endpoint":              endpoint,
+			"syncPolicyId":          syncPolicyId.String(),
+			"syncPolicyScheduleKey": syncPolicyScheduleKey,
+		})
+		return
+	}
+	eventPayload := cloudSyncPolicyApplyNotificationRoutingById(c, syncPolicyId, models.ResAttrs{
+		"taskId":                 taskId.String(),
+		"status":                 status,
+		"thresholdMs":            thresholdMs,
+		"silenceMinutes":         silenceMinutes,
+		"slowApiFingerprint":     fingerprint,
+		"slowCount":              slowCount,
+		"failedCount":            failedCount,
+		"retriedCount":           retriedCount,
+		"maxDurationMs":          maxDurationMs,
+		"slowest":                slowest,
+		"top":                    summary["top"],
+		"regions":                cloneStringSlice(regions),
+		"assetTypes":             cloneStringSlice(assetTypes),
+		"syncPolicyId":           syncPolicyId.String(),
+		"syncPolicyScheduleKey":  syncPolicyScheduleKey,
+		"syncPolicyScheduleName": syncPolicyScheduleName,
+	})
+	recordCloudEventBestEffort(c, models.CloudEvent{
+		OrgId:          c.OrgId,
+		CloudAccountId: cloudAccountId,
+		Source:         models.CloudEventSourceSync,
+		EventType:      cmdbSyncTaskSlowAPIEventType,
+		Level:          level,
+		Status:         status,
+		Provider:       account.Provider,
+		AccountId:      accountId,
+		Region:         cmdbSyncTaskMetricText(slowest["region"]),
+		ResourceType:   "cmdb_sync_task",
+		ResourceId:     taskId.String(),
+		ResourceName:   firstNonEmpty(account.Name, taskId.String()),
+		Title:          title,
+		Message:        fmt.Sprintf("任务 %s 发现 %d 次 API 调用耗时不低于 %dms，最慢 %s 耗时 %dms", taskId.String(), slowCount, thresholdMs, endpoint, maxDurationMs),
+		OccurredAt:     endedAt,
+		Payload:        eventPayload,
+	})
+}
+
+func cmdbSyncTaskSlowAPIEventFingerprint(provider, accountId string, syncPolicyId models.Id, syncPolicyScheduleKey string, endpoint string) string {
+	return strings.Join([]string{
+		normalizeProvider(provider),
+		strings.TrimSpace(accountId),
+		strings.TrimSpace(syncPolicyId.String()),
+		strings.TrimSpace(syncPolicyScheduleKey),
+		strings.TrimSpace(endpoint),
+	}, "|")
+}
+
+func cmdbSyncTaskSlowAPIEventSilenced(c *ctx.ServiceContext, taskId models.Id, provider string, accountId string, cloudAccountId models.Id, syncPolicyId models.Id, syncPolicyScheduleKey string, fingerprint string, endedAt models.Time, silenceMinutes int64) bool {
+	silenceMinutes = cmdbSyncTaskEffectiveSlowAPISilenceMinutes(silenceMinutes)
+	if c == nil || silenceMinutes <= 0 || fingerprint == "" {
+		return false
+	}
+	eventTime := time.Time(endedAt)
+	if eventTime.IsZero() {
+		eventTime = time.Now()
+	}
+	query := c.DB().Model(&models.CloudEvent{}).
+		Where("org_id = ? and event_type = ? and source = ? and resource_type = ?",
+			c.OrgId, cmdbSyncTaskSlowAPIEventType, models.CloudEventSourceSync, "cmdb_sync_task").
+		Where("occurred_at >= ?", eventTime.Add(-time.Duration(silenceMinutes)*time.Minute)).
+		Where("resource_id <> ?", taskId.String()).
+		Where("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.slowApiFingerprint')) = ?", fingerprint)
+	if provider != "" {
+		query = query.Where("provider = ?", provider)
+	}
+	if accountId != "" {
+		query = query.Where("account_id = ?", accountId)
+	}
+	if cloudAccountId != "" {
+		query = query.Where("cloud_account_id = ?", cloudAccountId)
+	}
+	if syncPolicyId != "" {
+		query = query.Where("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.syncPolicyId')) = ?", syncPolicyId.String())
+	}
+	if syncPolicyScheduleKey != "" {
+		query = query.Where("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.syncPolicyScheduleKey')) = ?", syncPolicyScheduleKey)
+	}
+	exists, err := query.Exists()
+	if err != nil {
+		logs.Get().WithField("cmdbSyncTaskId", taskId).Warnf("check cmdb sync slow api silence window failed: %v", err)
+		return false
+	}
+	return exists
 }
 
 func updateCmdbSyncTask(c *ctx.ServiceContext, taskId models.Id, attrs map[string]interface{}) error {
@@ -1709,10 +2793,19 @@ func cmdbSyncTaskExistingRerunParameterDiffs(c *ctx.ServiceContext, taskId model
 }
 
 func updateCloudAccountLastSyncAt(c *ctx.ServiceContext, accountId models.Id, lastSyncAt models.Time) error {
-	_, err := c.DB().Model(&models.CloudAccount{}).
+	if _, err := c.DB().Model(&models.CloudAccount{}).
 		Where("id = ? and org_id = ?", accountId, c.OrgId).
 		UpdateAttrs(map[string]interface{}{
 			"last_sync_at": lastSyncAt,
+		}); err != nil {
+		return err
+	}
+	_, err := c.DB().Model(&models.CloudAccountRegion{}).
+		Where("org_id = ? and cloud_account_id = ? and enabled = ?", c.OrgId, accountId, true).
+		UpdateAttrs(map[string]interface{}{
+			"last_sync_at": lastSyncAt,
+			"status":       models.CloudAccountHealthHealthy,
+			"message":      "区域最近一次云采集同步成功",
 		})
 	return err
 }
@@ -1839,12 +2932,16 @@ func cmdbSyncFailureDetails(messages []string) []models.ResAttrs {
 			continue
 		}
 		category, retryable, retryHint := cmdbSyncClassifyFailure(message)
-		details = append(details, models.ResAttrs{
+		detail := models.ResAttrs{
 			"message":   message,
 			"category":  category,
 			"retryable": retryable,
 			"retryHint": retryHint,
-		})
+		}
+		for key, value := range cmdbSyncProviderFailureMetadata(message) {
+			detail[key] = value
+		}
+		details = append(details, detail)
 	}
 	return details
 }
@@ -1869,7 +2966,77 @@ func cmdbSyncFailureSummary(messages []string) models.ResAttrs {
 	}
 }
 
+func cmdbSyncProviderFailureMetadata(message string) models.ResAttrs {
+	metadata := models.ResAttrs{}
+	for _, token := range strings.Fields(message) {
+		key, value, ok := strings.Cut(token, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.Trim(strings.TrimSpace(value), " ,;")
+		if key == "" || value == "" {
+			continue
+		}
+		switch key {
+		case "provider":
+			metadata["provider"] = value
+		case "region":
+			metadata["region"] = value
+		case "assetType", "resourceType":
+			metadata["assetType"] = value
+		case "status":
+			if status, err := strconv.Atoi(value); err == nil {
+				metadata["httpStatus"] = status
+			} else {
+				metadata["httpStatus"] = value
+			}
+		case "code":
+			metadata["providerCode"] = value
+		case "requestId":
+			metadata["requestId"] = value
+		case "retryAfter":
+			metadata["retryAfter"] = value
+		case "service":
+			metadata["providerService"] = value
+		case "path":
+			metadata["providerPath"] = value
+		case "attempts":
+			if attempts, err := strconv.Atoi(value); err == nil {
+				metadata["providerAttempts"] = attempts
+			} else {
+				metadata["providerAttempts"] = value
+			}
+		}
+	}
+	return metadata
+}
+
 func cmdbSyncClassifyFailure(message string) (string, bool, string) {
+	metadata := cmdbSyncProviderFailureMetadata(message)
+	statusCode := cmdbSyncFailureHTTPStatus(metadata["httpStatus"])
+	providerCode := strings.ToLower(strings.TrimSpace(fmt.Sprint(metadata["providerCode"])))
+	switch {
+	case statusCode == http.StatusTooManyRequests ||
+		strings.Contains(providerCode, "toomany") ||
+		strings.Contains(providerCode, "rate") ||
+		strings.Contains(providerCode, "throttl") ||
+		strings.Contains(providerCode, "limit"):
+		return "rate_limit", true, "等待限流窗口恢复后重试，或缩小 regions/assetTypes 范围"
+	case statusCode == http.StatusUnauthorized ||
+		strings.Contains(providerCode, "notauthenticated") ||
+		strings.Contains(providerCode, "unauthenticated") ||
+		strings.Contains(providerCode, "invalidcredentials"):
+		return "credential", false, "更新云账号凭证后再重试"
+	case statusCode == http.StatusForbidden ||
+		strings.Contains(providerCode, "notauthorized") ||
+		strings.Contains(providerCode, "forbidden") ||
+		strings.Contains(providerCode, "authorization"):
+		return "permission", false, "检查云账号权限策略后再重试"
+	case statusCode >= 500:
+		return "network", true, "云 API 服务端临时异常，可直接重试"
+	}
+
 	lower := strings.ToLower(message)
 	switch {
 	case strings.Contains(lower, "rate") || strings.Contains(lower, "throttl") ||
@@ -1888,6 +3055,22 @@ func cmdbSyncClassifyFailure(message string) (string, bool, string) {
 		return "configuration", false, "补齐云账号必需配置后再重试"
 	default:
 		return "unknown", true, "确认错误原因后可按相同 regions/assetTypes 重试"
+	}
+}
+
+func cmdbSyncFailureHTTPStatus(value interface{}) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case string:
+		status, _ := strconv.Atoi(strings.TrimSpace(typed))
+		return status
+	default:
+		return 0
 	}
 }
 
@@ -2312,13 +3495,34 @@ func hasAnyCredential(credentials map[string]string, keys ...string) bool {
 
 func supportedCmdbCloudAssetTypes(provider string) []string {
 	switch provider {
-	case "aws", "oci":
+	case "aws":
 		return []string{
 			models.CmdbAssetTypeComputeInstance,
 			models.CmdbAssetTypeKubernetesCluster,
 			models.CmdbAssetTypeNetworkVpc,
 			models.CmdbAssetTypeNetworkSubnet,
 			models.CmdbAssetTypeNetworkRouteTable,
+			models.CmdbAssetTypeNetworkNatGateway,
+			models.CmdbAssetTypeNetworkInternetGateway,
+			models.CmdbAssetTypeNetworkSecurityGroup,
+			models.CmdbAssetTypePublicIP,
+			models.CmdbAssetTypeLoadBalancer,
+			models.CmdbAssetTypeBlockVolume,
+			models.CmdbAssetTypeObjectStorageBucket,
+			models.CmdbAssetTypeRelationalDatabase,
+			models.CmdbAssetTypeRedisCache,
+		}
+	case "oci":
+		return []string{
+			models.CmdbAssetTypeComputeInstance,
+			models.CmdbAssetTypeKubernetesCluster,
+			models.CmdbAssetTypeNetworkVpc,
+			models.CmdbAssetTypeNetworkSubnet,
+			models.CmdbAssetTypeNetworkRouteTable,
+			models.CmdbAssetTypeNetworkNatGateway,
+			models.CmdbAssetTypeNetworkInternetGateway,
+			models.CmdbAssetTypeNetworkServiceGateway,
+			models.CmdbAssetTypeNetworkDrg,
 			models.CmdbAssetTypeNetworkSecurityGroup,
 			models.CmdbAssetTypePublicIP,
 			models.CmdbAssetTypeLoadBalancer,

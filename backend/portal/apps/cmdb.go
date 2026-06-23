@@ -24,7 +24,12 @@ import (
 	"cloudiac/portal/services"
 )
 
-const cmdbAssetExportLimit = 10000
+const (
+	cmdbAssetExportLimit              = 10000
+	cmdbAssetRelationDefaultLimit     = 200
+	cmdbAssetRelationMaxLimit         = 1000
+	cmdbAssetRelationReturnedSortSize = 20
+)
 
 type iacResourceForCmdb struct {
 	ResourceId   models.Id       `gorm:"column:resource_id"`
@@ -70,6 +75,7 @@ func SearchCmdbAssets(c *ctx.ServiceContext, form *forms.SearchCmdbAssetForm) (i
 	if err := p.Scan(&assets); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
+	sanitizeCmdbAssetResps(assets)
 
 	return &page.PageResp{
 		Total:    p.MustTotal(),
@@ -97,7 +103,32 @@ func CmdbAssetDetail(c *ctx.ServiceContext, form *forms.CmdbAssetParam) (*resps.
 	if err := fillCmdbAssetDetail(c, &asset); err != nil {
 		return nil, err
 	}
+	sanitizeCmdbAssetResp(&asset)
 	return &asset, nil
+}
+
+func CmdbAssetRelations(c *ctx.ServiceContext, form *forms.CmdbAssetRelationsForm) (*resps.CmdbAssetRelationsResp, e.Error) {
+	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
+		return nil, err
+	}
+	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
+		return nil, err
+	}
+
+	asset := resps.CmdbAssetResp{}
+	query := buildCmdbAssetQuery(c).Where("iac_cmdb_asset.id = ?", form.Id)
+	if err := query.First(&asset); err != nil {
+		if e.IsRecordNotFound(err) {
+			return nil, e.New(e.ObjectNotExistsOrNoPerm, err)
+		}
+		return nil, e.New(e.DBError, err)
+	}
+	includeApplication := true
+	if form.IncludeApplication != nil {
+		includeApplication = *form.IncludeApplication
+	}
+	offset := normalizeCmdbAssetRelationCursor(form.Cursor, form.Offset)
+	return loadCmdbAssetRelations(c, &asset, normalizeCmdbAssetRelationLimit(form.Limit), offset, includeApplication, cmdbAssetRelationFilterFromForm(form))
 }
 
 func ExportCmdbAssets(c *ctx.ServiceContext, form *forms.ExportCmdbAssetForm) (*CmdbAssetExportFile, e.Error) {
@@ -105,6 +136,9 @@ func ExportCmdbAssets(c *ctx.ServiceContext, form *forms.ExportCmdbAssetForm) (*
 		return nil, err
 	}
 	if err := RefreshCmdbAssetGovernanceFields(c); err != nil {
+		return nil, err
+	}
+	if err := ensureCmdbAssetExportPermission(c, form); err != nil {
 		return nil, err
 	}
 
@@ -129,6 +163,7 @@ func ExportCmdbAssets(c *ctx.ServiceContext, form *forms.ExportCmdbAssetForm) (*
 		Scan(&assets); err != nil {
 		return nil, e.New(e.DBError, err)
 	}
+	sanitizeCmdbAssetResps(assets)
 
 	if format == "json" {
 		return buildCmdbAssetJSONExportFile(assets)
@@ -136,54 +171,251 @@ func ExportCmdbAssets(c *ctx.ServiceContext, form *forms.ExportCmdbAssetForm) (*
 	return buildCmdbAssetCSVExportFile(assets)
 }
 
-func ImportCmdbAssets(c *ctx.ServiceContext, form *forms.ImportCmdbAssetForm) (*resps.CmdbImportResp, e.Error) {
-	resp := &resps.CmdbImportResp{
-		Total:  len(form.Assets),
-		Errors: make([]string, 0),
+func CmdbAssetImportTemplate() (*CmdbAssetExportFile, e.Error) {
+	payload := models.ResAttrs{
+		"overwriteOwnership": true,
+		"assets": []models.ResAttrs{
+			{
+				"source":         models.CmdbAssetSourceCloudCollect,
+				"provider":       "aws",
+				"accountId":      "123456789012",
+				"region":         "us-east-1",
+				"assetType":      models.CmdbAssetTypeComputeInstance,
+				"nativeType":     "aws_instance",
+				"nativeId":       "i-0123456789abcdef0",
+				"name":           "demo-ec2",
+				"status":         "running",
+				"owner":          "sre",
+				"application":    "demo-app",
+				"businessLine":   "platform",
+				"lifecycle":      "active",
+				"cost":           0,
+				"complianceRisk": "low",
+				"tags": models.ResAttrs{
+					"env": "dev",
+				},
+				"attributes": models.ResAttrs{
+					"instanceType": "t3.micro",
+				},
+				"rawData": models.ResAttrs{
+					"importSource": "template",
+				},
+			},
+		},
 	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return nil, e.New(e.JSONParseError, err)
+	}
+	return &CmdbAssetExportFile{
+		Data:        data,
+		Filename:    "cloudiac-cmdb-import-template.json",
+		ContentType: "application/json; charset=utf-8",
+	}, nil
+}
+
+func ImportCmdbAssets(c *ctx.ServiceContext, form *forms.ImportCmdbAssetForm) (*resps.CmdbImportResp, e.Error) {
+	if err := ensureCmdbAssetImportPermission(c); err != nil {
+		return nil, err
+	}
+	if form.DryRun {
+		return PreviewCmdbAssetImport(c, form)
+	}
+	resp := newCmdbImportResp(len(form.Assets), false)
 	for i := range form.Assets {
 		asset := form.Assets[i]
-		asset.OrgId = c.OrgId
-		asset.Id = ""
-		asset.NativeId = strings.TrimSpace(asset.NativeId)
-		if asset.NativeId == "" {
+		item := resps.CmdbImportItemResp{Index: i + 1}
+		if err := prepareCmdbImportAsset(c, &asset); err != nil {
 			resp.Skipped++
-			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条缺少资源ID，已跳过", i+1))
+			item.Action = "error"
+			item.Error = err.Error()
+			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条预处理失败：%s", i+1, err.Error()))
+			resp.Items = append(resp.Items, item)
 			continue
 		}
-		if asset.Source == "" {
-			asset.Source = models.CmdbAssetSourceCloudCollect
-		}
-		if asset.AssetType == "" {
-			asset.AssetType = NormalizeCmdbAssetType(asset.NativeType)
+		item = cmdbImportItemResp(i, asset)
+		if asset.NativeId == "" {
+			resp.Skipped++
+			item.Action = "error"
+			item.Error = "缺少资源ID"
+			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条缺少资源ID，已跳过", i+1))
+			resp.Items = append(resp.Items, item)
+			continue
 		}
 
 		result, err := upsertCmdbAsset(c, &asset, models.CmdbAssetChangeSourceImport)
 		if err != nil {
+			item.Action = "error"
+			item.Error = err.Error()
 			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条导入失败：%s", i+1, err.Error()))
+			resp.Items = append(resp.Items, item)
 			continue
 		}
+		item.AssetId = asset.Id
 		switch {
 		case result.Created:
 			resp.Created++
+			item.Action = "create"
 		case result.Updated:
 			resp.Updated++
+			item.Action = "update"
 		default:
 			resp.Skipped++
+			item.Action = "skip"
 		}
 
 		if form.OverwriteOwnership {
 			updated, err := updateCmdbAssetOwnershipFromImport(c, asset.Id, asset)
 			if err != nil {
+				item.Action = "error"
+				item.Error = err.Error()
 				resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条归属更新失败：%s", i+1, err.Error()))
+				resp.Items = append(resp.Items, item)
 				continue
 			}
 			if updated {
 				resp.OwnershipUpdated++
+				item.OwnershipChanged = true
+				if item.Action == "skip" {
+					item.Action = "ownership_update"
+				}
 			}
 		}
+		resp.Items = append(resp.Items, item)
 	}
 	return resp, nil
+}
+
+func PreviewCmdbAssetImport(c *ctx.ServiceContext, form *forms.ImportCmdbAssetForm) (*resps.CmdbImportResp, e.Error) {
+	resp := newCmdbImportResp(len(form.Assets), true)
+	for i := range form.Assets {
+		asset := form.Assets[i]
+		item := resps.CmdbImportItemResp{Index: i + 1}
+		if err := prepareCmdbImportAsset(c, &asset); err != nil {
+			resp.Skipped++
+			item.Action = "error"
+			item.Error = err.Error()
+			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条预处理失败：%s", i+1, err.Error()))
+			resp.Items = append(resp.Items, item)
+			continue
+		}
+		item = cmdbImportItemResp(i, asset)
+		if asset.NativeId == "" {
+			resp.Skipped++
+			item.Action = "error"
+			item.Error = "缺少资源ID"
+			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条缺少资源ID，已跳过", i+1))
+			resp.Items = append(resp.Items, item)
+			continue
+		}
+
+		existing, exists, err := findCmdbImportExistingAsset(c, asset)
+		if err != nil {
+			resp.Skipped++
+			item.Action = "error"
+			item.Error = err.Error()
+			resp.Errors = append(resp.Errors, fmt.Sprintf("第 %d 条查询现有资产失败：%s", i+1, err.Error()))
+			resp.Items = append(resp.Items, item)
+			continue
+		}
+		if !exists {
+			resp.Created++
+			item.Action = "create"
+			item.Diff = models.ResAttrs{"after": cmdbAssetSnapshot(&asset)}
+			resp.Items = append(resp.Items, item)
+			continue
+		}
+
+		asset.Id = existing.Id
+		item.AssetId = existing.Id
+		item.ExistingName = firstNonEmpty(existing.Name, existing.NativeId)
+		item.Diff = cmdbAssetDiff(existing, &asset)
+		if form.OverwriteOwnership {
+			after := cmdbImportOwnershipAsset(existing, asset)
+			item.OwnershipDiff = cmdbAssetOwnershipDiff(existing, after)
+			item.OwnershipChanged = len(item.OwnershipDiff) > 0
+		}
+		switch {
+		case len(item.Diff) > 0:
+			resp.Updated++
+			item.Action = "update"
+			if item.OwnershipChanged {
+				resp.OwnershipUpdated++
+			}
+		case item.OwnershipChanged:
+			resp.OwnershipUpdated++
+			item.Action = "ownership_update"
+		default:
+			resp.Skipped++
+			item.Action = "skip"
+		}
+		resp.Items = append(resp.Items, item)
+	}
+	return resp, nil
+}
+
+func newCmdbImportResp(total int, dryRun bool) *resps.CmdbImportResp {
+	return &resps.CmdbImportResp{
+		Total:  total,
+		DryRun: dryRun,
+		Errors: make([]string, 0),
+		Items:  make([]resps.CmdbImportItemResp, 0, total),
+	}
+}
+
+func prepareCmdbImportAsset(c *ctx.ServiceContext, asset *models.CmdbAsset) e.Error {
+	asset.OrgId = c.OrgId
+	asset.Id = ""
+	asset.NativeId = strings.TrimSpace(asset.NativeId)
+	if asset.NativeId == "" {
+		return nil
+	}
+	if asset.Source == "" {
+		asset.Source = models.CmdbAssetSourceCloudCollect
+	}
+	if asset.AssetType == "" {
+		asset.AssetType = NormalizeCmdbAssetType(asset.NativeType)
+	}
+	normalizeCmdbAssetAttrs(asset)
+	return prepareCmdbAssetGovernance(c, asset)
+}
+
+func cmdbImportItemResp(index int, asset models.CmdbAsset) resps.CmdbImportItemResp {
+	return resps.CmdbImportItemResp{
+		Index:      index + 1,
+		AssetId:    asset.Id,
+		Provider:   asset.Provider,
+		AccountId:  asset.AccountId,
+		Region:     asset.Region,
+		AssetType:  asset.AssetType,
+		NativeType: asset.NativeType,
+		NativeId:   asset.NativeId,
+		Name:       firstNonEmpty(asset.Name, asset.NativeId),
+	}
+}
+
+func findCmdbImportExistingAsset(c *ctx.ServiceContext, asset models.CmdbAsset) (models.CmdbAsset, bool, e.Error) {
+	existing := models.CmdbAsset{}
+	err := c.DB().Where("org_id = ? and source = ? and provider = ? and account_id = ? and region = ? and native_id = ?",
+		asset.OrgId, asset.Source, asset.Provider, asset.AccountId, asset.Region, asset.NativeId).First(&existing)
+	if err != nil {
+		if e.IsRecordNotFound(err) {
+			return existing, false, nil
+		}
+		return existing, false, e.New(e.DBError, err)
+	}
+	return existing, true, nil
+}
+
+func cmdbImportOwnershipAsset(current models.CmdbAsset, imported models.CmdbAsset) models.CmdbAsset {
+	after := current
+	after.Owner = strings.TrimSpace(imported.Owner)
+	after.Application = strings.TrimSpace(imported.Application)
+	after.BusinessLine = strings.TrimSpace(imported.BusinessLine)
+	after.Lifecycle = strings.TrimSpace(imported.Lifecycle)
+	after.Cost = imported.Cost
+	after.ComplianceRisk = strings.TrimSpace(imported.ComplianceRisk)
+	return after
 }
 
 func UpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.UpdateCmdbAssetOwnershipForm) (*resps.CmdbAssetResp, e.Error) {
@@ -198,6 +430,9 @@ func UpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.UpdateCmdbAsset
 			return nil, e.New(e.ObjectNotExistsOrNoPerm, err)
 		}
 		return nil, e.New(e.DBError, err)
+	}
+	if err := ensureCmdbAssetOwnershipPermission(c, asset.CmdbAsset, cmdbAssetOwnershipFields(form)); err != nil {
+		return nil, err
 	}
 
 	attrs, after := cmdbAssetOwnershipUpdateAttrs(form, asset.CmdbAsset)
@@ -273,6 +508,7 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 	if attrs, _ := attrsBuilder(models.CmdbAsset{}); len(attrs) == 0 {
 		return nil, e.New(e.BadParam, fmt.Errorf("at least one ownership field is required"))
 	}
+	fields := cmdbBatchOwnershipFields(form, projectEnvBinding)
 
 	assets := make([]models.CmdbAsset, 0)
 	if err := buildCmdbAssetQuery(c).
@@ -316,6 +552,11 @@ func BatchUpdateCmdbAssetOwnership(c *ctx.ServiceContext, form *forms.BatchUpdat
 		if !ok {
 			resp.Skipped++
 			resp.Errors = append(resp.Errors, fmt.Sprintf("资产 %s 不存在或无权限", id))
+			continue
+		}
+		if err := ensureCmdbAssetOwnershipPermission(c, asset, fields); err != nil {
+			resp.Skipped++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("资产 %s 无权限：%s", id, err.Error()))
 			continue
 		}
 		attrs, after := attrsBuilder(asset)
@@ -410,6 +651,29 @@ func cmdbBatchOwnershipFields(form *forms.BatchUpdateCmdbAssetOwnershipForm, bin
 	return fields
 }
 
+func cmdbAssetOwnershipFields(form *forms.UpdateCmdbAssetOwnershipForm) []string {
+	fields := make([]string, 0)
+	if form.HasKey("owner") {
+		fields = append(fields, "owner")
+	}
+	if form.HasKey("application") {
+		fields = append(fields, "application")
+	}
+	if form.HasKey("businessLine") {
+		fields = append(fields, "businessLine")
+	}
+	if form.HasKey("lifecycle") {
+		fields = append(fields, "lifecycle")
+	}
+	if form.HasKey("cost") {
+		fields = append(fields, "cost")
+	}
+	if form.HasKey("complianceRisk") {
+		fields = append(fields, "complianceRisk")
+	}
+	return fields
+}
+
 func cmdbIdStrings(ids []models.Id) []string {
 	values := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -474,14 +738,8 @@ func ensureCmdbProjectBindingAllowed(c *ctx.ServiceContext, projectId models.Id)
 	if c.IsSuperAdmin || services.UserHasOrgRole(c.UserId, c.OrgId, consts.OrgRoleAdmin) {
 		return nil
 	}
-	count, err := c.DB().Model(&models.UserProject{}).
-		Where("user_id = ? and project_id = ?", c.UserId, projectId).
-		Count()
-	if err != nil {
-		return e.New(e.DBError, err)
-	}
-	if count == 0 {
-		return e.New(e.BadParam, fmt.Errorf("无权限绑定到项目 %s", projectId))
+	if !cmdbUserHasProjectRole(c, projectId, consts.ProjectRoleManager) {
+		return e.New(e.BadParam, fmt.Errorf("绑定到项目 %s 需要项目负责人、组织管理员或平台管理员权限", projectId))
 	}
 	return nil
 }
@@ -754,6 +1012,119 @@ func splitCSV(value string) []string {
 	return items
 }
 
+type cmdbAssetRelationFilter struct {
+	Sources       []string
+	sourceSet     map[string]bool
+	RelationTypes []string
+	typeSet       map[string]bool
+	Direction     string
+	Keyword       string
+}
+
+func cmdbAssetRelationFilterFromForm(form *forms.CmdbAssetRelationsForm) cmdbAssetRelationFilter {
+	if form == nil {
+		return cmdbAssetRelationFilter{}
+	}
+	return newCmdbAssetRelationFilter(splitCSV(form.Sources), splitCSV(form.RelationTypes), form.Direction, form.Keyword)
+}
+
+func newCmdbAssetRelationFilter(sources []string, relationTypes []string, direction string, keyword string) cmdbAssetRelationFilter {
+	return cmdbAssetRelationFilter{
+		Sources:       cmdbUniqueStrings(sources),
+		sourceSet:     cmdbStringSet(sources),
+		RelationTypes: cmdbUniqueStrings(relationTypes),
+		typeSet:       cmdbStringSet(relationTypes),
+		Direction:     normalizeCmdbRelationDirection(direction),
+		Keyword:       strings.ToLower(strings.TrimSpace(keyword)),
+	}
+}
+
+func cmdbUniqueStrings(values []string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
+func cmdbStringSet(values []string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range cmdbUniqueStrings(values) {
+		result[value] = true
+	}
+	return result
+}
+
+func normalizeCmdbRelationDirection(direction string) string {
+	switch strings.ToLower(strings.TrimSpace(direction)) {
+	case "incoming", "outgoing":
+		return strings.ToLower(strings.TrimSpace(direction))
+	default:
+		return "all"
+	}
+}
+
+func (filter cmdbAssetRelationFilter) matchesSource(source string) bool {
+	return len(filter.sourceSet) == 0 || filter.sourceSet[source]
+}
+
+func (filter cmdbAssetRelationFilter) matchesRelationType(relationType string) bool {
+	return len(filter.typeSet) == 0 || filter.typeSet[relationType]
+}
+
+func (filter cmdbAssetRelationFilter) matchesDirection(relation resps.CmdbAssetRelationResp, assetId models.Id) bool {
+	switch filter.Direction {
+	case "incoming":
+		return relation.TargetAssetId == assetId
+	case "outgoing":
+		return relation.SourceAssetId == assetId
+	default:
+		return true
+	}
+}
+
+func (filter cmdbAssetRelationFilter) matchesApplicationAggregate(appRelation resps.CmdbApplicationRelationResp) bool {
+	if !filter.matchesSource(models.CmdbRelationSourceAppInferred) || !filter.matchesRelationType(appRelation.RelationType) {
+		return false
+	}
+	return filter.Direction == "all" || filter.Direction == appRelation.Direction
+}
+
+func (filter cmdbAssetRelationFilter) matchesRelation(relation resps.CmdbAssetRelationResp, assetId models.Id) bool {
+	if !filter.matchesSource(relation.Source) || !filter.matchesRelationType(relation.RelationType) || !filter.matchesDirection(relation, assetId) {
+		return false
+	}
+	if filter.Keyword == "" {
+		return true
+	}
+	return strings.Contains(cmdbAssetRelationSearchText(relation), filter.Keyword)
+}
+
+func cmdbAssetRelationSearchText(relation resps.CmdbAssetRelationResp) string {
+	values := []string{
+		string(relation.SourceAssetId),
+		string(relation.TargetAssetId),
+		relation.SourceAssetName,
+		relation.TargetAssetName,
+		relation.SourceAssetType,
+		relation.TargetAssetType,
+		relation.Source,
+		relation.RelationType,
+	}
+	if len(relation.Metadata) > 0 {
+		if data, err := json.Marshal(relation.Metadata); err == nil {
+			values = append(values, string(data))
+		}
+	}
+	return strings.ToLower(strings.Join(values, " "))
+}
+
 func cmdbAssetFromIacResource(row iacResourceForCmdb) *models.CmdbAsset {
 	provider := path.Base(row.Provider)
 	nativeId := firstNonEmpty(row.ResId.String(), attrString(row.Attrs, "id"), attrString(row.Attrs, "arn"), row.ResourceId.String())
@@ -965,25 +1336,124 @@ func cmdbAssetExportTime(value models.Time) string {
 	return t.Format(time.RFC3339)
 }
 
-func fillCmdbAssetDetail(c *ctx.ServiceContext, asset *resps.CmdbAssetResp) e.Error {
-	relations := make([]resps.CmdbAssetRelationResp, 0)
-	if err := c.DB().Model(&models.CmdbAssetRelation{}).
-		Select(`iac_cmdb_asset_relation.*,
-			source_asset.name as source_asset_name, source_asset.asset_type as source_asset_type,
-			target_asset.name as target_asset_name, target_asset.asset_type as target_asset_type`).
-		Joins("left join iac_cmdb_asset source_asset on source_asset.id = iac_cmdb_asset_relation.source_asset_id").
-		Joins("left join iac_cmdb_asset target_asset on target_asset.id = iac_cmdb_asset_relation.target_asset_id").
-		Where("iac_cmdb_asset_relation.org_id = ? and (iac_cmdb_asset_relation.source_asset_id = ? or iac_cmdb_asset_relation.target_asset_id = ?)", c.OrgId, asset.Id, asset.Id).
-		Order("iac_cmdb_asset_relation.updated_at desc").
-		Scan(&relations); err != nil {
-		return e.New(e.DBError, err)
-	}
+const cmdbAssetMaskedValue = "<masked>"
 
-	inferredRelations, err := cmdbAssetApplicationInferredRelations(c, asset, relations)
+func sanitizeCmdbAssetResps(assets []resps.CmdbAssetResp) {
+	for i := range assets {
+		sanitizeCmdbAssetResp(&assets[i])
+	}
+}
+
+func sanitizeCmdbAssetResp(asset *resps.CmdbAssetResp) {
+	if asset == nil {
+		return
+	}
+	asset.Tags = sanitizeCmdbAssetAttrs(asset.Tags)
+	asset.Attributes = sanitizeCmdbAssetAttrs(asset.Attributes)
+	asset.RawData = sanitizeCmdbAssetAttrs(asset.RawData)
+	sanitizeCmdbRelationResps(asset.Relations)
+}
+
+func sanitizeCmdbRelationResps(relations []resps.CmdbAssetRelationResp) {
+	for i := range relations {
+		relations[i].Metadata = sanitizeCmdbAssetAttrs(relations[i].Metadata)
+	}
+}
+
+func sanitizeCmdbAssetAttrs(attrs models.ResAttrs) models.ResAttrs {
+	sanitized, _ := sanitizeCmdbAssetValue(attrs, "")
+	if result, ok := sanitized.(models.ResAttrs); ok {
+		return result
+	}
+	if result, ok := sanitized.(map[string]interface{}); ok {
+		return models.ResAttrs(result)
+	}
+	return models.ResAttrs{}
+}
+
+func sanitizeCmdbAssetValue(value interface{}, key string) (interface{}, bool) {
+	if cmdbAssetSensitiveFieldName(key) {
+		return cmdbAssetMaskedValue, true
+	}
+	switch typed := value.(type) {
+	case models.ResAttrs:
+		result := make(models.ResAttrs, len(typed))
+		changed := false
+		for childKey, childValue := range typed {
+			next, masked := sanitizeCmdbAssetValue(childValue, childKey)
+			result[childKey] = next
+			changed = changed || masked
+		}
+		return result, changed
+	case map[string]interface{}:
+		result := make(models.ResAttrs, len(typed))
+		changed := false
+		for childKey, childValue := range typed {
+			next, masked := sanitizeCmdbAssetValue(childValue, childKey)
+			result[childKey] = next
+			changed = changed || masked
+		}
+		return result, changed
+	case []models.ResAttrs:
+		result := make([]models.ResAttrs, 0, len(typed))
+		changed := false
+		for _, item := range typed {
+			next := sanitizeCmdbAssetAttrs(item)
+			result = append(result, next)
+			changed = true
+		}
+		return result, changed
+	case []interface{}:
+		result := make([]interface{}, 0, len(typed))
+		changed := false
+		for _, item := range typed {
+			next, masked := sanitizeCmdbAssetValue(item, "")
+			result = append(result, next)
+			changed = changed || masked
+		}
+		return result, changed
+	default:
+		return value, false
+	}
+}
+
+func cmdbAssetSensitiveFieldName(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	replacer := strings.NewReplacer("-", "", "_", "", ".", "", " ", "")
+	compact := replacer.Replace(normalized)
+	sensitiveParts := []string{
+		"accesskey",
+		"accountkey",
+		"apikey",
+		"apisecret",
+		"authorization",
+		"authtoken",
+		"clientsecret",
+		"credential",
+		"password",
+		"passphrase",
+		"privatekey",
+		"secretaccesskey",
+		"sessiontoken",
+		"signature",
+		"token",
+	}
+	for _, part := range sensitiveParts {
+		if strings.Contains(compact, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func fillCmdbAssetDetail(c *ctx.ServiceContext, asset *resps.CmdbAssetResp) e.Error {
+	relationResp, err := loadCmdbAssetRelations(c, asset, cmdbAssetRelationDefaultLimit, 0, true, cmdbAssetRelationFilter{})
 	if err != nil {
 		return err
 	}
-	relations = append(relations, inferredRelations...)
 
 	changes := make([]resps.CmdbAssetChangeResp, 0)
 	if err := c.DB().Model(&models.CmdbAssetChange{}).
@@ -1006,68 +1476,260 @@ func fillCmdbAssetDetail(c *ctx.ServiceContext, asset *resps.CmdbAssetResp) e.Er
 		changes[i].Summary = summary
 	}
 
-	asset.Relations = relations
+	asset.Relations = relationResp.Relations
+	asset.RelationSummary = &relationResp.Summary
 	asset.Changes = changes
 	return nil
 }
 
-func cmdbAssetApplicationInferredRelations(c *ctx.ServiceContext, asset *resps.CmdbAssetResp, existing []resps.CmdbAssetRelationResp) ([]resps.CmdbAssetRelationResp, e.Error) {
-	application := strings.TrimSpace(asset.Application)
-	if application == "" {
-		return []resps.CmdbAssetRelationResp{}, nil
+func loadCmdbAssetRelations(c *ctx.ServiceContext, asset *resps.CmdbAssetResp, limit int, offset int, includeApplication bool, filter cmdbAssetRelationFilter) (*resps.CmdbAssetRelationsResp, e.Error) {
+	limit = normalizeCmdbAssetRelationLimit(limit)
+	offset = normalizeCmdbAssetRelationOffset(offset)
+	summary := resps.CmdbAssetRelationSummaryResp{
+		Limit:           limit,
+		Offset:          offset,
+		Cursor:          strconv.Itoa(offset),
+		SourceBreakdown: make([]resps.CmdbAssetRelationMetricResp, 0),
+		TypeBreakdown:   make([]resps.CmdbAssetRelationMetricResp, 0),
 	}
+	sourceBreakdown := make(map[string]int64)
+	typeBreakdown := make(map[string]int64)
 
-	apps, err := buildCmdbApplications(c)
+	directRelations, directSummary, err := loadCmdbAssetDirectRelations(c, asset.Id, limit, offset, filter)
 	if err != nil {
 		return nil, err
 	}
-	appByName := make(map[string]resps.CmdbApplicationResp, len(apps))
-	for _, app := range apps {
-		appByName[app.Application] = app
+	relations := directRelations
+	summary.DirectRelationCount = directSummary.TotalRelationCount
+	summary.IncomingRelationCount = directSummary.IncomingRelationCount
+	summary.OutgoingRelationCount = directSummary.OutgoingRelationCount
+	cmdbRelationMergeBreakdown(sourceBreakdown, directSummary.SourceBreakdown)
+	cmdbRelationMergeBreakdown(typeBreakdown, directSummary.TypeBreakdown)
+
+	if includeApplication && len(relations) < limit {
+		applicationOffset := 0
+		if int64(offset) > directSummary.TotalRelationCount {
+			applicationOffset = offset - int(directSummary.TotalRelationCount)
+		}
+		inferredRelations, inferredTotal, inferredSourceBreakdown, inferredTypeBreakdown, err := cmdbAssetApplicationInferredRelations(c, asset, relations, limit-len(relations), applicationOffset, filter)
+		if err != nil {
+			return nil, err
+		}
+		relations = append(relations, inferredRelations...)
+		summary.ApplicationInferredRelationCount = inferredTotal
+		cmdbRelationMergeBreakdown(sourceBreakdown, inferredSourceBreakdown)
+		cmdbRelationMergeBreakdown(typeBreakdown, inferredTypeBreakdown)
 	}
-	currentApp, ok := appByName[application]
-	if !ok {
-		return []resps.CmdbAssetRelationResp{}, nil
+
+	summary.TotalRelationCount = summary.DirectRelationCount + summary.ApplicationInferredRelationCount
+	summary.ReturnedRelationCount = int64(len(relations))
+	summary.HasMore = summary.TotalRelationCount > int64(offset+len(relations))
+	if summary.HasMore {
+		summary.NextOffset = offset + len(relations)
+		summary.NextCursor = strconv.Itoa(summary.NextOffset)
 	}
+	summary.Truncated = summary.HasMore
+	summary.SourceBreakdown = cmdbRelationBreakdownList(sourceBreakdown)
+	summary.TypeBreakdown = cmdbRelationBreakdownList(typeBreakdown)
+	sanitizeCmdbRelationResps(relations)
+
+	return &resps.CmdbAssetRelationsResp{
+		AssetId:   asset.Id,
+		Relations: relations,
+		Summary:   summary,
+	}, nil
+}
+
+func loadCmdbAssetDirectRelations(c *ctx.ServiceContext, assetId models.Id, limit int, offset int, filter cmdbAssetRelationFilter) ([]resps.CmdbAssetRelationResp, resps.CmdbAssetRelationSummaryResp, e.Error) {
+	summary := resps.CmdbAssetRelationSummaryResp{}
+	total, err := cmdbAssetDirectRelationQuery(c, assetId, filter).Count()
+	if err != nil {
+		return nil, summary, e.New(e.DBError, err)
+	}
+	summary.TotalRelationCount = total
+	if filter.Direction == "all" || filter.Direction == "outgoing" {
+		outgoingFilter := filter
+		outgoingFilter.Direction = "outgoing"
+		if summary.OutgoingRelationCount, err = cmdbAssetDirectRelationQuery(c, assetId, outgoingFilter).Count(); err != nil {
+			return nil, summary, e.New(e.DBError, err)
+		}
+	}
+	if filter.Direction == "all" || filter.Direction == "incoming" {
+		incomingFilter := filter
+		incomingFilter.Direction = "incoming"
+		if summary.IncomingRelationCount, err = cmdbAssetDirectRelationQuery(c, assetId, incomingFilter).Count(); err != nil {
+			return nil, summary, e.New(e.DBError, err)
+		}
+	}
+
+	sourceRows := make([]resps.CmdbAssetRelationMetricResp, 0)
+	if err := cmdbAssetDirectRelationQuery(c, assetId, filter).
+		Select("iac_cmdb_asset_relation.source as name, count(*) as count").
+		Group("iac_cmdb_asset_relation.source").
+		Scan(&sourceRows); err != nil {
+		return nil, summary, e.New(e.DBError, err)
+	}
+	typeRows := make([]resps.CmdbAssetRelationMetricResp, 0)
+	if err := cmdbAssetDirectRelationQuery(c, assetId, filter).
+		Select("iac_cmdb_asset_relation.relation_type as name, count(*) as count").
+		Group("iac_cmdb_asset_relation.relation_type").
+		Scan(&typeRows); err != nil {
+		return nil, summary, e.New(e.DBError, err)
+	}
+	summary.SourceBreakdown = sourceRows
+	summary.TypeBreakdown = typeRows
+
+	relations := make([]resps.CmdbAssetRelationResp, 0)
+	if limit <= 0 {
+		return relations, summary, nil
+	}
+	if err := cmdbAssetDirectRelationQuery(c, assetId, filter).
+		Select(`iac_cmdb_asset_relation.*,
+			source_asset.name as source_asset_name, source_asset.asset_type as source_asset_type,
+			target_asset.name as target_asset_name, target_asset.asset_type as target_asset_type`).
+		Order("iac_cmdb_asset_relation.updated_at desc").
+		Offset(offset).
+		Limit(limit).
+		Scan(&relations); err != nil {
+		return nil, summary, e.New(e.DBError, err)
+	}
+	return relations, summary, nil
+}
+
+func cmdbAssetDirectRelationQuery(c *ctx.ServiceContext, assetId models.Id, filter cmdbAssetRelationFilter) *db.Session {
+	query := c.DB().Model(&models.CmdbAssetRelation{}).
+		Joins("left join iac_cmdb_asset source_asset on source_asset.id = iac_cmdb_asset_relation.source_asset_id").
+		Joins("left join iac_cmdb_asset target_asset on target_asset.id = iac_cmdb_asset_relation.target_asset_id").
+		Where("iac_cmdb_asset_relation.org_id = ?", c.OrgId)
+
+	switch filter.Direction {
+	case "incoming":
+		query = query.Where("iac_cmdb_asset_relation.target_asset_id = ?", assetId)
+	case "outgoing":
+		query = query.Where("iac_cmdb_asset_relation.source_asset_id = ?", assetId)
+	default:
+		query = query.Where("(iac_cmdb_asset_relation.source_asset_id = ? or iac_cmdb_asset_relation.target_asset_id = ?)", assetId, assetId)
+	}
+	if len(filter.Sources) > 0 {
+		query = query.Where("iac_cmdb_asset_relation.source in (?)", filter.Sources)
+	}
+	if len(filter.RelationTypes) > 0 {
+		query = query.Where("iac_cmdb_asset_relation.relation_type in (?)", filter.RelationTypes)
+	}
+	if filter.Keyword != "" {
+		like := "%" + filter.Keyword + "%"
+		query = query.Where(`(
+			lower(iac_cmdb_asset_relation.source_asset_id) like ? or
+			lower(iac_cmdb_asset_relation.target_asset_id) like ? or
+			lower(iac_cmdb_asset_relation.source) like ? or
+			lower(iac_cmdb_asset_relation.relation_type) like ? or
+			lower(source_asset.name) like ? or
+			lower(source_asset.native_id) like ? or
+			lower(source_asset.asset_type) like ? or
+			lower(source_asset.provider) like ? or
+			lower(target_asset.name) like ? or
+			lower(target_asset.native_id) like ? or
+			lower(target_asset.asset_type) like ? or
+			lower(target_asset.provider) like ?
+		)`, like, like, like, like, like, like, like, like, like, like, like, like)
+	}
+	return query
+}
+
+func cmdbAssetApplicationInferredRelations(c *ctx.ServiceContext, asset *resps.CmdbAssetResp, existing []resps.CmdbAssetRelationResp, limit int, offset int, filter cmdbAssetRelationFilter) ([]resps.CmdbAssetRelationResp, int64, []resps.CmdbAssetRelationMetricResp, []resps.CmdbAssetRelationMetricResp, e.Error) {
+	application := strings.TrimSpace(asset.Application)
+	if application == "" {
+		return []resps.CmdbAssetRelationResp{}, 0, nil, nil, nil
+	}
+	offset = normalizeCmdbAssetRelationOffset(offset)
 
 	seen := make(map[string]bool, len(existing))
 	for _, relation := range existing {
 		seen[cmdbAssetRelationKey(relation.SourceAssetId, relation.TargetAssetId, relation.RelationType, relation.Source)] = true
 	}
 
-	relations := make([]resps.CmdbAssetRelationResp, 0)
-	for _, appRelation := range currentApp.Downstreams {
-		targetApp, ok := appByName[appRelation.Application]
-		if !ok {
-			continue
-		}
-		for _, targetAsset := range targetApp.Assets {
-			if targetAsset.Id == "" || targetAsset.Id == asset.Id {
-				continue
-			}
-			relation := cmdbAssetApplicationInferredRelation(asset.Id, targetAsset.Id, appRelation, currentApp.Application, targetApp.Application)
-			key := cmdbAssetRelationKey(relation.SourceAssetId, relation.TargetAssetId, relation.RelationType, relation.Source)
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			relation.SourceAssetName = firstNonEmpty(asset.Name, asset.NativeId)
-			relation.SourceAssetType = asset.AssetType
-			relation.TargetAssetName = firstNonEmpty(targetAsset.Name, targetAsset.NativeId)
-			relation.TargetAssetType = targetAsset.AssetType
-			relations = append(relations, relation)
-		}
+	appRelations, err := cmdbAssetApplicationRelationAggregates(c, application)
+	if err != nil {
+		return nil, 0, nil, nil, err
 	}
-	for _, appRelation := range currentApp.Upstreams {
-		sourceApp, ok := appByName[appRelation.Application]
-		if !ok {
+
+	relations := make([]resps.CmdbAssetRelationResp, 0)
+	sourceBreakdown := make(map[string]int64)
+	typeBreakdown := make(map[string]int64)
+	totalCandidates := int64(0)
+	remaining := limit
+	skipped := offset
+	for _, appRelation := range appRelations {
+		candidates := cmdbApplicationRelationCandidateCount(appRelation)
+		if candidates <= 0 || !filter.matchesApplicationAggregate(appRelation) {
 			continue
 		}
-		for _, sourceAsset := range sourceApp.Assets {
+		if filter.Keyword == "" {
+			totalCandidates += int64(candidates)
+			cmdbRelationAddBreakdown(sourceBreakdown, models.CmdbRelationSourceAppInferred, int64(candidates))
+			cmdbRelationAddBreakdown(typeBreakdown, appRelation.RelationType, int64(candidates))
+		}
+		if appRelation.Application == "" || (remaining <= 0 && filter.Keyword == "") {
+			continue
+		}
+		if filter.Keyword == "" && skipped >= candidates {
+			skipped -= candidates
+			continue
+		}
+		assetOffset := 0
+		fetchLimit := remaining + cmdbAssetRelationReturnedSortSize
+		if filter.Keyword != "" {
+			fetchLimit = cmdbAssetRelationMaxLimit + cmdbAssetRelationReturnedSortSize
+		} else if skipped > 0 {
+			assetOffset = skipped
+			skipped = 0
+		}
+		relatedAssets, err := cmdbVisibleApplicationAssets(c, appRelation.Application, fetchLimit, assetOffset)
+		if err != nil {
+			return nil, 0, nil, nil, err
+		}
+		for _, relatedAsset := range relatedAssets {
+			if remaining <= 0 && filter.Keyword == "" {
+				break
+			}
+			if appRelation.Direction == "outgoing" {
+				if relatedAsset.Id == "" || relatedAsset.Id == asset.Id {
+					continue
+				}
+				relation := cmdbAssetApplicationInferredRelation(asset.Id, relatedAsset.Id, appRelation, application, appRelation.Application)
+				key := cmdbAssetRelationKey(relation.SourceAssetId, relation.TargetAssetId, relation.RelationType, relation.Source)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				relation.SourceAssetName = firstNonEmpty(asset.Name, asset.NativeId)
+				relation.SourceAssetType = asset.AssetType
+				relation.TargetAssetName = firstNonEmpty(relatedAsset.Name, relatedAsset.NativeId)
+				relation.TargetAssetType = relatedAsset.AssetType
+				if !filter.matchesRelation(relation, asset.Id) {
+					continue
+				}
+				if filter.Keyword != "" {
+					totalCandidates++
+					cmdbRelationAddBreakdown(sourceBreakdown, models.CmdbRelationSourceAppInferred, 1)
+					cmdbRelationAddBreakdown(typeBreakdown, appRelation.RelationType, 1)
+				}
+				if skipped > 0 {
+					skipped--
+					continue
+				}
+				if remaining <= 0 {
+					continue
+				}
+				relations = append(relations, relation)
+				remaining--
+				continue
+			}
+			sourceAsset := relatedAsset
 			if sourceAsset.Id == "" || sourceAsset.Id == asset.Id {
 				continue
 			}
-			relation := cmdbAssetApplicationInferredRelation(sourceAsset.Id, asset.Id, appRelation, sourceApp.Application, currentApp.Application)
+			relation := cmdbAssetApplicationInferredRelation(sourceAsset.Id, asset.Id, appRelation, appRelation.Application, application)
 			key := cmdbAssetRelationKey(relation.SourceAssetId, relation.TargetAssetId, relation.RelationType, relation.Source)
 			if seen[key] {
 				continue
@@ -1077,7 +1739,23 @@ func cmdbAssetApplicationInferredRelations(c *ctx.ServiceContext, asset *resps.C
 			relation.SourceAssetType = sourceAsset.AssetType
 			relation.TargetAssetName = firstNonEmpty(asset.Name, asset.NativeId)
 			relation.TargetAssetType = asset.AssetType
+			if !filter.matchesRelation(relation, asset.Id) {
+				continue
+			}
+			if filter.Keyword != "" {
+				totalCandidates++
+				cmdbRelationAddBreakdown(sourceBreakdown, models.CmdbRelationSourceAppInferred, 1)
+				cmdbRelationAddBreakdown(typeBreakdown, appRelation.RelationType, 1)
+			}
+			if skipped > 0 {
+				skipped--
+				continue
+			}
+			if remaining <= 0 {
+				continue
+			}
 			relations = append(relations, relation)
+			remaining--
 		}
 	}
 
@@ -1087,7 +1765,262 @@ func cmdbAssetApplicationInferredRelations(c *ctx.ServiceContext, asset *resps.C
 		}
 		return relations[i].SourceAssetName < relations[j].SourceAssetName
 	})
+	return relations, totalCandidates, cmdbRelationBreakdownList(sourceBreakdown), cmdbRelationBreakdownList(typeBreakdown), nil
+}
+
+type cmdbApplicationAssetCountRow struct {
+	Application string `gorm:"column:application"`
+	Count       int    `gorm:"column:count"`
+}
+
+func cmdbAssetApplicationRelationAggregates(c *ctx.ServiceContext, application string) ([]resps.CmdbApplicationRelationResp, e.Error) {
+	relations := make([]resps.CmdbApplicationRelationResp, 0)
+	if err := cmdbAssetApplicationRelationAggregatesByAsset(c, application, "outgoing", &relations); err != nil {
+		return nil, err
+	}
+	if err := cmdbAssetApplicationRelationAggregatesByAsset(c, application, "incoming", &relations); err != nil {
+		return nil, err
+	}
+	manualRelations := make([]models.CmdbApplicationRelation, 0)
+	if err := c.DB().
+		Where("org_id = ? and source = ? and (source_application = ? or target_application = ?)",
+			c.OrgId, models.CmdbRelationSourceManualApp, application, application).
+		Find(&manualRelations); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	if len(manualRelations) > 0 {
+		assetCounts, err := cmdbVisibleApplicationAssetCounts(c, append(cmdbManualRelationApplications(manualRelations), application))
+		if err != nil {
+			return nil, err
+		}
+		for _, relation := range manualRelations {
+			sourceApp := strings.TrimSpace(relation.SourceApplication)
+			targetApp := strings.TrimSpace(relation.TargetApplication)
+			if sourceApp == "" || targetApp == "" || sourceApp == targetApp {
+				continue
+			}
+			if sourceApp == application && assetCounts[targetApp] > 0 {
+				relations = append(relations, resps.CmdbApplicationRelationResp{
+					Application:        targetApp,
+					Direction:          "outgoing",
+					RelationType:       relation.RelationType,
+					Source:             relation.Source,
+					AssetRelationCount: 1,
+					SourceAssetCount:   assetCounts[sourceApp],
+					TargetAssetCount:   assetCounts[targetApp],
+					LatestRelationAt:   relation.UpdatedAt,
+				})
+			}
+			if targetApp == application && assetCounts[sourceApp] > 0 {
+				relations = append(relations, resps.CmdbApplicationRelationResp{
+					Application:        sourceApp,
+					Direction:          "incoming",
+					RelationType:       relation.RelationType,
+					Source:             relation.Source,
+					AssetRelationCount: 1,
+					SourceAssetCount:   assetCounts[sourceApp],
+					TargetAssetCount:   assetCounts[targetApp],
+					LatestRelationAt:   relation.UpdatedAt,
+				})
+			}
+		}
+	}
+	sort.SliceStable(relations, func(i, j int) bool {
+		iCount := cmdbApplicationRelationCandidateCount(relations[i])
+		jCount := cmdbApplicationRelationCandidateCount(relations[j])
+		if iCount == jCount {
+			if relations[i].Direction == relations[j].Direction {
+				return relations[i].Application < relations[j].Application
+			}
+			return relations[i].Direction < relations[j].Direction
+		}
+		return iCount > jCount
+	})
 	return relations, nil
+}
+
+func cmdbAssetApplicationRelationAggregatesByAsset(c *ctx.ServiceContext, application string, direction string, out *[]resps.CmdbApplicationRelationResp) e.Error {
+	sourceJoin, sourceWhere, sourceArgs := cmdbVisibleAssetSQLScope(c, "source_asset", "source_user_project")
+	targetJoin, targetWhere, targetArgs := cmdbVisibleAssetSQLScope(c, "target_asset", "target_user_project")
+	relatedColumn := "target_asset.application"
+	currentColumn := "source_asset.application"
+	relatedCondition := "target_asset.application <> '' and target_asset.application <> ?"
+	if direction == "incoming" {
+		relatedColumn = "source_asset.application"
+		currentColumn = "target_asset.application"
+		relatedCondition = "source_asset.application <> '' and source_asset.application <> ?"
+	}
+	sql := fmt.Sprintf(`
+		select %s as application,
+			? as direction,
+			r.relation_type as relation_type,
+			r.source as source,
+			count(*) as asset_relation_count,
+			count(distinct r.source_asset_id) as source_asset_count,
+			count(distinct r.target_asset_id) as target_asset_count,
+			max(r.updated_at) as latest_relation_at
+		from iac_cmdb_asset_relation r
+		join iac_cmdb_asset source_asset on source_asset.id = r.source_asset_id
+		join iac_cmdb_asset target_asset on target_asset.id = r.target_asset_id
+		%s
+		%s
+		where r.org_id = ? and source_asset.org_id = ? and target_asset.org_id = ?
+			%s
+			%s
+			and %s = ?
+			and %s
+		group by %s, r.relation_type, r.source`,
+		relatedColumn, sourceJoin, targetJoin, sourceWhere, targetWhere, currentColumn, relatedCondition, relatedColumn)
+
+	args := make([]interface{}, 0)
+	args = append(args, direction)
+	args = append(args, sourceArgs...)
+	args = append(args, targetArgs...)
+	args = append(args, c.OrgId, c.OrgId, c.OrgId, application, application)
+	rows := make([]resps.CmdbApplicationRelationResp, 0)
+	if err := c.DB().Raw(sql, args...).Scan(&rows); err != nil {
+		return e.New(e.DBError, err)
+	}
+	*out = append(*out, rows...)
+	return nil
+}
+
+func cmdbVisibleAssetSQLScope(c *ctx.ServiceContext, assetAlias string, userProjectAlias string) (string, string, []interface{}) {
+	if c.IsSuperAdmin || services.UserHasOrgRole(c.UserId, c.OrgId, consts.OrgRoleAdmin) {
+		return "", "", nil
+	}
+	join := fmt.Sprintf("left join iac_user_project %s on %s.project_id = %s.project_id and %s.user_id = ?",
+		userProjectAlias, userProjectAlias, assetAlias, userProjectAlias)
+	where := fmt.Sprintf("and (%s.project_id = '' or %s.user_id is not null)", assetAlias, userProjectAlias)
+	return join, where, []interface{}{c.UserId}
+}
+
+func cmdbManualRelationApplications(relations []models.CmdbApplicationRelation) []string {
+	values := make([]string, 0, len(relations)*2)
+	for _, relation := range relations {
+		values = append(values, relation.SourceApplication, relation.TargetApplication)
+	}
+	return values
+}
+
+func cmdbVisibleApplicationAssetCounts(c *ctx.ServiceContext, applications []string) (map[string]int, e.Error) {
+	applications = uniqueNonEmptyStrings(applications)
+	if len(applications) == 0 {
+		return map[string]int{}, nil
+	}
+	rows := make([]cmdbApplicationAssetCountRow, 0)
+	if err := buildCmdbAssetQuery(c).
+		Select("iac_cmdb_asset.application as application, count(*) as count").
+		Where("iac_cmdb_asset.application in (?)", applications).
+		Group("iac_cmdb_asset.application").
+		Scan(&rows); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	result := make(map[string]int, len(rows))
+	for _, row := range rows {
+		result[row.Application] = row.Count
+	}
+	return result, nil
+}
+
+func cmdbVisibleApplicationAssets(c *ctx.ServiceContext, application string, limit int, offset int) ([]resps.CmdbApplicationAssetResp, e.Error) {
+	assets := make([]resps.CmdbAssetResp, 0)
+	query := buildCmdbAssetQuery(c).
+		Where("iac_cmdb_asset.application = ?", application).
+		Order("iac_cmdb_asset.risk_score desc, iac_cmdb_asset.cost desc, iac_cmdb_asset.updated_at desc").
+		Limit(limit)
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	if err := query.Scan(&assets); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	result := make([]resps.CmdbApplicationAssetResp, 0, len(assets))
+	for _, asset := range assets {
+		result = append(result, cmdbApplicationAssetResp(asset))
+	}
+	return result, nil
+}
+
+func cmdbApplicationRelationCandidateCount(relation resps.CmdbApplicationRelationResp) int {
+	if relation.Direction == "incoming" {
+		return relation.SourceAssetCount
+	}
+	return relation.TargetAssetCount
+}
+
+func normalizeCmdbAssetRelationLimit(limit int) int {
+	if limit <= 0 {
+		return cmdbAssetRelationDefaultLimit
+	}
+	if limit > cmdbAssetRelationMaxLimit {
+		return cmdbAssetRelationMaxLimit
+	}
+	return limit
+}
+
+func normalizeCmdbAssetRelationOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	if offset > 100000 {
+		return 100000
+	}
+	return offset
+}
+
+func normalizeCmdbAssetRelationCursor(cursor string, fallbackOffset int) int {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" {
+		return normalizeCmdbAssetRelationOffset(fallbackOffset)
+	}
+	offset, err := strconv.Atoi(cursor)
+	if err != nil {
+		return normalizeCmdbAssetRelationOffset(fallbackOffset)
+	}
+	return normalizeCmdbAssetRelationOffset(offset)
+}
+
+func cmdbRelationMergeBreakdown(target map[string]int64, items []resps.CmdbAssetRelationMetricResp) {
+	for _, item := range items {
+		cmdbRelationAddBreakdown(target, item.Name, item.Count)
+	}
+}
+
+func cmdbRelationAddBreakdown(target map[string]int64, name string, count int64) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "unknown"
+	}
+	target[name] += count
+}
+
+func cmdbRelationBreakdownList(items map[string]int64) []resps.CmdbAssetRelationMetricResp {
+	result := make([]resps.CmdbAssetRelationMetricResp, 0, len(items))
+	for name, count := range items {
+		result = append(result, resps.CmdbAssetRelationMetricResp{Name: name, Count: count})
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Count == result[j].Count {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Count > result[j].Count
+	})
+	return result
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func cmdbAssetApplicationInferredRelation(sourceAssetId models.Id, targetAssetId models.Id, appRelation resps.CmdbApplicationRelationResp, sourceApplication string, targetApplication string) resps.CmdbAssetRelationResp {
@@ -1125,6 +2058,18 @@ func NormalizeCmdbAssetType(nativeType string) string {
 	switch {
 	case containsAny(t, "eks_cluster", "containerengine_cluster", "oke", "kubernetes_cluster", "k8s_cluster"):
 		return models.CmdbAssetTypeKubernetesCluster
+	case containsAny(t, "kubernetes_namespace", "k8s_namespace"):
+		return models.CmdbAssetTypeKubernetesNamespace
+	case containsAny(t, "kubernetes_node", "k8s_node"):
+		return models.CmdbAssetTypeKubernetesNode
+	case containsAny(t, "kubernetes_pod", "k8s_pod"):
+		return models.CmdbAssetTypeKubernetesPod
+	case containsAny(t, "kubernetes_service", "k8s_service"):
+		return models.CmdbAssetTypeKubernetesService
+	case containsAny(t, "kubernetes_ingress", "k8s_ingress"):
+		return models.CmdbAssetTypeKubernetesIngress
+	case containsAny(t, "kubernetes_deployment", "k8s_deployment", "kubernetes_statefulset", "k8s_statefulset", "kubernetes_daemonset", "k8s_daemonset", "kubernetes_replicaset", "k8s_replicaset", "kubernetes_job", "k8s_job", "kubernetes_cronjob", "k8s_cronjob", "kubernetes_workload", "k8s_workload"):
+		return models.CmdbAssetTypeKubernetesWorkload
 	case containsAny(t, "db_instance", "rds_cluster", "rds_instance", "db_system", "autonomous_database", "database"):
 		return models.CmdbAssetTypeRelationalDatabase
 	case containsAny(t, "elasticache", "redis"):
@@ -1137,6 +2082,14 @@ func NormalizeCmdbAssetType(nativeType string) string {
 		return models.CmdbAssetTypeNetworkSubnet
 	case strings.Contains(t, "route_table"):
 		return models.CmdbAssetTypeNetworkRouteTable
+	case containsAny(t, "nat_gateway", "natgateway"):
+		return models.CmdbAssetTypeNetworkNatGateway
+	case containsAny(t, "internet_gateway", "internetgateway", "igw"):
+		return models.CmdbAssetTypeNetworkInternetGateway
+	case containsAny(t, "service_gateway", "servicegateway"):
+		return models.CmdbAssetTypeNetworkServiceGateway
+	case containsAny(t, "dynamic_routing_gateway", "dynamicroutinggateway", "oci_core_drg", "_drg", "drg"):
+		return models.CmdbAssetTypeNetworkDrg
 	case containsAny(t, "security_group", "security_list", "network_security_group", "nsg"):
 		return models.CmdbAssetTypeNetworkSecurityGroup
 	case containsAny(t, "eip", "public_ip"):

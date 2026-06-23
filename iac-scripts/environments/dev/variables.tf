@@ -1,0 +1,12 @@
+variable "project"             { type = string }
+variable "env"                 { type = string }
+variable "region"              { type = string }
+variable "zone_id"             { type = string }
+variable "vpc_cidr"            { type = string }
+variable "public_subnet_cidr"  { type = string }
+variable "private_subnet_cidr" { type = string }
+variable "admin_ip"            { type = string }
+variable "public_key"          { type = string }
+variable "ecs_count"           { type = number }
+variable "cpu_count"           { type = number }
+variable "memory_size"         { type = number }

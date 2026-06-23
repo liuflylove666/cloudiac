@@ -132,6 +132,55 @@ const money = (value, currency = 'CNY') => {
 
 const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
 const renderTime = (value) => !value || String(value).indexOf('0001-01-01') === 0 ? '-' : moment(value).format('YYYY-MM-DD HH:mm:ss');
+const splitList = (value) => String(value || '').split(/[,\s;]+/).map((item) => item.trim()).filter(Boolean);
+const formListText = (value) => Array.isArray(value) && value.length ? value.join(', ') : '';
+const parseFailureRoutesText = (value) => {
+  const result = {};
+  String(value || '').split(/[\n;]+/).forEach((line) => {
+    const match = line.match(/^\s*([^:=]+)\s*[:=]\s*(.+?)\s*$/);
+    if (!match) {
+      return;
+    }
+    const routes = splitList(match[2]);
+    if (routes.length) {
+      result[match[1].trim()] = routes;
+    }
+  });
+  return result;
+};
+const formFailureRoutesText = (value) => {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  return Object.entries(value)
+    .map(([category, routes]) => `${category}: ${formListText(Array.isArray(routes) ? routes : splitList(routes))}`)
+    .filter((line) => !line.endsWith(': '))
+    .join('\n');
+};
+const scheduleNotificationSummary = (record = {}) => {
+  const params = record.params || {};
+  const owner = record.notificationOwner || params.notificationOwner;
+  const routes = record.notificationRoutes || params.notificationRoutes || [];
+  const assignees = record.notificationAssignees || params.notificationAssignees || [];
+  const silenceMinutes = Number(record.notificationSilenceMinutes || params.notificationSilenceMinutes || 0);
+  const windows = record.notificationWindows || params.notificationWindows || [];
+  const failureRoutes = record.notificationFailureRoutes || params.notificationFailureRoutes || {};
+  const escalationAt = Number(record.notificationEscalationAt || params.notificationEscalationAt || 0);
+  const escalationRoutes = record.notificationEscalationRoutes || params.notificationEscalationRoutes || [];
+  if (!record.notifyOnFailure && !params.notifyOnFailure) {
+    return <Text type='secondary'>关闭</Text>;
+  }
+  return (
+    <Space direction='vertical' size={0}>
+      <Text>{owner || routes.length ? [ owner, formListText(routes) ].filter(Boolean).join(' / ') : '开启'}</Text>
+      {!!assignees.length && <Text type='secondary' className={styles.inlineHint}>分派 {formListText(assignees)}</Text>}
+      {!!silenceMinutes && <Text type='secondary' className={styles.inlineHint}>静默 {silenceMinutes} 分钟</Text>}
+      {!!windows.length && <Text type='secondary' className={styles.inlineHint}>窗口 {formListText(windows)}</Text>}
+      {!!Object.keys(failureRoutes).length && <Text type='secondary' className={styles.inlineHint}>错误路由 {Object.keys(failureRoutes).length} 类</Text>}
+      {!!escalationAt && <Text type='secondary' className={styles.inlineHint}>升级 {escalationAt} 次{escalationRoutes.length ? ` / ${formListText(escalationRoutes)}` : ''}</Text>}
+    </Space>
+  );
+};
 const renderFileSize = (value) => {
   const bytes = Number(value || 0);
   if (!bytes) {
@@ -669,6 +718,12 @@ const CloudCostPage = ({ match }) => {
       render: (text) => `${Number(text || 0)}s`
     },
     {
+      title: '通知',
+      dataIndex: 'params',
+      width: 210,
+      render: (_, record) => scheduleNotificationSummary(record)
+    },
+    {
       title: '最近同步',
       dataIndex: 'lastSyncStatus',
       width: 190,
@@ -891,6 +946,8 @@ const CloudCostPage = ({ match }) => {
     retryBackoffSeconds: 300,
     notifyOnFailure: true,
     autoPauseOnFailure: true,
+    notificationSilenceMinutes: 60,
+    notificationEscalationAt: 0,
     status: 'enable'
   };
   function openBudgetModal(record) {
@@ -951,6 +1008,14 @@ const CloudCostPage = ({ match }) => {
       retryBackoffSeconds: record.retryBackoffSeconds || (record.params && record.params.retryBackoffSeconds) || 300,
       notifyOnFailure: record.notifyOnFailure !== undefined ? record.notifyOnFailure : !!(record.params && record.params.notifyOnFailure),
       autoPauseOnFailure: record.autoPauseOnFailure !== undefined ? record.autoPauseOnFailure : !!(record.params && record.params.autoPauseOnFailure),
+      notificationOwner: record.notificationOwner || (record.params && record.params.notificationOwner) || '',
+      notificationRoutesText: formListText(record.notificationRoutes || (record.params && record.params.notificationRoutes)),
+      notificationAssigneesText: formListText(record.notificationAssignees || (record.params && record.params.notificationAssignees)),
+      notificationSilenceMinutes: record.notificationSilenceMinutes || (record.params && record.params.notificationSilenceMinutes) || 0,
+      notificationWindowsText: formListText(record.notificationWindows || (record.params && record.params.notificationWindows)),
+      notificationFailureRoutesText: formFailureRoutesText(record.notificationFailureRoutes || (record.params && record.params.notificationFailureRoutes)),
+      notificationEscalationAt: record.notificationEscalationAt || (record.params && record.params.notificationEscalationAt) || 0,
+      notificationEscalationRoutesText: formListText(record.notificationEscalationRoutes || (record.params && record.params.notificationEscalationRoutes)),
       status: record.status || 'enable'
     } : syncScheduleDefaults);
   }
@@ -1118,7 +1183,18 @@ const CloudCostPage = ({ match }) => {
       retryBackoffSeconds: values.retryBackoffSeconds,
       notifyOnFailure: values.notifyOnFailure,
       autoPauseOnFailure: values.autoPauseOnFailure,
-      status: values.status
+      status: values.status,
+      params: {
+        ...((syncScheduleModal.record || {}).params || {}),
+        notificationOwner: values.notificationOwner || '',
+        notificationRoutes: splitList(values.notificationRoutesText),
+        notificationAssignees: splitList(values.notificationAssigneesText),
+        notificationSilenceMinutes: values.notificationSilenceMinutes || 0,
+        notificationWindows: splitList(values.notificationWindowsText),
+        notificationFailureRoutes: parseFailureRoutesText(values.notificationFailureRoutesText),
+        notificationEscalationAt: values.notificationEscalationAt || 0,
+        notificationEscalationRoutes: splitList(values.notificationEscalationRoutesText)
+      }
     };
     const record = syncScheduleModal.record;
     setSyncScheduleSaving(true);
@@ -1697,6 +1773,30 @@ const CloudCostPage = ({ match }) => {
             </Form.Item>
             <Form.Item name='autoPauseOnFailure' valuePropName='checked'>
               <Checkbox>超过重试次数后自动暂停</Checkbox>
+            </Form.Item>
+            <Form.Item name='notificationSilenceMinutes' label='通知静默期（分钟）'>
+              <InputNumber min={0} max={10080} precision={0} style={{ width: '100%' }} placeholder='0 表示不静默'/>
+            </Form.Item>
+            <Form.Item name='notificationWindowsText' label='通知窗口'>
+              <Input placeholder='例如 09:00-18:00；留空代表全天'/>
+            </Form.Item>
+            <Form.Item name='notificationOwner' label='通知负责人'>
+              <Input placeholder='例如 finops-oncall'/>
+            </Form.Item>
+            <Form.Item name='notificationRoutesText' label='通知路由'>
+              <Input placeholder='例如 finops, cloud-platform'/>
+            </Form.Item>
+            <Form.Item name='notificationAssigneesText' label='分派对象'>
+              <Input placeholder='多个用户或团队用逗号、空格或换行分隔'/>
+            </Form.Item>
+            <Form.Item name='notificationFailureRoutesText' label='错误类型路由'>
+              <Input.TextArea rows={3} placeholder={'例如：\npermission: iam, security\nrate_limit: cloud-platform'}/>
+            </Form.Item>
+            <Form.Item name='notificationEscalationAt' label='升级阈值（失败次数）'>
+              <InputNumber min={0} max={100} precision={0} style={{ width: '100%' }} placeholder='0 表示不按次数升级'/>
+            </Form.Item>
+            <Form.Item name='notificationEscalationRoutesText' label='升级路由'>
+              <Input placeholder='例如 sre-manager, finops-lead'/>
             </Form.Item>
           </div>
           <Form.Item name='description' label='说明'>

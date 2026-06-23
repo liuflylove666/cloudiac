@@ -167,6 +167,9 @@ func CreateCloudAccount(c *ctx.ServiceContext, form *forms.CreateCloudAccountFor
 	if createErr != nil {
 		return nil, createErr
 	}
+	if err := syncCloudAccountRegionSnapshot(c, created, validateCloudAccount(created)); err != nil {
+		return nil, err
+	}
 	resp := cloudAccountResp(c, *created)
 	return &resp, nil
 }
@@ -246,6 +249,11 @@ func UpdateCloudAccount(c *ctx.ServiceContext, form *forms.UpdateCloudAccountFor
 	if updateErr != nil {
 		return nil, updateErr
 	}
+	if form.HasKey("provider") || form.HasKey("regions") || form.HasKey("credentials") || form.HasKey("accountId") || form.HasKey("tenantId") || form.HasKey("status") {
+		if err := syncCloudAccountRegionSnapshot(c, updated, validateCloudAccount(updated)); err != nil {
+			return nil, err
+		}
+	}
 	resp := cloudAccountResp(c, *updated)
 	return &resp, nil
 }
@@ -271,6 +279,17 @@ func ValidateCloudAccount(c *ctx.ServiceContext, form *forms.CloudAccountParam) 
 	cloudAccountEvent(c, account, "cloud_account.validated", "云账号验证", account.ValidationStatus, account.ValidationMessage)
 
 	validation := validateCloudAccount(account)
+	permissions := cloudAccountPermissionItems(account, validation)
+	checkedAt := account.LastValidatedAt
+	if time.Time(checkedAt).IsZero() || time.Time(checkedAt).Year() <= 1 {
+		checkedAt = models.Time(time.Now())
+	}
+	if err := saveCloudAccountPermissionSnapshot(c, account, permissions, checkedAt, "local_precheck"); err != nil {
+		return nil, err
+	}
+	if err := syncCloudAccountRegionSnapshot(c, account, validation); err != nil {
+		return nil, err
+	}
 	return &resps.CloudAccountValidationResp{
 		Id:                    account.Id,
 		Provider:              account.Provider,
@@ -586,7 +605,7 @@ func CloudAccountRegions(c *ctx.ServiceContext, form *forms.CloudAccountParam) (
 	if err != nil {
 		return nil, err
 	}
-	return cloudAccountRegionsResp(account), nil
+	return cloudAccountRegionsResp(c, account)
 }
 
 func UpdateCloudAccountRegions(c *ctx.ServiceContext, form *forms.UpdateCloudAccountRegionsForm) (*resps.CloudAccountRegionsResp, e.Error) {
@@ -608,7 +627,11 @@ func UpdateCloudAccountRegions(c *ctx.ServiceContext, form *forms.UpdateCloudAcc
 	if updateErr != nil {
 		return nil, updateErr
 	}
-	return cloudAccountRegionsResp(updated), nil
+	validation := validateCloudAccount(updated)
+	if err := syncCloudAccountRegionSnapshot(c, updated, validation); err != nil {
+		return nil, err
+	}
+	return cloudAccountRegionsResp(c, updated)
 }
 
 func CloudAccountPermissions(c *ctx.ServiceContext, form *forms.CloudAccountParam) (*resps.CloudAccountPermissionsResp, e.Error) {
@@ -618,6 +641,10 @@ func CloudAccountPermissions(c *ctx.ServiceContext, form *forms.CloudAccountPara
 	}
 
 	validation := validateCloudAccount(account)
+	permissions, lastCheckedAt, err := cloudAccountPermissionItemsWithSnapshot(c, account, cloudAccountPermissionItems(account, validation))
+	if err != nil {
+		return nil, err
+	}
 	return &resps.CloudAccountPermissionsResp{
 		Id:                    account.Id,
 		Provider:              account.Provider,
@@ -627,7 +654,8 @@ func CloudAccountPermissions(c *ctx.ServiceContext, form *forms.CloudAccountPara
 		MissingCredentialKeys: validation.MissingCredentialKeys,
 		SupportedAssetTypes:   validation.SupportedAssetTypes,
 		Regions:               validation.Regions,
-		Permissions:           cloudAccountPermissionItems(account, validation),
+		LastCheckedAt:         lastCheckedAt,
+		Permissions:           permissions,
 	}, nil
 }
 
@@ -1285,25 +1313,7 @@ func cloudAccountSyncTaskOccurredAt(task *resps.CloudAccountSyncTaskBriefResp) t
 }
 
 func cloudAccountClassifySyncFailure(message string) (string, bool, string) {
-	lower := strings.ToLower(message)
-	switch {
-	case strings.Contains(lower, "rate") || strings.Contains(lower, "throttl") ||
-		strings.Contains(lower, "too many requests") || strings.Contains(lower, "request limit"):
-		return "rate_limit", true, "等待限流窗口恢复后重试，或缩小 regions/assetTypes 范围"
-	case strings.Contains(lower, "timeout") || strings.Contains(lower, "connection") ||
-		strings.Contains(lower, "no such host") || strings.Contains(lower, "temporary"):
-		return "network", true, "网络或云 API 临时异常，可直接重试"
-	case strings.Contains(lower, "unauthorized") || strings.Contains(lower, "forbidden") ||
-		strings.Contains(lower, "permission") || strings.Contains(lower, "denied"):
-		return "permission", false, "检查云账号权限策略后再重试"
-	case strings.Contains(lower, "expired") || strings.Contains(lower, "invalid token") ||
-		strings.Contains(lower, "invalid access") || strings.Contains(lower, "signature"):
-		return "credential", false, "更新云账号凭证后再重试"
-	case strings.Contains(lower, "missing") || strings.Contains(lower, "requires"):
-		return "configuration", false, "补齐云账号必需配置后再重试"
-	default:
-		return "unknown", true, "确认错误原因后可按相同 regions/assetTypes 重试"
-	}
+	return cmdbSyncClassifyFailure(message)
 }
 
 func cloudAccountHealthStatusForFailureCategory(category string, retryable bool) string {
@@ -1581,19 +1591,60 @@ func applyCloudAccountAttrs(account *models.CloudAccount, attrs map[string]inter
 	}
 }
 
-func cloudAccountRegionsResp(account *models.CloudAccount) *resps.CloudAccountRegionsResp {
+func cloudAccountRegionsResp(c *ctx.ServiceContext, account *models.CloudAccount) (*resps.CloudAccountRegionsResp, e.Error) {
 	validation := validateCloudAccount(account)
-	source := "inferred"
+	rows := make([]models.CloudAccountRegion, 0)
+	if err := c.DB().Model(&models.CloudAccountRegion{}).
+		Where("org_id = ? and cloud_account_id = ?", c.OrgId, account.Id).
+		Order("enabled desc").
+		Order("is_default desc").
+		Order("region asc").
+		Find(&rows); err != nil {
+		return nil, e.New(e.DBError, err)
+	}
+	if len(rows) > 0 {
+		return cloudAccountRegionsRespFromSnapshot(account, validation, rows), nil
+	}
+	return cloudAccountRegionsRespFromValidation(account, validation), nil
+}
+
+func cloudAccountRegionsRespFromSnapshot(account *models.CloudAccount, validation cloudAccountValidation, rows []models.CloudAccountRegion) *resps.CloudAccountRegionsResp {
+	regions := make([]resps.CloudAccountRegionResp, 0, len(rows))
+	regionNames := make([]string, 0, len(rows))
+	for _, row := range rows {
+		item := cloudAccountRegionRespFromModel(row)
+		regions = append(regions, item)
+		if item.Enabled {
+			regionNames = append(regionNames, item.Name)
+		}
+	}
+	return &resps.CloudAccountRegionsResp{
+		Id:                    account.Id,
+		Provider:              account.Provider,
+		AccountId:             account.AccountId,
+		Regions:               regions,
+		RegionNames:           regionNames,
+		MissingCredentialKeys: validation.MissingCredentialKeys,
+	}
+}
+
+func cloudAccountRegionsRespFromValidation(account *models.CloudAccount, validation cloudAccountValidation) *resps.CloudAccountRegionsResp {
+	source := models.CloudAccountRegionSourceInferred
 	if len(account.Regions) > 0 {
-		source = "configured"
+		source = models.CloudAccountRegionSourceConfigured
 	}
 	regions := make([]resps.CloudAccountRegionResp, 0, len(validation.Regions))
+	status, message := cloudAccountRegionStatusMessage(account, validation)
 	for index, region := range validation.Regions {
 		regions = append(regions, resps.CloudAccountRegionResp{
-			Name:    region,
-			Enabled: true,
-			Default: index == 0,
-			Source:  source,
+			Name:          region,
+			Enabled:       true,
+			Default:       index == 0,
+			SyncEnabled:   true,
+			Source:        source,
+			Status:        status,
+			Message:       message,
+			ResourceTypes: cloneStringSlice(validation.SupportedAssetTypes),
 		})
 	}
 	return &resps.CloudAccountRegionsResp{
@@ -1604,6 +1655,305 @@ func cloudAccountRegionsResp(account *models.CloudAccount) *resps.CloudAccountRe
 		RegionNames:           validation.Regions,
 		MissingCredentialKeys: validation.MissingCredentialKeys,
 	}
+}
+
+func cloudAccountRegionRespFromModel(row models.CloudAccountRegion) resps.CloudAccountRegionResp {
+	return resps.CloudAccountRegionResp{
+		Name:          row.Region,
+		Enabled:       row.Enabled,
+		Default:       row.IsDefault,
+		SyncEnabled:   row.SyncEnabled,
+		Source:        row.Source,
+		Status:        row.Status,
+		Message:       row.Message,
+		ResourceTypes: cloneStringSlice([]string(row.ResourceTypes)),
+		LastSyncAt:    row.LastSyncAt,
+		Metadata:      row.Metadata,
+	}
+}
+
+func syncCloudAccountRegionSnapshot(c *ctx.ServiceContext, account *models.CloudAccount, validation cloudAccountValidation) e.Error {
+	if c == nil || account == nil || account.Id == "" {
+		return nil
+	}
+	regions := normalizeStringList(validation.Regions)
+	source := models.CloudAccountRegionSourceInferred
+	if len(account.Regions) > 0 {
+		source = models.CloudAccountRegionSourceConfigured
+	}
+	status, message := cloudAccountRegionStatusMessage(account, validation)
+
+	existingRows := make([]models.CloudAccountRegion, 0)
+	if err := c.DB().Model(&models.CloudAccountRegion{}).
+		Where("org_id = ? and cloud_account_id = ?", c.OrgId, account.Id).
+		Find(&existingRows); err != nil {
+		return e.New(e.DBError, err)
+	}
+	existing := make(map[string]models.CloudAccountRegion, len(existingRows))
+	for _, row := range existingRows {
+		existing[strings.ToLower(row.Region)] = row
+	}
+
+	active := make(map[string]bool, len(regions))
+	for index, region := range regions {
+		key := strings.ToLower(region)
+		active[key] = true
+		row, exists := existing[key]
+		attrs := cloudAccountRegionAttrs(account, region, index == 0, true, true, source, status, message, validation)
+		if !exists {
+			row = models.CloudAccountRegion{
+				OrgId:          c.OrgId,
+				CloudAccountId: account.Id,
+				Region:         region,
+			}
+			row.Id = models.NewId("car")
+			applyCloudAccountRegionAttrs(&row, attrs)
+			if err := models.Create(c.DB(), &row); err != nil {
+				if e.IsDuplicate(err) {
+					if _, updateErr := c.DB().Model(&models.CloudAccountRegion{}).
+						Where("org_id = ? and cloud_account_id = ? and region = ?", c.OrgId, account.Id, region).
+						UpdateAttrs(attrs); updateErr != nil {
+						return e.New(e.DBError, updateErr)
+					}
+					continue
+				}
+				return e.New(e.DBError, err)
+			}
+			continue
+		}
+		if _, err := c.DB().Model(&models.CloudAccountRegion{}).
+			Where("id = ? and org_id = ?", row.Id, c.OrgId).
+			UpdateAttrs(attrs); err != nil {
+			return e.New(e.DBError, err)
+		}
+	}
+
+	for _, row := range existingRows {
+		if active[strings.ToLower(row.Region)] {
+			continue
+		}
+		attrs := cloudAccountRegionAttrs(account, row.Region, false, false, false, models.CloudAccountRegionSourceConfigured,
+			models.CloudAccountHealthWarning, "区域已从账号启用区域移除，不再参与同步", validation)
+		if _, err := c.DB().Model(&models.CloudAccountRegion{}).
+			Where("id = ? and org_id = ?", row.Id, c.OrgId).
+			UpdateAttrs(attrs); err != nil {
+			return e.New(e.DBError, err)
+		}
+	}
+	return nil
+}
+
+func cloudAccountRegionAttrs(account *models.CloudAccount, region string, isDefault bool, enabled bool, syncEnabled bool, source string, status string, message string, validation cloudAccountValidation) models.Attrs {
+	return models.Attrs{
+		"provider":       account.Provider,
+		"account_id":     account.AccountId,
+		"region":         region,
+		"enabled":        enabled,
+		"is_default":     isDefault,
+		"sync_enabled":   syncEnabled,
+		"source":         source,
+		"status":         status,
+		"message":        message,
+		"resource_types": models.StrSlice(validation.SupportedAssetTypes),
+		"last_sync_at":   account.LastSyncAt,
+		"metadata": models.ResAttrs{
+			"validationStatus":    account.ValidationStatus,
+			"missingCredentials":  cloneStringSlice(validation.MissingCredentialKeys),
+			"supportedAssetCount": len(validation.SupportedAssetTypes),
+		},
+	}
+}
+
+func applyCloudAccountRegionAttrs(row *models.CloudAccountRegion, attrs models.Attrs) {
+	row.Provider = fmt.Sprint(attrs["provider"])
+	row.AccountId = fmt.Sprint(attrs["account_id"])
+	row.Region = fmt.Sprint(attrs["region"])
+	row.Enabled = attrs["enabled"].(bool)
+	row.IsDefault = attrs["is_default"].(bool)
+	row.SyncEnabled = attrs["sync_enabled"].(bool)
+	row.Source = fmt.Sprint(attrs["source"])
+	row.Status = fmt.Sprint(attrs["status"])
+	row.Message = fmt.Sprint(attrs["message"])
+	row.ResourceTypes = attrs["resource_types"].(models.StrSlice)
+	row.LastSyncAt = attrs["last_sync_at"].(models.Time)
+	row.Metadata = attrs["metadata"].(models.ResAttrs)
+}
+
+func cloudAccountRegionStatusMessage(account *models.CloudAccount, validation cloudAccountValidation) (string, string) {
+	switch {
+	case account.Status == models.CloudAccountStatusDisabled:
+		return models.CloudAccountHealthWarning, "云账号已禁用，区域不会参与同步或云操作"
+	case len(validation.MissingCredentialKeys) > 0:
+		return models.CloudAccountHealthUnhealthy, fmt.Sprintf("缺少凭证字段：%s", strings.Join(validation.MissingCredentialKeys, ", "))
+	case len(validation.Regions) == 0:
+		return models.CloudAccountHealthWarning, "未配置或无法推断可用区域"
+	case len(validation.SupportedAssetTypes) == 0:
+		return models.CloudAccountHealthUnhealthy, fmt.Sprintf("暂不支持 provider %s 的资产采集", account.Provider)
+	default:
+		return models.CloudAccountHealthHealthy, "区域配置可用于同步"
+	}
+}
+
+func cloudAccountPermissionItemsWithSnapshot(c *ctx.ServiceContext, account *models.CloudAccount, computed []resps.CloudAccountPermissionResp) ([]resps.CloudAccountPermissionResp, models.Time, e.Error) {
+	rows := make([]models.CloudAccountPermission, 0)
+	if err := c.DB().Model(&models.CloudAccountPermission{}).
+		Where("org_id = ? and cloud_account_id = ?", c.OrgId, account.Id).
+		Find(&rows); err != nil {
+		return nil, models.Time{}, e.New(e.DBError, err)
+	}
+	byKey := make(map[string]models.CloudAccountPermission, len(rows))
+	for _, row := range rows {
+		byKey[row.PermissionKey] = row
+	}
+
+	items := make([]resps.CloudAccountPermissionResp, 0, len(computed))
+	var lastCheckedAt models.Time
+	for _, item := range computed {
+		if row, ok := byKey[item.Key]; ok && cloudAccountPermissionSnapshotFresh(row, account) {
+			item = cloudAccountPermissionRespFromModel(row)
+		} else {
+			item.Source = "computed"
+		}
+		if cloudAccountTimeAfter(item.CheckedAt, lastCheckedAt) {
+			lastCheckedAt = item.CheckedAt
+		}
+		items = append(items, item)
+	}
+	return items, lastCheckedAt, nil
+}
+
+func cloudAccountPermissionSnapshotFresh(row models.CloudAccountPermission, account *models.CloudAccount) bool {
+	checkedAt := time.Time(row.CheckedAt)
+	if checkedAt.IsZero() || checkedAt.Year() <= 1 {
+		return false
+	}
+	validatedAt := time.Time(account.LastValidatedAt)
+	if validatedAt.IsZero() || validatedAt.Year() <= 1 {
+		return true
+	}
+	return !checkedAt.Add(time.Second).Before(validatedAt)
+}
+
+func cloudAccountPermissionRespFromModel(row models.CloudAccountPermission) resps.CloudAccountPermissionResp {
+	return resps.CloudAccountPermissionResp{
+		Key:       row.PermissionKey,
+		Name:      row.Name,
+		Resource:  row.Resource,
+		Action:    row.Action,
+		Status:    row.Status,
+		Message:   row.Message,
+		Source:    row.Source,
+		CheckedAt: row.CheckedAt,
+		Evidence:  row.Evidence,
+	}
+}
+
+func cloudAccountTimeAfter(value models.Time, base models.Time) bool {
+	valueTime := time.Time(value)
+	if valueTime.IsZero() || valueTime.Year() <= 1 {
+		return false
+	}
+	baseTime := time.Time(base)
+	return baseTime.IsZero() || valueTime.After(baseTime)
+}
+
+func saveCloudAccountPermissionSnapshot(c *ctx.ServiceContext, account *models.CloudAccount, items []resps.CloudAccountPermissionResp, checkedAt models.Time, source string) e.Error {
+	if c == nil || account == nil || account.Id == "" {
+		return nil
+	}
+	checkedTime := time.Time(checkedAt)
+	if checkedTime.IsZero() || checkedTime.Year() <= 1 {
+		checkedAt = models.Time(time.Now())
+	}
+	source = strings.TrimSpace(source)
+	if source == "" {
+		source = "local_precheck"
+	}
+	for _, item := range items {
+		item.Key = strings.TrimSpace(item.Key)
+		if item.Key == "" {
+			continue
+		}
+		row := models.CloudAccountPermission{}
+		err := c.DB().Model(&models.CloudAccountPermission{}).
+			Where("org_id = ? and cloud_account_id = ? and permission_key = ?", c.OrgId, account.Id, item.Key).
+			First(&row)
+		attrs := cloudAccountPermissionAttrs(account, item, checkedAt, source)
+		if err != nil && !e.IsRecordNotFound(err) {
+			return e.New(e.DBError, err)
+		}
+		if e.IsRecordNotFound(err) {
+			row = models.CloudAccountPermission{
+				OrgId:          c.OrgId,
+				CloudAccountId: account.Id,
+				PermissionKey:  item.Key,
+			}
+			row.Id = models.NewId("cap")
+			applyCloudAccountPermissionAttrs(&row, attrs)
+			if err := models.Create(c.DB(), &row); err != nil {
+				if e.IsDuplicate(err) {
+					if _, updateErr := c.DB().Model(&models.CloudAccountPermission{}).
+						Where("org_id = ? and cloud_account_id = ? and permission_key = ?", c.OrgId, account.Id, item.Key).
+						UpdateAttrs(attrs); updateErr != nil {
+						return e.New(e.DBError, updateErr)
+					}
+					continue
+				}
+				return e.New(e.DBError, err)
+			}
+			continue
+		}
+		if _, err := c.DB().Model(&models.CloudAccountPermission{}).
+			Where("id = ? and org_id = ?", row.Id, c.OrgId).
+			UpdateAttrs(attrs); err != nil {
+			return e.New(e.DBError, err)
+		}
+	}
+	return nil
+}
+
+func cloudAccountPermissionAttrs(account *models.CloudAccount, item resps.CloudAccountPermissionResp, checkedAt models.Time, source string) models.Attrs {
+	return models.Attrs{
+		"provider":       account.Provider,
+		"account_id":     account.AccountId,
+		"name":           item.Name,
+		"resource":       item.Resource,
+		"action":         item.Action,
+		"status":         item.Status,
+		"message":        item.Message,
+		"source":         source,
+		"checked_at":     checkedAt,
+		"evidence":       cloudAccountPermissionEvidence(account, item),
+		"permission_key": item.Key,
+	}
+}
+
+func applyCloudAccountPermissionAttrs(row *models.CloudAccountPermission, attrs models.Attrs) {
+	row.Provider = fmt.Sprint(attrs["provider"])
+	row.AccountId = fmt.Sprint(attrs["account_id"])
+	row.Name = fmt.Sprint(attrs["name"])
+	row.Resource = fmt.Sprint(attrs["resource"])
+	row.Action = fmt.Sprint(attrs["action"])
+	row.Status = fmt.Sprint(attrs["status"])
+	row.Message = fmt.Sprint(attrs["message"])
+	row.Source = fmt.Sprint(attrs["source"])
+	row.CheckedAt = attrs["checked_at"].(models.Time)
+	row.Evidence = attrs["evidence"].(models.ResAttrs)
+	row.PermissionKey = fmt.Sprint(attrs["permission_key"])
+}
+
+func cloudAccountPermissionEvidence(account *models.CloudAccount, item resps.CloudAccountPermissionResp) models.ResAttrs {
+	evidence := models.ResAttrs{
+		"provider":      account.Provider,
+		"accountId":     account.AccountId,
+		"tenantId":      account.TenantId,
+		"regions":       []string(account.Regions),
+		"permissionKey": item.Key,
+	}
+	if len(account.SupportedTypes) > 0 {
+		evidence["supportedAssetTypes"] = []string(account.SupportedTypes)
+	}
+	return evidence
 }
 
 func cloudAccountPermissionItems(account *models.CloudAccount, validation cloudAccountValidation) []resps.CloudAccountPermissionResp {

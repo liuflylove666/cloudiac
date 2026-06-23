@@ -25,16 +25,19 @@ import (
 )
 
 const (
-	cloudSyncPolicyDefaultInterval       = 24 * time.Hour
-	cloudSyncPolicyMinInterval           = 60 * time.Second
-	cloudSyncPolicyMaxInterval           = 30 * 24 * time.Hour
-	cloudSyncPolicyDefaultRetryBackoff   = 5 * time.Minute
-	cloudSyncPolicyMaxRetryBackoff       = 24 * time.Hour
-	cloudSyncPolicyDefaultRetryAttempts  = 3
-	cloudSyncPolicyMaxRetryAttempts      = 10
-	cloudSyncPolicyWorkerDefaultInterval = 5 * time.Minute
-	cloudSyncPolicyWorkerMinInterval     = 30 * time.Second
-	cloudSyncPolicyWorkerMaxInterval     = 24 * time.Hour
+	cloudSyncPolicyDefaultInterval        = 24 * time.Hour
+	cloudSyncPolicyMinInterval            = 60 * time.Second
+	cloudSyncPolicyMaxInterval            = 30 * 24 * time.Hour
+	cloudSyncPolicyDefaultRetryBackoff    = 5 * time.Minute
+	cloudSyncPolicyMaxRetryBackoff        = 24 * time.Hour
+	cloudSyncPolicyDefaultRetryAttempts   = 3
+	cloudSyncPolicyMaxRetryAttempts       = 10
+	cloudSyncPolicyDefaultAutoRetryScopes = 10
+	cloudSyncPolicyMaxAutoRetryScopes     = 50
+	cloudSyncPolicyWorkerDefaultInterval  = 5 * time.Minute
+	cloudSyncPolicyWorkerMinInterval      = 30 * time.Second
+	cloudSyncPolicyWorkerMaxInterval      = 24 * time.Hour
+	cloudSyncPolicyMaxEscalationAt        = 100
 
 	cloudSyncPolicyWorkerIntervalEnv       = "CLOUDIAC_CLOUD_SYNC_POLICY_WORKER_INTERVAL_SECONDS"
 	cloudSyncPolicyMaxTriggeredPerRunEnv   = "CLOUDIAC_CLOUD_SYNC_POLICY_MAX_TRIGGERED_PER_RUN"
@@ -333,12 +336,14 @@ func runCloudSyncPolicy(c *ctx.ServiceContext, policy *models.CloudSyncPolicy) (
 	nowTime := time.Now()
 	now := models.Time(nowTime)
 	task, err := StartCmdbSyncTask(c, &forms.CreateCmdbSyncTaskForm{
-		AccountSource: models.CmdbCloudAccountSourceCloudAccount,
-		AccountId:     policy.CloudAccountId,
-		Provider:      policy.Provider,
-		Regions:       []string(policy.Regions),
-		AssetTypes:    []string(policy.AssetTypes),
-		SyncPolicyId:  policy.Id,
+		AccountSource:         models.CmdbCloudAccountSourceCloudAccount,
+		AccountId:             policy.CloudAccountId,
+		Provider:              policy.Provider,
+		Regions:               []string(policy.Regions),
+		AssetTypes:            []string(policy.AssetTypes),
+		SyncPolicyId:          policy.Id,
+		SlowApiThresholdMs:    cloudSyncPolicySlowAPIThresholdMs(policy),
+		SlowApiSilenceMinutes: cloudSyncPolicySlowAPISilenceMinutes(policy),
 	})
 	nextSyncAt := models.Time(nowTime.Add(time.Duration(cloudSyncPolicyIntervalSeconds(policy.SyncInterval)) * time.Second))
 	attrs := models.Attrs{
@@ -354,7 +359,7 @@ func runCloudSyncPolicy(c *ctx.ServiceContext, policy *models.CloudSyncPolicy) (
 			UpdateAttrs(attrs); dbErr != nil {
 			return nil, e.New(e.DBError, dbErr)
 		}
-		cloudSyncPolicyFailureEvent(c, policy, "", err.Error())
+		cloudSyncPolicyFailureEvent(c, policy, "", err.Error(), nil)
 		return nil, err
 	}
 	attrs["last_sync_task_id"] = task.Id
@@ -388,6 +393,8 @@ func runCloudSyncPolicyScope(c *ctx.ServiceContext, policy *models.CloudSyncPoli
 		SyncPolicyId:           policy.Id,
 		SyncPolicyScheduleKey:  scope.Key,
 		SyncPolicyScheduleName: scope.Name,
+		SlowApiThresholdMs:     cloudSyncPolicySlowAPIThresholdMs(policy),
+		SlowApiSilenceMinutes:  cloudSyncPolicySlowAPISilenceMinutes(policy),
 	})
 	stateStatus := models.CmdbSyncTaskRunning
 	stateError := ""
@@ -400,7 +407,7 @@ func runCloudSyncPolicyScope(c *ctx.ServiceContext, policy *models.CloudSyncPoli
 		attrs["last_sync_status"] = models.CmdbSyncTaskFailed
 		attrs["last_error"] = err.Error()
 		cloudSyncPolicyApplyFailure(policy, attrs, nowTime, err.Error())
-		cloudSyncPolicyFailureEvent(c, policy, "", err.Error())
+		cloudSyncPolicyFailureEvent(c, policy, "", err.Error(), nil)
 	} else {
 		attrs["last_sync_task_id"] = task.Id
 		attrs["last_sync_status"] = task.Status
@@ -525,7 +532,7 @@ func updateCloudSyncPolicyAfterTask(c *ctx.ServiceContext, policyId models.Id, t
 					"syncPolicyScheduleKey": scheduleKey,
 				})
 		} else {
-			cloudSyncPolicyFailureEvent(c, &policy, taskId, errorMessage)
+			cloudSyncPolicyFailureEvent(c, &policy, taskId, errorMessage, stats)
 		}
 		_, err := c.DB().Model(&models.CloudSyncPolicy{}).
 			Where("id = ? and org_id = ?", policyId, c.OrgId).
@@ -545,7 +552,7 @@ func updateCloudSyncPolicyAfterTask(c *ctx.ServiceContext, policyId models.Id, t
 			})
 	} else {
 		cloudSyncPolicyApplyFailure(&policy, attrs, ended, errorMessage)
-		cloudSyncPolicyFailureEvent(c, &policy, taskId, errorMessage)
+		cloudSyncPolicyFailureEvent(c, &policy, taskId, errorMessage, stats)
 	}
 	_, err := c.DB().Model(&models.CloudSyncPolicy{}).
 		Where("id = ? and org_id = ?", policyId, c.OrgId).
@@ -697,6 +704,7 @@ func cloudSyncPolicyEvent(c *ctx.ServiceContext, policy *models.CloudSyncPolicy,
 	if _, ok := payload["policyId"]; !ok {
 		payload["policyId"] = policy.Id.String()
 	}
+	cloudSyncPolicyApplyNotificationRouting(policy, payload)
 	recordCloudEventBestEffort(c, models.CloudEvent{
 		OrgId:          policy.OrgId,
 		CloudAccountId: policy.CloudAccountId,
@@ -715,7 +723,7 @@ func cloudSyncPolicyEvent(c *ctx.ServiceContext, policy *models.CloudSyncPolicy,
 	})
 }
 
-func cloudSyncPolicyFailureEvent(c *ctx.ServiceContext, policy *models.CloudSyncPolicy, taskId models.Id, reason string) {
+func cloudSyncPolicyFailureEvent(c *ctx.ServiceContext, policy *models.CloudSyncPolicy, taskId models.Id, reason string, stats models.ResAttrs) {
 	if policy == nil || !policy.NotifyOnFailure {
 		return
 	}
@@ -723,19 +731,311 @@ func cloudSyncPolicyFailureEvent(c *ctx.ServiceContext, policy *models.CloudSync
 	title := "云资产同步策略执行失败"
 	level := models.CloudEventLevelError
 	status := models.CmdbSyncTaskFailed
-	if policy.AutoPauseOnFailure && policy.MaxRetryAttempts > 0 && policy.FailureCount+1 > policy.MaxRetryAttempts {
+	autoPaused := policy.AutoPauseOnFailure && policy.MaxRetryAttempts > 0 && policy.FailureCount+1 > policy.MaxRetryAttempts
+	if autoPaused {
 		eventType = "cloud.sync.policy.auto_paused"
 		title = "云资产同步策略已自动暂停"
 		status = models.CloudSyncPolicyStatusDisabled
 	}
-	cloudSyncPolicyEvent(c, policy, eventType, level, status, title, reason, models.ResAttrs{
+	payload := cloudSyncPolicyApplyNotificationRoutingWithContext(policy, models.ResAttrs{
 		"policyId":            policy.Id.String(),
 		"taskId":              taskId.String(),
 		"failureCount":        policy.FailureCount + 1,
 		"maxRetryAttempts":    policy.MaxRetryAttempts,
 		"retryBackoffSeconds": policy.RetryBackoffSeconds,
 		"autoPauseOnFailure":  policy.AutoPauseOnFailure,
+	}, reason, stats, autoPaused)
+	cloudSyncPolicyEvent(c, policy, eventType, level, status, title, reason, payload)
+}
+
+func cloudSyncPolicyApplyNotificationRoutingById(c *ctx.ServiceContext, policyId models.Id, payload models.ResAttrs) models.ResAttrs {
+	if payload == nil {
+		payload = models.ResAttrs{}
+	}
+	if c == nil || policyId == "" {
+		return payload
+	}
+	policy, err := getCloudSyncPolicy(c, policyId)
+	if err != nil {
+		return payload
+	}
+	return cloudSyncPolicyApplyNotificationRouting(policy, payload)
+}
+
+func cloudSyncPolicyApplyNotificationRouting(policy *models.CloudSyncPolicy, payload models.ResAttrs) models.ResAttrs {
+	return cloudSyncPolicyApplyNotificationRoutingWithContext(policy, payload, "", nil, false)
+}
+
+func cloudSyncPolicyApplyNotificationRoutingWithContext(policy *models.CloudSyncPolicy, payload models.ResAttrs, reason string, stats models.ResAttrs, autoPaused bool) models.ResAttrs {
+	if payload == nil {
+		payload = models.ResAttrs{}
+	}
+	if policy != nil && policy.Id != "" {
+		payload["notificationSource"] = "cloud_sync_policy"
+	}
+	failureCategory := cloudSyncPolicyFailureCategory(reason, stats)
+	if failureCategory == "" {
+		failureCategory = cloudSyncPolicyNormalizeFailureCategory(cloudSyncPolicyAttrString(payload["failureCategory"]))
+	}
+	if failureCategory != "" {
+		payload["failureCategory"] = failureCategory
+	}
+	cloudService := cloudSyncPolicyNotificationService(payload, reason, stats)
+	if cloudService != "" {
+		payload["cloudService"] = cloudService
+	}
+	if owner := strings.TrimSpace(cloudSyncPolicyAttrString(policyParam(policy, "notificationOwner"))); owner != "" {
+		payload["notificationOwner"] = owner
+	}
+	routes := cloudSyncPolicyNormalizeRoutingValues(payload["notificationRoutes"])
+	if policy != nil {
+		routes = append(routes, cloudSyncPolicyNormalizeRoutingValues(policy.Params["notificationRoutes"])...)
+		if failureRoutes := cloudSyncPolicyNotificationFailureRoutesForCategory(policy.Params, failureCategory); len(failureRoutes) > 0 {
+			routes = append(routes, failureRoutes...)
+			payload["notificationFailureRoutes"] = failureRoutes
+		}
+		if serviceRoutes := cloudSyncPolicyNotificationServiceRoutesForService(policy.Params, cloudService); len(serviceRoutes) > 0 {
+			routes = append(routes, serviceRoutes...)
+			payload["notificationServiceRoutes"] = serviceRoutes
+		}
+		escalated, escalationReason := cloudSyncPolicyNotificationEscalated(policy.Params, cloudSyncPolicyAttrInt(payload["failureCount"]), autoPaused)
+		if escalated {
+			payload["notificationEscalated"] = true
+			payload["notificationEscalationReason"] = escalationReason
+			if escalationAt := cloudSyncPolicyNotificationEscalationAt(policy.Params); escalationAt > 0 {
+				payload["notificationEscalationAt"] = escalationAt
+			}
+			if escalationRoutes := cloudSyncPolicyNormalizeRoutingValues(policy.Params["notificationEscalationRoutes"]); len(escalationRoutes) > 0 {
+				routes = append(routes, escalationRoutes...)
+				payload["notificationEscalationRoutes"] = escalationRoutes
+			}
+		}
+		assignees := append(cloudSyncPolicyNormalizeRoutingValues(payload["notificationAssignees"]), cloudSyncPolicyNormalizeRoutingValues(policy.Params["notificationAssignees"])...)
+		if len(assignees) > 0 {
+			payload["notificationAssignees"] = dedupeStrings(assignees)
+		}
+		if cloudSyncPolicyAttrBool(policy.Params["itsmAutoTicket"]) {
+			payload["itsmAutoTicket"] = true
+		}
+		if connectorIds := cloudSyncPolicyNormalizeRoutingValues(policy.Params["itsmConnectorIds"]); len(connectorIds) > 0 {
+			payload["itsmConnectorIds"] = connectorIds
+		}
+		if priority := strings.TrimSpace(cloudSyncPolicyAttrString(policy.Params["itsmPriority"])); priority != "" {
+			payload["itsmPriority"] = priority
+		}
+	}
+	if len(routes) > 0 {
+		payload["notificationRoutes"] = dedupeStrings(routes)
+	}
+	return payload
+}
+
+func cloudSyncPolicyNotificationRoutingAttrs(policy *models.CloudSyncPolicy) models.ResAttrs {
+	if policy == nil {
+		return nil
+	}
+	attrs := models.ResAttrs{}
+	owner := strings.TrimSpace(cloudSyncPolicyAttrString(policy.Params["notificationOwner"]))
+	if owner != "" {
+		attrs["notificationOwner"] = owner
+	}
+	if routes := cloudSyncPolicyNormalizeRoutingValues(policy.Params["notificationRoutes"]); len(routes) > 0 {
+		attrs["notificationRoutes"] = routes
+	}
+	if assignees := cloudSyncPolicyNormalizeRoutingValues(policy.Params["notificationAssignees"]); len(assignees) > 0 {
+		attrs["notificationAssignees"] = assignees
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	return attrs
+}
+
+func policyParam(policy *models.CloudSyncPolicy, key string) interface{} {
+	if policy == nil || policy.Params == nil {
+		return nil
+	}
+	return policy.Params[key]
+}
+
+func firstNonNil(values ...interface{}) interface{} {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func cloudSyncPolicyNotificationRouteMap(value interface{}, normalizeKey func(string) string) models.ResAttrs {
+	raw := cloudSyncPolicyNotificationRouteRawMap(value)
+	result := models.ResAttrs{}
+	for key, value := range raw {
+		routeKey := strings.TrimSpace(key)
+		if normalizeKey != nil {
+			routeKey = normalizeKey(routeKey)
+		}
+		if routeKey == "" {
+			continue
+		}
+		routes := cloudSyncPolicyNormalizeRoutingValues(value)
+		if len(routes) == 0 {
+			continue
+		}
+		result[routeKey] = routes
+	}
+	return result
+}
+
+func cloudSyncPolicyNotificationRouteRawMap(value interface{}) models.ResAttrs {
+	switch typed := value.(type) {
+	case string:
+		return cloudSyncPolicyParseRouteText(typed)
+	default:
+		return cloudSyncPolicyAttrMap(value)
+	}
+}
+
+func cloudSyncPolicyParseRouteText(value string) models.ResAttrs {
+	result := models.ResAttrs{}
+	lines := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '\n' || r == ';'
 	})
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		idx := strings.IndexAny(line, "=:")
+		if idx <= 0 || idx >= len(line)-1 {
+			continue
+		}
+		result[strings.TrimSpace(line[:idx])] = strings.TrimSpace(line[idx+1:])
+	}
+	return result
+}
+
+func cloudSyncPolicyNormalizeFailureCategory(value string) string {
+	switch cloudEventNotificationRouteKey(value) {
+	case "rate_limit", "rate-limit", "ratelimit", "throttle", "throttling":
+		return "rate_limit"
+	case "credential", "credentials", "auth", "authentication", "token", "secret":
+		return "credential"
+	case "permission", "permissions", "forbidden", "denied", "authorization", "unauthorized":
+		return "permission"
+	case "configuration", "config", "invalid", "unsupported", "bad_request", "bad-request":
+		return "configuration"
+	case "network", "timeout", "temporary", "unavailable", "connection":
+		return "network"
+	case "unknown", "other", "default":
+		return "unknown"
+	default:
+		return ""
+	}
+}
+
+func cloudSyncPolicyFailureCategory(reason string, stats models.ResAttrs) string {
+	for _, detail := range cmdbSyncTaskMetricAttrsList(stats["failureDetails"]) {
+		if category := cloudSyncPolicyNormalizeFailureCategory(cmdbSyncTaskMetricString(detail["category"])); category != "" {
+			return category
+		}
+		if message := cmdbSyncTaskMetricString(detail["message"]); message != "" {
+			category, _, _ := cmdbSyncClassifyFailure(message)
+			if category = cloudSyncPolicyNormalizeFailureCategory(category); category != "" {
+				return category
+			}
+		}
+	}
+	if strings.TrimSpace(reason) == "" {
+		return ""
+	}
+	category, _, _ := cmdbSyncClassifyFailure(reason)
+	return cloudSyncPolicyNormalizeFailureCategory(category)
+}
+
+func cloudSyncPolicyNotificationService(payload models.ResAttrs, reason string, stats models.ResAttrs) string {
+	for _, key := range []string{"cloudService", "providerService", "service"} {
+		if service := cloudEventNotificationRouteKey(cloudSyncPolicyAttrString(payload[key])); service != "" {
+			return service
+		}
+	}
+	for _, key := range []string{"slowest", "top"} {
+		if service := cloudSyncPolicyServiceFromPayloadValue(payload[key]); service != "" {
+			return service
+		}
+	}
+	for _, detail := range cmdbSyncTaskMetricAttrsList(stats["failureDetails"]) {
+		for _, key := range []string{"cloudService", "providerService", "service"} {
+			if service := cloudEventNotificationRouteKey(cmdbSyncTaskMetricString(detail[key])); service != "" {
+				return service
+			}
+		}
+	}
+	metadata := cmdbSyncProviderFailureMetadata(reason)
+	if service := cloudEventNotificationRouteKey(cloudSyncPolicyAttrString(metadata["providerService"])); service != "" {
+		return service
+	}
+	return ""
+}
+
+func cloudSyncPolicyServiceFromPayloadValue(value interface{}) string {
+	for _, item := range cmdbSyncTaskMetricAttrsList(value) {
+		for _, key := range []string{"cloudService", "providerService", "service"} {
+			if service := cloudEventNotificationRouteKey(cmdbSyncTaskMetricString(item[key])); service != "" {
+				return service
+			}
+		}
+	}
+	attrs := cloudSyncPolicyAttrMap(value)
+	for _, key := range []string{"cloudService", "providerService", "service"} {
+		if service := cloudEventNotificationRouteKey(cloudSyncPolicyAttrString(attrs[key])); service != "" {
+			return service
+		}
+	}
+	return ""
+}
+
+func cloudSyncPolicyNotificationFailureRoutesForCategory(params models.ResAttrs, category string) []string {
+	category = cloudSyncPolicyNormalizeFailureCategory(category)
+	if category == "" {
+		return nil
+	}
+	routes := cloudSyncPolicyNotificationRouteMap(params["notificationFailureRoutes"], cloudSyncPolicyNormalizeFailureCategory)
+	return cloudSyncPolicyNormalizeRoutingValues(routes[category])
+}
+
+func cloudSyncPolicyNotificationServiceRoutesForService(params models.ResAttrs, service string) []string {
+	service = cloudEventNotificationRouteKey(service)
+	if service == "" {
+		return nil
+	}
+	routes := cloudSyncPolicyNotificationRouteMap(params["notificationServiceRoutes"], cloudEventNotificationRouteKey)
+	return cloudSyncPolicyNormalizeRoutingValues(routes[service])
+}
+
+func cloudSyncPolicyNotificationEscalationAt(params models.ResAttrs) int {
+	if params == nil {
+		return 0
+	}
+	value := cloudSyncPolicyAttrInt(params["notificationEscalationAt"])
+	if value <= 0 {
+		return 0
+	}
+	if value > cloudSyncPolicyMaxEscalationAt {
+		return cloudSyncPolicyMaxEscalationAt
+	}
+	return value
+}
+
+func cloudSyncPolicyNotificationEscalated(params models.ResAttrs, failureCount int, autoPaused bool) (bool, string) {
+	if autoPaused {
+		return true, "auto_paused"
+	}
+	escalationAt := cloudSyncPolicyNotificationEscalationAt(params)
+	if escalationAt > 0 && failureCount >= escalationAt {
+		return true, "failure_count"
+	}
+	return false, ""
 }
 
 func cloudSyncPolicyLockName(orgId models.Id, policyId models.Id, scopeKey string) string {
@@ -891,6 +1191,90 @@ func cloudSyncPolicyNormalizeParams(params models.ResAttrs) models.ResAttrs {
 	} else {
 		delete(normalized, "maxRunsPerDay")
 	}
+	slowAPIThresholdMs := cloudSyncPolicyAttrInt(normalized["slowApiThresholdMs"])
+	if slowAPIThresholdMs > 0 {
+		normalized["slowApiThresholdMs"] = cmdbSyncTaskEffectiveSlowAPIThresholdMs(int64(slowAPIThresholdMs))
+	} else {
+		delete(normalized, "slowApiThresholdMs")
+	}
+	slowAPISilenceMinutes := cloudSyncPolicyAttrInt(normalized["slowApiSilenceMinutes"])
+	if slowAPISilenceMinutes > 0 {
+		normalized["slowApiSilenceMinutes"] = cmdbSyncTaskEffectiveSlowAPISilenceMinutes(int64(slowAPISilenceMinutes))
+	} else {
+		delete(normalized, "slowApiSilenceMinutes")
+	}
+	owner := strings.TrimSpace(cloudSyncPolicyAttrString(normalized["notificationOwner"]))
+	if owner != "" {
+		normalized["notificationOwner"] = owner
+	} else {
+		delete(normalized, "notificationOwner")
+	}
+	routes := cloudSyncPolicyNormalizeRoutingValues(normalized["notificationRoutes"])
+	if len(routes) > 0 {
+		normalized["notificationRoutes"] = routes
+	} else {
+		delete(normalized, "notificationRoutes")
+	}
+	assignees := cloudSyncPolicyNormalizeRoutingValues(normalized["notificationAssignees"])
+	if len(assignees) > 0 {
+		normalized["notificationAssignees"] = assignees
+	} else {
+		delete(normalized, "notificationAssignees")
+	}
+	failureRoutes := cloudSyncPolicyNotificationRouteMap(normalized["notificationFailureRoutes"], cloudSyncPolicyNormalizeFailureCategory)
+	if len(failureRoutes) > 0 {
+		normalized["notificationFailureRoutes"] = failureRoutes
+	} else {
+		delete(normalized, "notificationFailureRoutes")
+	}
+	serviceRoutes := cloudSyncPolicyNotificationRouteMap(normalized["notificationServiceRoutes"], cloudEventNotificationRouteKey)
+	if len(serviceRoutes) > 0 {
+		normalized["notificationServiceRoutes"] = serviceRoutes
+	} else {
+		delete(normalized, "notificationServiceRoutes")
+	}
+	escalationAt := cloudSyncPolicyNotificationEscalationAt(normalized)
+	if escalationAt > 0 {
+		normalized["notificationEscalationAt"] = escalationAt
+	} else {
+		delete(normalized, "notificationEscalationAt")
+	}
+	escalationRoutes := cloudSyncPolicyNormalizeRoutingValues(normalized["notificationEscalationRoutes"])
+	if len(escalationRoutes) > 0 {
+		normalized["notificationEscalationRoutes"] = escalationRoutes
+	} else {
+		delete(normalized, "notificationEscalationRoutes")
+	}
+	if cloudSyncPolicyAttrBool(normalized["itsmAutoTicket"]) {
+		normalized["itsmAutoTicket"] = true
+	} else {
+		delete(normalized, "itsmAutoTicket")
+	}
+	itsmConnectorIds := cloudSyncPolicyNormalizeRoutingValues(firstNonNil(normalized["itsmConnectorIds"], normalized["itsmConnectorId"]))
+	if len(itsmConnectorIds) > 0 {
+		normalized["itsmConnectorIds"] = itsmConnectorIds
+		delete(normalized, "itsmConnectorId")
+	} else {
+		delete(normalized, "itsmConnectorIds")
+		delete(normalized, "itsmConnectorId")
+	}
+	if priority := strings.TrimSpace(cloudSyncPolicyAttrString(normalized["itsmPriority"])); priority != "" {
+		normalized["itsmPriority"] = cloudSyncPolicyTruncateString(priority, 32)
+	} else {
+		delete(normalized, "itsmPriority")
+	}
+	autoRetryFailedScopes := cloudSyncPolicyAttrBool(normalized["autoRetryFailedScopes"])
+	if autoRetryFailedScopes {
+		normalized["autoRetryFailedScopes"] = true
+		maxScopes := cloudSyncPolicyAttrInt(normalized["autoRetryMaxScopes"])
+		if maxScopes <= 0 {
+			maxScopes = cloudSyncPolicyDefaultAutoRetryScopes
+		}
+		normalized["autoRetryMaxScopes"] = cloudSyncPolicyAutoRetryScopeLimit(maxScopes)
+	} else {
+		delete(normalized, "autoRetryFailedScopes")
+		delete(normalized, "autoRetryMaxScopes")
+	}
 	schedules := cloudSyncPolicyNormalizeScheduleOverrides(normalized["scheduleOverrides"])
 	if len(schedules) > 0 {
 		normalized["scheduleOverrides"] = schedules
@@ -900,6 +1284,44 @@ func cloudSyncPolicyNormalizeParams(params models.ResAttrs) models.ResAttrs {
 		delete(normalized, "scheduleState")
 	}
 	return normalized
+}
+
+func cloudSyncPolicySlowAPIThresholdMs(policy *models.CloudSyncPolicy) int64 {
+	if policy == nil {
+		return cmdbSyncTaskSlowAPIThresholdMs
+	}
+	return cmdbSyncTaskEffectiveSlowAPIThresholdMs(cloudSyncPolicyAttrInt64(policy.Params["slowApiThresholdMs"]))
+}
+
+func cloudSyncPolicySlowAPISilenceMinutes(policy *models.CloudSyncPolicy) int64 {
+	if policy == nil {
+		return 0
+	}
+	return cmdbSyncTaskEffectiveSlowAPISilenceMinutes(cloudSyncPolicyAttrInt64(policy.Params["slowApiSilenceMinutes"]))
+}
+
+func cloudSyncPolicyAutoRetryFailedScopes(policy *models.CloudSyncPolicy) bool {
+	if policy == nil {
+		return false
+	}
+	return cloudSyncPolicyAttrBool(policy.Params["autoRetryFailedScopes"])
+}
+
+func cloudSyncPolicyAutoRetryMaxScopes(policy *models.CloudSyncPolicy) int {
+	if policy == nil || !cloudSyncPolicyAutoRetryFailedScopes(policy) {
+		return 0
+	}
+	return cloudSyncPolicyAutoRetryScopeLimit(cloudSyncPolicyAttrInt(policy.Params["autoRetryMaxScopes"]))
+}
+
+func cloudSyncPolicyAutoRetryScopeLimit(value int) int {
+	if value <= 0 {
+		return cloudSyncPolicyDefaultAutoRetryScopes
+	}
+	if value > cloudSyncPolicyMaxAutoRetryScopes {
+		return cloudSyncPolicyMaxAutoRetryScopes
+	}
+	return value
 }
 
 func cloudSyncPolicyNormalizeScheduleOverrides(value interface{}) []models.ResAttrs {
@@ -1240,6 +1662,34 @@ func cloudSyncPolicyPauseWindows(policy *models.CloudSyncPolicy) []string {
 	return cloudSyncPolicyNormalizePauseWindows(policy.Params["pauseWindows"])
 }
 
+func cloudSyncPolicyNormalizeRoutingValues(value interface{}) []string {
+	values := normalizeStringList(cloudSyncPolicyAttrStringSlice(value))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		value = cloudSyncPolicyTruncateString(value, 80)
+		result = append(result, value)
+		if len(result) >= 20 {
+			break
+		}
+	}
+	return dedupeStrings(result)
+}
+
+func cloudSyncPolicyTruncateString(value string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes])
+}
+
 func cloudSyncPolicyPauseReason(policy *models.CloudSyncPolicy, now time.Time) string {
 	for _, window := range cloudSyncPolicyPauseWindows(policy) {
 		start, end, ok := cloudSyncPolicyParsePauseWindow(window)
@@ -1372,6 +1822,55 @@ func cloudSyncPolicyAttrInt(value interface{}) int {
 		}
 	}
 	return 0
+}
+
+func cloudSyncPolicyAttrInt64(value interface{}) int64 {
+	switch typed := value.(type) {
+	case int:
+		if typed > 0 {
+			return int64(typed)
+		}
+	case int64:
+		if typed > 0 {
+			return typed
+		}
+	case float64:
+		if typed > 0 {
+			return int64(typed)
+		}
+	case json.Number:
+		if value, err := typed.Int64(); err == nil && value > 0 {
+			return value
+		}
+	case string:
+		value, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err == nil && value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func cloudSyncPolicyAttrBool(value interface{}) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case int:
+		return typed > 0
+	case int64:
+		return typed > 0
+	case float64:
+		return typed > 0
+	case json.Number:
+		parsed, err := typed.Int64()
+		return err == nil && parsed > 0
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "1", "true", "yes", "y", "on", "enable", "enabled":
+			return true
+		}
+	}
+	return false
 }
 
 func cloudSyncPolicyAttrStringSlice(value interface{}) []string {

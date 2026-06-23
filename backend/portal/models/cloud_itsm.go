@@ -84,5 +84,8 @@ func (CloudItsmTicket) TableName() string {
 }
 
 func (ticket CloudItsmTicket) Migrate(sess *db.Session) error {
-	return ticket.AddUniqueIndex(sess, "unique_cloud_itsm_ticket_operation_connector", "org_id", "operation_id", "connector_id")
+	if err := sess.RemoveIndex(ticket.TableName(), "unique_cloud_itsm_ticket_operation_connector"); err != nil {
+		return err
+	}
+	return ticket.AddUniqueIndex(sess, "unique_cloud_itsm_ticket_source_connector", "org_id", "operation_id", "cloud_event_id", "connector_id")
 }

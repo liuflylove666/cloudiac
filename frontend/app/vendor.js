@@ -6,7 +6,6 @@ import * as ReactRouterDOM from 'react-router-dom';
 import * as ConnectedReactRouter from 'connected-react-router';
 import * as ReduxSaga from 'redux-saga';
 import * as Redux from 'redux';
-import * as lodash from 'lodash';
 import * as ReactIntl from 'react-intl';
 import * as Reselect from 'reselect';
 import * as moment from 'moment';
@@ -121,7 +120,6 @@ const libs = {
   ConnectedReactRouter,
   ReduxSaga,
   Redux,
-  lodash,
   ReactIntl,
   Reselect,
   moment

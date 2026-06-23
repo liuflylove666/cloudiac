@@ -772,6 +772,8 @@ func (m *TaskManager) processTaskDone(taskId models.Id) { //nolint:cyclop
 
 	if err := services.ChangeTaskStatusWithStep(dbSess, task, lastStep); err != nil {
 		logger.Errorf("update task status error: %v", err)
+	} else if err := apps.SyncCloudRiskDriftAutoRepairTaskResult(task); err != nil {
+		logger.Errorf("sync cloud risk drift auto repair task result: %v", err)
 	}
 
 	if task.IsEffectTask() {

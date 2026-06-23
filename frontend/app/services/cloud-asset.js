@@ -16,8 +16,23 @@ const cloudAssetAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  assetPermissions: ({ orgId }) => {
+    return getWithArgs('/api/v1/cloud/assets/permissions', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  assetGovernanceReport: ({ orgId }) => {
+    return getWithArgs('/api/v1/cloud/assets/governance-report', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
   assetDetail: ({ orgId, id }) => {
     return getWithArgs(`/api/v1/cloud/assets/${id}`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  assetRelations: ({ orgId, id, ...restParams }) => {
+    return getWithArgs(`/api/v1/cloud/assets/${id}/relations`, restParams, {
       'IaC-Org-Id': orgId
     });
   },

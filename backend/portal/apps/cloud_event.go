@@ -130,6 +130,7 @@ func recordCloudEventWithDispatch(c *ctx.ServiceContext, event models.CloudEvent
 	if dispatch {
 		dispatchCloudEventWebhooksBestEffort(c, &event)
 		dispatchCloudEventNotificationsBestEffort(c, &event)
+		dispatchCloudEventItsmBestEffort(c, &event)
 	}
 	return nil
 }
@@ -243,6 +244,48 @@ func cmdbAssetChangeEvent(c *ctx.ServiceContext, change *models.CmdbAssetChange)
 			"changeType": change.ChangeType,
 			"source":     change.Source,
 			"diff":       change.Diff,
+		},
+	})
+}
+
+func cmdbApplicationRelationsEvent(
+	c *ctx.ServiceContext,
+	application string,
+	beforeUpstreams []string,
+	afterUpstreams []string,
+	beforeDownstreams []string,
+	afterDownstreams []string,
+) {
+	if c == nil {
+		return
+	}
+	application = strings.TrimSpace(application)
+	if application == "" {
+		return
+	}
+	recordCloudEventBestEffort(c, models.CloudEvent{
+		OrgId:        c.OrgId,
+		Source:       models.CloudEventSourceCMDB,
+		EventType:    "cmdb.application.relations_updated",
+		Level:        models.CloudEventLevelInfo,
+		Status:       models.CmdbAssetChangeTypeUpdated,
+		ResourceType: "cmdb_application",
+		ResourceName: application,
+		Title:        "CMDB 应用依赖变更",
+		Message: fmt.Sprintf("应用 %s 依赖关系已更新：上游 %d -> %d，下游 %d -> %d",
+			application, len(beforeUpstreams), len(afterUpstreams), len(beforeDownstreams), len(afterDownstreams)),
+		Payload: models.ResAttrs{
+			"application":  application,
+			"source":       models.CmdbRelationSourceManualApp,
+			"relationType": models.CmdbRelationTypeDependsOn,
+			"before": models.ResAttrs{
+				"upstreams":   beforeUpstreams,
+				"downstreams": beforeDownstreams,
+			},
+			"after": models.ResAttrs{
+				"upstreams":   afterUpstreams,
+				"downstreams": afterDownstreams,
+			},
 		},
 	})
 }

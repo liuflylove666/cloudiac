@@ -129,6 +129,7 @@ module.exports = options => ({
     new webpack.EnvironmentPlugin({
       NODE_ENV: 'development'
     }),
+    new webpack.ContextReplacementPlugin(/moment[/\\]locale$/, /zh-cn/),
     new CopyWebpackPlugin({
       patterns: [
         {
@@ -144,6 +145,11 @@ module.exports = options => ({
   ]),
   resolve: {
     modules: [ 'node_modules', 'app' ],
+    aliasFields: [ 'browser' ],
+    mainFields: [ 'browser', 'module', 'main' ],
+    alias: {
+      'intl-relativeformat$': 'intl-relativeformat/lib/main'
+    },
     extensions: [ '.js', '.jsx', '.react.js' ]
   },
   externals: {
@@ -155,7 +161,6 @@ module.exports = options => ({
     'connected-react-router': 'ConnectedReactRouter',
     'redux-saga': 'ReduxSaga',
     'redux': 'Redux',
-    'lodash': 'lodash',
     'moment': 'moment',
     'react-intl': 'ReactIntl',
     'reselect': 'Reselect'

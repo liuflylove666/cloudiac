@@ -31,6 +31,12 @@ func UpdateCloudAccount(tx *db.Session, orgId, id models.Id, attrs models.Attrs)
 }
 
 func DeleteCloudAccount(tx *db.Session, orgId, id models.Id) e.Error {
+	if _, err := tx.Where("org_id = ? and cloud_account_id = ?", orgId, id).Delete(&models.CloudAccountRegion{}); err != nil {
+		return e.New(e.DBError, fmt.Errorf("delete cloud account regions error: %v", err))
+	}
+	if _, err := tx.Where("org_id = ? and cloud_account_id = ?", orgId, id).Delete(&models.CloudAccountPermission{}); err != nil {
+		return e.New(e.DBError, fmt.Errorf("delete cloud account permissions error: %v", err))
+	}
 	if _, err := tx.Where("id = ? and org_id = ?", id, orgId).Delete(&models.CloudAccount{}); err != nil {
 		return e.New(e.DBError, fmt.Errorf("delete cloud account error: %v", err))
 	}

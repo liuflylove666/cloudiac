@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"cloudiac/configs"
 	"cloudiac/portal/consts"
@@ -56,6 +57,42 @@ func cloudEventNotificationCandidates(event models.CloudEvent) []string {
 	}
 	if idx := strings.Index(event.EventType, "."); idx > 0 {
 		candidates = append(candidates, event.EventType[:idx]+".*")
+	}
+	for _, route := range cloudEventNotificationPayloadRouteKeys(event.Payload, "notificationRoutes") {
+		candidates = append(candidates, "cloud.route."+route)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".route."+route)
+		}
+	}
+	for _, owner := range cloudEventNotificationPayloadRouteKeys(event.Payload, "notificationOwner") {
+		candidates = append(candidates, "cloud.owner."+owner)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".owner."+owner)
+		}
+	}
+	for _, assignee := range cloudEventNotificationPayloadRouteKeys(event.Payload, "notificationAssignees") {
+		candidates = append(candidates, "cloud.assignee."+assignee)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".assignee."+assignee)
+		}
+	}
+	if failureCategory := cloudEventNotificationPayloadScalarKey(event.Payload, "failureCategory"); failureCategory != "" {
+		candidates = append(candidates, "cloud.failure."+failureCategory)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".failure."+failureCategory)
+		}
+	}
+	if cloudService := cloudEventNotificationPayloadScalarKey(event.Payload, "cloudService"); cloudService != "" {
+		candidates = append(candidates, "cloud.service."+cloudService)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".service."+cloudService)
+		}
+	}
+	if escalationReason := cloudEventNotificationPayloadScalarKey(event.Payload, "notificationEscalationReason"); escalationReason != "" {
+		candidates = append(candidates, "cloud.escalation."+escalationReason)
+		if event.Source != "" {
+			candidates = append(candidates, event.Source+".escalation."+escalationReason)
+		}
 	}
 	return uniqueStrings(candidates)
 }
@@ -298,6 +335,24 @@ func cloudEventNotificationMarkdown(event models.CloudEvent) string {
 	if event.EnvId != "" {
 		lines = append(lines, fmt.Sprintf("- 环境 ID：%s", event.EnvId))
 	}
+	if owner := cloudEventNotificationPayloadDisplay(event.Payload, "notificationOwner"); owner != "" {
+		lines = append(lines, fmt.Sprintf("- 通知负责人：%s", owner))
+	}
+	if routes := cloudEventNotificationPayloadDisplay(event.Payload, "notificationRoutes"); routes != "" {
+		lines = append(lines, fmt.Sprintf("- 通知路由：%s", routes))
+	}
+	if assignees := cloudEventNotificationPayloadDisplay(event.Payload, "notificationAssignees"); assignees != "" {
+		lines = append(lines, fmt.Sprintf("- 分派对象：%s", assignees))
+	}
+	if failureCategory := cloudEventNotificationPayloadScalarDisplay(event.Payload, "failureCategory"); failureCategory != "" {
+		lines = append(lines, fmt.Sprintf("- 失败类型：%s", failureCategory))
+	}
+	if cloudService := cloudEventNotificationPayloadScalarDisplay(event.Payload, "cloudService"); cloudService != "" {
+		lines = append(lines, fmt.Sprintf("- 云服务：%s", cloudService))
+	}
+	if cloudEventNotificationPayloadBool(event.Payload, "notificationEscalated") {
+		lines = append(lines, "- 通知升级：已升级")
+	}
 	if event.Message != "" {
 		lines = append(lines, "", event.Message)
 	}
@@ -327,6 +382,134 @@ func valueOrDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func cloudEventNotificationPayloadDisplay(payload models.ResAttrs, key string) string {
+	if key == "notificationOwner" {
+		return cloudEventNotificationPayloadOwner(payload)
+	}
+	values := cloudEventNotificationPayloadValues(payload, key)
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, ", ")
+}
+
+func cloudEventNotificationPayloadRouteKeys(payload models.ResAttrs, key string) []string {
+	values := []string{}
+	if key == "notificationOwner" {
+		if owner := cloudEventNotificationPayloadOwner(payload); owner != "" {
+			values = append(values, owner)
+		}
+	} else {
+		values = cloudEventNotificationPayloadValues(payload, key)
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		routeKey := cloudEventNotificationRouteKey(value)
+		if routeKey != "" {
+			result = append(result, routeKey)
+		}
+	}
+	return uniqueStrings(result)
+}
+
+func cloudEventNotificationPayloadScalarKey(payload models.ResAttrs, key string) string {
+	return cloudEventNotificationRouteKey(cloudEventNotificationPayloadScalarDisplay(payload, key))
+}
+
+func cloudEventNotificationPayloadScalarDisplay(payload models.ResAttrs, key string) string {
+	if payload == nil {
+		return ""
+	}
+	return strings.TrimSpace(cloudSyncPolicyAttrString(payload[key]))
+}
+
+func cloudEventNotificationPayloadBool(payload models.ResAttrs, key string) bool {
+	if payload == nil {
+		return false
+	}
+	switch value := payload[key].(type) {
+	case bool:
+		return value
+	case string:
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "1", "true", "yes", "y", "on", "enable", "enabled":
+			return true
+		}
+	}
+	return false
+}
+
+func cloudEventNotificationPayloadOwner(payload models.ResAttrs) string {
+	if payload == nil {
+		return ""
+	}
+	return strings.TrimSpace(cloudSyncPolicyAttrString(payload["notificationOwner"]))
+}
+
+func cloudEventNotificationPayloadValues(payload models.ResAttrs, key string) []string {
+	if payload == nil {
+		return nil
+	}
+	value := payload[key]
+	switch typed := value.(type) {
+	case []string:
+		return cloudEventNotificationNormalizePayloadValues(typed, false)
+	case models.StrSlice:
+		return cloudEventNotificationNormalizePayloadValues([]string(typed), false)
+	case []interface{}:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, fmt.Sprint(item))
+		}
+		return cloudEventNotificationNormalizePayloadValues(values, false)
+	case string:
+		return cloudEventNotificationNormalizePayloadValues([]string{typed}, true)
+	case nil:
+		return nil
+	default:
+		return cloudEventNotificationNormalizePayloadValues(cloudSyncPolicyAttrStringSlice(value), true)
+	}
+}
+
+func cloudEventNotificationNormalizePayloadValues(values []string, split bool) []string {
+	if split {
+		return normalizeStringList(values)
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return uniqueStrings(result)
+}
+
+func cloudEventNotificationRouteKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '.':
+			builder.WriteRune(r)
+			lastDash = false
+		case r == '-' || unicode.IsSpace(r) || r == '/' || r == ':' || r == '@':
+			if !lastDash && builder.Len() > 0 {
+				builder.WriteRune('-')
+				lastDash = true
+			}
+		}
+		if builder.Len() >= 80 {
+			break
+		}
+	}
+	return strings.Trim(builder.String(), "-.")
 }
 
 func uniqueStrings(values []string) []string {

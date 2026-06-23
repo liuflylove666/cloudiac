@@ -1,5 +1,6 @@
 // Webpack Config - Vendor
 const path = require('path');
+const webpack = require('webpack');
 const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = {
@@ -44,11 +45,17 @@ module.exports = {
       })
     ]
   },
+  plugins: [
+    new webpack.ContextReplacementPlugin(/moment[/\\]locale$/, /zh-cn/)
+  ],
   resolve: {
     modules: [ 'app', 'node_modules' ],
-    aliasFields: ['main'],
+    aliasFields: [ 'browser' ],
     descriptionFiles: ['package.json'],
     mainFields: [ 'browser', 'module', 'main' ],
+    alias: {
+      'intl-relativeformat$': 'intl-relativeformat/lib/main'
+    },
     extensions: [ '.js', '.jsx' ]
   }
 };

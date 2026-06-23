@@ -30,6 +30,9 @@ const { Option } = Select;
 const { TextArea } = Input;
 const { Search: InputSearch } = Input;
 
+const defaultSlowApiThresholdMs = 1000;
+const defaultSlowApiSilenceMinutes = 0;
+
 const providerOptions = [
   { label: 'AWS', value: 'aws' },
   { label: 'OCI', value: 'oci' },
@@ -77,6 +80,12 @@ const permissionStatusMap = {
   pass: { label: '通过', color: 'success' },
   warn: { label: '提醒', color: 'warning' },
   fail: { label: '失败', color: 'error' }
+};
+
+const permissionSourceMap = {
+  local_precheck: '本地预检',
+  provider_api: '云端验证',
+  computed: '实时计算'
 };
 
 const providerCredentialTemplates = {
@@ -141,6 +150,40 @@ const splitList = (value) => {
 
 const joinList = (value) => Array.isArray(value) && value.length ? value.join(', ') : '-';
 const formListText = (value) => Array.isArray(value) && value.length ? value.join(', ') : '';
+const parseRouteText = (value) => {
+  const result = {};
+  String(value || '').split(/[\n;]/).forEach((line) => {
+    const text = line.trim();
+    if (!text) {
+      return;
+    }
+    const index = text.search(/[:=]/);
+    if (index <= 0 || index >= text.length - 1) {
+      return;
+    }
+    const key = text.slice(0, index).trim();
+    const routes = splitList(text.slice(index + 1));
+    if (key && routes.length) {
+      result[key] = routes;
+    }
+  });
+  return result;
+};
+const formRouteText = (value) => {
+  if (!value) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return Object.entries(value)
+    .map(([ key, routes ]) => {
+      const routeText = Array.isArray(routes) ? formListText(routes) : formListText(splitList(routes));
+      return key && routeText ? `${key}: ${routeText}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+};
 const renderTime = (value) => !value || String(value).indexOf('0001-01-01') === 0 ? '-' : moment(value).format('YYYY-MM-DD HH:mm:ss');
 const accountSupportedAssetTypes = (account) => (account || {}).supportedAssetTypes || (account || {}).supportedTypes || [];
 
@@ -165,6 +208,53 @@ const syncTaskStatusTag = (value) => {
 };
 
 const syncTaskTime = (task) => task ? renderTime(task.endedAt || task.createdAt) : '-';
+
+const slowApiThresholdText = (params = {}) => {
+  const value = Number(params.slowApiThresholdMs || defaultSlowApiThresholdMs);
+  return `${value}ms`;
+};
+
+const slowApiAlertText = (params = {}) => {
+  const thresholdText = slowApiThresholdText(params);
+  const silenceMinutes = Number(params.slowApiSilenceMinutes || defaultSlowApiSilenceMinutes);
+  return silenceMinutes > 0 ? `${thresholdText} / 静默 ${silenceMinutes} 分钟` : thresholdText;
+};
+
+const autoRetryScopeText = (params = {}) => {
+  if (!params.autoRetryFailedScopes) {
+    return <span className={styles.mutedText}>关闭</span>;
+  }
+  return `开启 / 最多 ${params.autoRetryMaxScopes || 10} 个 scope`;
+};
+
+const routeMapCount = (value) => value && typeof value === 'object' ? Object.keys(value).filter(Boolean).length : 0;
+
+const syncPolicyNotificationText = (params = {}) => {
+  const items = [];
+  if (params.notificationOwner) {
+    items.push(`负责人 ${params.notificationOwner}`);
+  }
+  if ((params.notificationRoutes || []).length) {
+    items.push(`基础 ${params.notificationRoutes.length}`);
+  }
+  const failureCount = routeMapCount(params.notificationFailureRoutes);
+  if (failureCount) {
+    items.push(`错误 ${failureCount}`);
+  }
+  const serviceCount = routeMapCount(params.notificationServiceRoutes);
+  if (serviceCount) {
+    items.push(`服务 ${serviceCount}`);
+  }
+  if (params.notificationEscalationAt) {
+    const routeCount = (params.notificationEscalationRoutes || []).length;
+    items.push(`升级 ${params.notificationEscalationAt}${routeCount ? ` / ${routeCount}` : ''}`);
+  }
+  if (params.itsmAutoTicket || (params.itsmConnectorIds || []).length) {
+    const connectorCount = (params.itsmConnectorIds || []).length;
+    items.push(`ITSM ${connectorCount ? connectorCount : '本地'}`);
+  }
+  return items.length ? items.join('；') : <span className={styles.mutedText}>未配置</span>;
+};
 
 const renderSyncTaskLink = (label, task, orgId) => {
   const time = syncTaskTime(task);
@@ -554,6 +644,18 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
       }
     },
     {
+      title: '来源',
+      dataIndex: 'source',
+      width: 100,
+      render: (value) => permissionSourceMap[value] || value || '-'
+    },
+    {
+      title: '检查时间',
+      dataIndex: 'checkedAt',
+      width: 170,
+      render: renderTime
+    },
+    {
       title: '说明',
       dataIndex: 'message'
     }
@@ -565,10 +667,28 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
       dataIndex: 'name'
     },
     {
+      title: '启用',
+      dataIndex: 'enabled',
+      width: 80,
+      render: (value) => value ? <Tag color='success'>启用</Tag> : <Tag>停用</Tag>
+    },
+    {
+      title: '同步',
+      dataIndex: 'syncEnabled',
+      width: 80,
+      render: (value, record) => record.enabled && value ? <Tag color='processing'>开启</Tag> : '-'
+    },
+    {
       title: '默认',
       dataIndex: 'default',
       width: 90,
       render: (value) => value ? <Tag color='processing'>默认</Tag> : '-'
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      render: healthTag
     },
     {
       title: '来源',
@@ -596,6 +716,7 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
         <Descriptions.Item label='云厂商'>{(providerOptions.find((item) => item.value === record.provider) || {}).label || record.provider || '-'}</Descriptions.Item>
         <Descriptions.Item label='账号 ID'>{record.accountId || '-'}</Descriptions.Item>
         <Descriptions.Item label='验证状态'>{validationTag(record.validationStatus)}</Descriptions.Item>
+        <Descriptions.Item label='权限检查'>{renderTime((permissionsData || {}).lastCheckedAt)}</Descriptions.Item>
       </Descriptions>
       <Alert
         type='info'
@@ -627,6 +748,7 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
         dataSource={regionRows}
         loading={regionsLoading}
         pagination={false}
+        scroll={{ x: 650 }}
       />
       <div className={styles.sectionTitle}>权限验证结果</div>
       {!!missingKeys.length && (
@@ -644,6 +766,7 @@ const RegionPermissionDrawer = ({ visible, record, orgId, onClose, onUpdated }) 
         dataSource={permissionRows}
         loading={permissionsLoading}
         pagination={false}
+        scroll={{ x: 900 }}
       />
       <div className={styles.sectionTitle}>支持采集资产类型</div>
       <div className={styles.tagList}>
@@ -684,6 +807,20 @@ const SyncPolicyDrawer = ({ visible, mode, record, accounts, onClose, onSubmit, 
       autoPauseOnFailure: !!record.autoPauseOnFailure,
       pauseWindowsText: formListText(params.pauseWindows),
       maxRunsPerDay: params.maxRunsPerDay || 0,
+      slowApiThresholdMs: params.slowApiThresholdMs || defaultSlowApiThresholdMs,
+      slowApiSilenceMinutes: params.slowApiSilenceMinutes || defaultSlowApiSilenceMinutes,
+      notificationOwner: params.notificationOwner || '',
+      notificationRoutesText: formListText(params.notificationRoutes),
+      notificationAssigneesText: formListText(params.notificationAssignees),
+      notificationFailureRoutesText: formRouteText(params.notificationFailureRoutes),
+      notificationServiceRoutesText: formRouteText(params.notificationServiceRoutes),
+      notificationEscalationAt: params.notificationEscalationAt || 0,
+      notificationEscalationRoutesText: formListText(params.notificationEscalationRoutes),
+      itsmAutoTicket: !!params.itsmAutoTicket,
+      itsmConnectorIdsText: formListText(params.itsmConnectorIds || (params.itsmConnectorId ? [ params.itsmConnectorId ] : [])),
+      itsmPriority: params.itsmPriority || '',
+      autoRetryFailedScopes: !!params.autoRetryFailedScopes,
+      autoRetryMaxScopes: params.autoRetryMaxScopes || 10,
       scheduleOverrides: (params.scheduleOverrides || []).map((item) => ({
         name: item.name,
         regionsText: formListText(item.regions),
@@ -713,6 +850,20 @@ const SyncPolicyDrawer = ({ visible, mode, record, accounts, onClose, onSubmit, 
         ...(record.params || {}),
         pauseWindows: splitList(values.pauseWindowsText),
         maxRunsPerDay: values.maxRunsPerDay || 0,
+        slowApiThresholdMs: values.slowApiThresholdMs || defaultSlowApiThresholdMs,
+        slowApiSilenceMinutes: values.slowApiSilenceMinutes || defaultSlowApiSilenceMinutes,
+        notificationOwner: values.notificationOwner || '',
+        notificationRoutes: splitList(values.notificationRoutesText),
+        notificationAssignees: splitList(values.notificationAssigneesText),
+        notificationFailureRoutes: parseRouteText(values.notificationFailureRoutesText),
+        notificationServiceRoutes: parseRouteText(values.notificationServiceRoutesText),
+        notificationEscalationAt: values.notificationEscalationAt || 0,
+        notificationEscalationRoutes: splitList(values.notificationEscalationRoutesText),
+        itsmAutoTicket: !!values.itsmAutoTicket,
+        itsmConnectorIds: splitList(values.itsmConnectorIdsText),
+        itsmPriority: values.itsmPriority || '',
+        autoRetryFailedScopes: !!values.autoRetryFailedScopes,
+        autoRetryMaxScopes: values.autoRetryFailedScopes ? (values.autoRetryMaxScopes || 10) : 0,
         scheduleOverrides: (values.scheduleOverrides || [])
           .map((item) => ({
             name: item.name,
@@ -802,6 +953,63 @@ const SyncPolicyDrawer = ({ visible, mode, record, accounts, onClose, onSubmit, 
           </Form.Item>
           <Form.Item name='maxRunsPerDay' label='每日运行上限'>
             <InputNumber min={0} max={9999} style={{ width: '100%' }}/>
+          </Form.Item>
+          <Form.Item name='slowApiThresholdMs' label='慢 API 告警阈值（毫秒）'>
+            <InputNumber min={1} max={600000} style={{ width: '100%' }}/>
+          </Form.Item>
+          <Form.Item name='slowApiSilenceMinutes' label='慢 API 告警静默窗口（分钟）'>
+            <InputNumber min={0} max={10080} style={{ width: '100%' }} placeholder='0 表示不静默'/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='autoRetryFailedScopes' label='失败 scope 自动局部重试' valuePropName='checked'>
+            <Switch checkedChildren='开启' unCheckedChildren='关闭'/>
+          </Form.Item>
+          <Form.Item name='autoRetryMaxScopes' label='单次最大补偿 scope 数'>
+            <InputNumber min={1} max={50} style={{ width: '100%' }}/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='notificationOwner' label='通知负责人'>
+            <Input placeholder='例如 sre-oncall'/>
+          </Form.Item>
+          <Form.Item name='notificationRoutesText' label='通知路由'>
+            <Input placeholder='例如 sre, cloud-platform'/>
+          </Form.Item>
+          <Form.Item name='notificationAssigneesText' label='分派对象'>
+            <Input placeholder='多个用户或团队用逗号、空格或换行分隔'/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='notificationFailureRoutesText' label='错误类型路由'>
+            <TextArea rows={3} placeholder={'例如 permission: iam, security\nrate_limit: cloud-platform'}/>
+          </Form.Item>
+          <Form.Item name='notificationServiceRoutesText' label='云服务路由'>
+            <TextArea rows={3} placeholder={'例如 ec2: compute-oncall\niaas: oci-team'}/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='notificationEscalationAt' label='升级阈值（失败次数）'>
+            <InputNumber min={0} max={100} style={{ width: '100%' }} placeholder='0 表示不启用'/>
+          </Form.Item>
+          <Form.Item name='notificationEscalationRoutesText' label='升级路由'>
+            <Input placeholder='例如 sre-manager, cloud-manager'/>
+          </Form.Item>
+        </div>
+        <div className={styles.formGrid}>
+          <Form.Item name='itsmAutoTicket' label='ITSM 自动工单' valuePropName='checked'>
+            <Switch checkedChildren='开启' unCheckedChildren='关闭'/>
+          </Form.Item>
+          <Form.Item name='itsmConnectorIdsText' label='ITSM 连接器 ID'>
+            <Input placeholder='可选，多个 ID 用逗号分隔；留空使用 CloudIaC 本地工单'/>
+          </Form.Item>
+          <Form.Item name='itsmPriority' label='ITSM 优先级'>
+            <Select allowClear={true} placeholder='默认按事件级别推导'>
+              <Option value='low'>低</Option>
+              <Option value='medium'>中</Option>
+              <Option value='high'>高</Option>
+              <Option value='critical'>紧急</Option>
+            </Select>
           </Form.Item>
         </div>
         <Form.List name='scheduleOverrides'>
@@ -1153,6 +1361,24 @@ const CloudAccountPage = ({ match }) => {
       dataIndex: 'protection',
       width: 220,
       render: renderPolicyProtection
+    },
+    {
+      title: '慢 API',
+      dataIndex: 'params',
+      width: 180,
+      render: slowApiAlertText
+    },
+    {
+      title: '失败补偿',
+      dataIndex: 'params',
+      width: 180,
+      render: autoRetryScopeText
+    },
+    {
+      title: '通知路由',
+      dataIndex: 'params',
+      width: 240,
+      render: syncPolicyNotificationText
     },
     {
       title: '子周期',

@@ -48,12 +48,14 @@ const actionMap = {
   resize_volume: '磁盘扩容',
   create_snapshot: '创建快照/备份',
   update_security_rules: '更新安全组规则',
-  delete_resource: '删除资源'
+  delete_resource: '删除资源',
+  itsm_dead_letter: 'ITSM 死信处置'
 };
 
 const typeMap = {
   governance: '治理任务',
-  action: '云资产动作'
+  action: '云资产动作',
+  self_service: '自助运维'
 };
 
 const riskMap = {
@@ -83,6 +85,222 @@ const JsonBlock = ({ value }) => (
   <pre className={styles.jsonBlock}>{jsonText(value)}</pre>
 );
 
+const evidenceTypeMap = {
+  link: '链接',
+  pull_request: 'PR/评审',
+  ticket: '外部工单',
+  change: '变更记录',
+  change_request: '变更请求',
+  incident: '事故记录',
+  document: '文档',
+  runbook: 'Runbook',
+  snapshot: '现场快照',
+  other: '补充证据'
+};
+
+const textValue = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return '-';
+  }
+  if (typeof value === 'object') {
+    return value.name || value.label || value.id || JSON.stringify(value);
+  }
+  return String(value);
+};
+
+const firstText = (...values) => {
+  const value = values.find((item) => item !== undefined && item !== null && item !== '');
+  return textValue(value);
+};
+
+const boolText = (value) => value ? '是' : '否';
+
+const arrayValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined && item !== null && item !== '');
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+};
+
+const TagList = ({ value }) => {
+  const list = arrayValue(value);
+  if (!list.length) {
+    return '-';
+  }
+  return (
+    <span className={styles.tagList}>
+      {list.map((item) => <Tag key={String(item)}>{String(item)}</Tag>)}
+    </span>
+  );
+};
+
+const LinkText = ({ value }) => {
+  if (!value) {
+    return '-';
+  }
+  return (
+    <a className={styles.auditLink} href={value} target='_blank' rel='noreferrer'>
+      {value}
+    </a>
+  );
+};
+
+const ItsmDeadLetterAudit = ({ payload = {}, evidence = {}, snapshot = {}, notificationStrategy = {} }) => {
+  const evidenceItems = Array.isArray(evidence.items) ? evidence.items : [];
+  const snapshotTickets = Array.isArray(snapshot.tickets) ? snapshot.tickets : [];
+  const evidenceRows = evidenceItems.map((item, index) => ({
+    ...item,
+    rowKey: `${item.url || item.label || item.type || 'evidence'}-${index}`
+  }));
+  const snapshotTicketRows = snapshotTickets.map((item, index) => ({
+    ...item,
+    rowKey: item.id || `${item.title || 'ticket'}-${index}`
+  }));
+  const precheck = snapshot.precheck || payload.precheck || {};
+  const evidenceColumns = [
+    {
+      title: '标题',
+      dataIndex: 'label',
+      width: 160,
+      render: (text, record) => text || evidenceTypeMap[record.type] || '-'
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      width: 110,
+      render: (text) => evidenceTypeMap[text] || text || '-'
+    },
+    {
+      title: '链接',
+      dataIndex: 'url',
+      width: 260,
+      render: (text) => <LinkText value={text}/>
+    },
+    {
+      title: '说明',
+      dataIndex: 'note',
+      render: (text) => text || '-'
+    }
+  ];
+  const ticketColumns = [
+    {
+      title: '工单',
+      dataIndex: 'id',
+      width: 180,
+      ellipsis: true,
+      render: (text, record) => record.title || text || '-'
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      render: (text) => text || '-'
+    },
+    {
+      title: '重试原因',
+      dataIndex: 'retryReason',
+      width: 140,
+      render: (text) => text || '-'
+    },
+    {
+      title: '错误码',
+      dataIndex: 'errorCode',
+      width: 130,
+      render: textValue
+    },
+    {
+      title: '外部响应',
+      dataIndex: 'externalResponseCode',
+      width: 130,
+      render: textValue
+    },
+    {
+      title: '外部单号',
+      dataIndex: 'externalKey',
+      width: 160,
+      render: (text, record) => text || record.externalId || '-'
+    },
+    {
+      title: '外部链接',
+      dataIndex: 'externalUrl',
+      width: 220,
+      render: (text) => <LinkText value={text}/>
+    }
+  ];
+
+  return (
+    <div className={styles.detailSection}>
+      <Text strong={true}>ITSM 死信审批留痕</Text>
+      <div className={styles.auditPanel}>
+        <Descriptions size='small' bordered={true} column={2}>
+          <Descriptions.Item label='处置动作'>{firstText(payload.actionLabel, payload.action)}</Descriptions.Item>
+          <Descriptions.Item label='票据数'>{firstText(payload.ticketCount, snapshot.ticketCount)}</Descriptions.Item>
+          <Descriptions.Item label='强制执行'>{boolText(payload.force)}</Descriptions.Item>
+          <Descriptions.Item label='申请人'>{firstText(payload.requestedBy, snapshot.requestedBy)}</Descriptions.Item>
+          <Descriptions.Item label='申请时间'>{firstText(payload.requestedAt, snapshot.generatedAt)}</Descriptions.Item>
+          <Descriptions.Item label='主证据'><LinkText value={evidence.url}/></Descriptions.Item>
+          <Descriptions.Item label='申请原因' span={2}>{firstText(payload.reason, snapshot.reason)}</Descriptions.Item>
+        </Descriptions>
+      </div>
+      <div className={styles.auditPanel}>
+        <div className={styles.auditPanelTitle}>证据列表</div>
+        {evidenceItems.length ? (
+          <Table
+            rowKey='rowKey'
+            size='small'
+            columns={evidenceColumns}
+            dataSource={evidenceRows}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description='暂无证据'/>
+        )}
+      </div>
+      <div className={styles.auditPanel}>
+        <div className={styles.auditPanelTitle}>审批快照</div>
+        <Descriptions size='small' bordered={true} column={2}>
+          <Descriptions.Item label='快照版本'>{firstText(evidence.snapshotVersion, snapshot.version)}</Descriptions.Item>
+          <Descriptions.Item label='生成时间'>{firstText(evidence.snapshotGeneratedAt, snapshot.generatedAt)}</Descriptions.Item>
+          <Descriptions.Item label='预检查' span={2}>
+            <JsonBlock value={precheck}/>
+          </Descriptions.Item>
+        </Descriptions>
+        <div className={styles.auditSubsection}>
+          <Text strong={true}>票据快照</Text>
+          <Table
+            rowKey='rowKey'
+            size='small'
+            columns={ticketColumns}
+            dataSource={snapshotTicketRows}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description='暂无票据快照'/> }}
+          />
+        </div>
+      </div>
+      <div className={styles.auditPanel}>
+        <div className={styles.auditPanelTitle}>通知策略</div>
+        <Descriptions size='small' bordered={true} column={2}>
+          <Descriptions.Item label='启用'>{boolText(notificationStrategy.enabled)}</Descriptions.Item>
+          <Descriptions.Item label='级别'>{firstText(notificationStrategy.severity)}</Descriptions.Item>
+          <Descriptions.Item label='渠道'><TagList value={notificationStrategy.channels}/></Descriptions.Item>
+          <Descriptions.Item label='路由'><TagList value={notificationStrategy.routes}/></Descriptions.Item>
+          <Descriptions.Item label='Owner 角色'><TagList value={notificationStrategy.ownerRoles}/></Descriptions.Item>
+          <Descriptions.Item label='包含快照'>{boolText(notificationStrategy.includeEvidenceSnapshot)}</Descriptions.Item>
+          <Descriptions.Item label='证据数'>{firstText(notificationStrategy.evidenceItemCount)}</Descriptions.Item>
+          <Descriptions.Item label='票据数'>{firstText(notificationStrategy.ticketCount)}</Descriptions.Item>
+          <Descriptions.Item label='事件类型' span={2}><TagList value={notificationStrategy.eventTypes}/></Descriptions.Item>
+          <Descriptions.Item label='消息模板' span={2}>{firstText(notificationStrategy.messageTemplate)}</Descriptions.Item>
+        </Descriptions>
+      </div>
+    </div>
+  );
+};
+
 const OperationDetail = ({
   detail = {},
   loading,
@@ -99,9 +317,14 @@ const OperationDetail = ({
   const audits = detail.audits || [];
   const params = detail.params || {};
   const result = detail.result || {};
+  const itsmDeadLetter = params.itsmDeadLetter || {};
+  const deadLetterEvidence = itsmDeadLetter.evidence || {};
+  const deadLetterSnapshot = deadLetterEvidence.snapshot || {};
+  const deadLetterNotificationStrategy = itsmDeadLetter.notificationStrategy || params.notificationStrategy || {};
+  const showItsmDeadLetterAudit = detail.action === 'itsm_dead_letter';
   const canCancel = detail.status === 'pending' || detail.status === 'approving' || detail.status === 'running';
   const canRetry = detail.status === 'failed' && detail.operationType === 'action';
-  const canApprove = detail.status === 'approving' && detail.operationType === 'action';
+  const canApprove = detail.status === 'approving' && (detail.operationType === 'action' || showItsmDeadLetterAudit);
   const rollbackHint = result.rollbackHint ||
     (canCancel && params.executionMode === 'async'
       ? '取消仅停止平台任务跟踪；如果 provider 写操作已经提交到云厂商，平台不会自动回滚云端资源，请到云厂商控制台或后续采集结果核对最终状态。'
@@ -211,6 +434,14 @@ const OperationDetail = ({
         <Popconfirm title='确认按原参数创建重试任务？' onConfirm={onRetryOperation}>
           <Button type='primary' icon={<ReloadOutlined/>} loading={retrying}>重试任务</Button>
         </Popconfirm>
+      )}
+      {showItsmDeadLetterAudit && (
+        <ItsmDeadLetterAudit
+          payload={itsmDeadLetter}
+          evidence={deadLetterEvidence}
+          snapshot={deadLetterSnapshot}
+          notificationStrategy={deadLetterNotificationStrategy}
+        />
       )}
       <div className={styles.detailSection}>
         <Text strong={true}>参数</Text>

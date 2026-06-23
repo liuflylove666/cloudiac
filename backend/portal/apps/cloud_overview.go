@@ -220,13 +220,17 @@ func cloudOverviewProviders(c *ctx.ServiceContext) ([]resps.CloudOverviewProvide
 }
 
 func cloudOverviewRecentSyncTasks(c *ctx.ServiceContext) ([]resps.CmdbSyncTaskResp, e.Error) {
-	tasks := make([]resps.CmdbSyncTaskResp, 0)
+	modelTasks := make([]models.CmdbSyncTask, 0)
 	if err := c.DB().Model(&models.CmdbSyncTask{}).
 		Where("org_id = ?", c.OrgId).
 		Order("created_at desc").
 		Limit(5).
-		Scan(&tasks); err != nil {
+		Scan(&modelTasks); err != nil {
 		return nil, e.New(e.DBError, err)
+	}
+	tasks := make([]resps.CmdbSyncTaskResp, 0, len(modelTasks))
+	for _, task := range modelTasks {
+		tasks = append(tasks, cmdbSyncTaskResp(task))
 	}
 	return tasks, nil
 }

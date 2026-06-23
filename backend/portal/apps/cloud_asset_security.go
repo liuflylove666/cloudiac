@@ -113,7 +113,7 @@ func cloudSecurityRuleResp(direction string, raw models.ResAttrs) resps.CloudAss
 		PortRange:      cloudSecurityRulePortRange(raw),
 		Description:    cloudSecurityRuleDescription(raw),
 		PublicExposure: cloudSecurityRulePublicExposure(source, destination),
-		Raw:            raw,
+		Raw:            sanitizeCmdbAssetAttrs(raw),
 	}
 }
 

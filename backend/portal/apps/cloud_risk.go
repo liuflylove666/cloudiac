@@ -172,6 +172,102 @@ func SuppressCloudRisk(c *ctx.ServiceContext, form *forms.SuppressCloudRiskForm)
 	return &resp, nil
 }
 
+func CreateCloudRiskRemediationTicket(c *ctx.ServiceContext, form *forms.CreateCloudRiskRemediationTicketForm) (*resps.CloudItsmTicketResp, e.Error) {
+	finding, err := getCloudRiskFinding(c, form.Id)
+	if err != nil {
+		return nil, err
+	}
+	if finding.Status == models.CloudRiskStatusResolved {
+		return nil, e.New(e.BadParam, fmt.Errorf("风险发现 %s 已解决，无需创建整改工单", finding.Id))
+	}
+	title := strings.TrimSpace(form.Title)
+	if title == "" {
+		title = cloudRiskRemediationTitle(*finding)
+	}
+	description := strings.TrimSpace(form.Description)
+	if description == "" {
+		description = cloudRiskRemediationDescription(*finding)
+	}
+	priority := strings.TrimSpace(form.Priority)
+	if priority == "" {
+		priority = cloudItsmPriorityFromRisk(finding.RiskLevel)
+	}
+	ticket, ticketErr := CreateCloudItsmSelfServiceTicket(c, &forms.CreateCloudItsmSelfServiceTicketForm{
+		ConnectorId: form.ConnectorId,
+		RequestType: models.CloudOperationActionRiskRemediation,
+		Title:       title,
+		Description: description,
+		Priority:    priority,
+		ProjectId:   finding.ProjectId,
+		EnvId:       finding.EnvId,
+		Params:      cloudRiskRemediationParams(*finding, form.Params),
+		DryRun:      form.DryRun,
+	})
+	if ticketErr != nil {
+		return nil, ticketErr
+	}
+	if form.DryRun {
+		return ticket, nil
+	}
+
+	evidence := mergeCloudRiskEvidence(finding.Evidence, models.ResAttrs{
+		"lastRemediationTicketId":     ticket.Id.String(),
+		"lastRemediationOperationId":  ticket.OperationId.String(),
+		"lastRemediationConnectorId":  ticket.ConnectorId.String(),
+		"lastRemediationConnector":    ticket.ConnectorName,
+		"lastRemediationTicketStatus": ticket.Status,
+		"lastRemediationAt":           time.Now().Format(time.RFC3339),
+		"lastRemediationBy":           c.UserId.String(),
+	})
+	if _, dbErr := c.DB().Model(&models.CloudRiskFinding{}).
+		Where("id = ? and org_id = ?", finding.Id, c.OrgId).
+		UpdateAttrs(models.Attrs{
+			"status":             models.CloudRiskStatusInProgress,
+			"suppression_reason": "",
+			"resolved_at":        models.Time{},
+			"evidence":           evidence,
+		}); dbErr != nil {
+		return nil, e.New(e.DBError, dbErr)
+	}
+	updated, err := getCloudRiskFinding(c, finding.Id)
+	if err != nil {
+		return nil, err
+	}
+	cloudRiskEvent(c, updated, "risk.remediation_ticket_created", "风险整改工单已创建", title, models.ResAttrs{
+		"previousStatus": finding.Status,
+		"status":         models.CloudRiskStatusInProgress,
+		"ticketId":       ticket.Id.String(),
+		"ticketStatus":   ticket.Status,
+		"operationId":    ticket.OperationId.String(),
+		"connectorId":    ticket.ConnectorId.String(),
+		"connectorName":  ticket.ConnectorName,
+	})
+	return ticket, nil
+}
+
+func AdoptCloudRiskRecommendation(c *ctx.ServiceContext, form *forms.AdoptCloudRiskRecommendationForm) (*resps.CloudRiskFindingResp, e.Error) {
+	finding, err := getCloudRiskFinding(c, form.Id)
+	if err != nil {
+		return nil, err
+	}
+	evidence, adoption, adoptErr := cloudRiskRecommendationAdoptionEvidence(finding.Evidence, *form, c.UserId, time.Now())
+	if adoptErr != nil {
+		return nil, adoptErr
+	}
+	if _, dbErr := c.DB().Model(&models.CloudRiskFinding{}).
+		Where("id = ? and org_id = ?", finding.Id, c.OrgId).
+		UpdateAttrs(models.Attrs{"evidence": evidence}); dbErr != nil {
+		return nil, e.New(e.DBError, dbErr)
+	}
+	updated, err := getCloudRiskFinding(c, finding.Id)
+	if err != nil {
+		return nil, err
+	}
+	cloudRiskEvent(c, updated, "risk.recommendation_adopted", "风险推荐已采纳", fmt.Sprintf("已采纳推荐：%s", cloudSyncPolicyAttrString(adoption["title"])), adoption)
+	resp := cloudRiskFindingResp(c, *updated)
+	return &resp, nil
+}
+
 func RefreshCloudRiskFindings(c *ctx.ServiceContext) e.Error {
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
 		return err
@@ -336,6 +432,7 @@ func cloudRiskCandidatesFromAsset(asset models.CmdbAsset) []cloudRiskCandidate {
 		}
 		candidates = append(candidates, item)
 	}
+	candidates = append(candidates, cloudRiskS3ConfigCandidates(base, asset)...)
 	return candidates
 }
 
@@ -551,6 +648,61 @@ func cloudRiskFindingResp(c *ctx.ServiceContext, finding models.CloudRiskFinding
 	}
 }
 
+func cloudRiskRemediationTitle(finding models.CloudRiskFinding) string {
+	rule := firstNonEmpty(finding.RuleName, finding.RuleKey, "云风险")
+	resource := firstNonEmpty(finding.ResourceName, finding.ResourceId, finding.AssetId.String())
+	if resource == "" {
+		return fmt.Sprintf("风险整改申请：%s", rule)
+	}
+	return fmt.Sprintf("风险整改申请：%s / %s", rule, resource)
+}
+
+func cloudRiskRemediationDescription(finding models.CloudRiskFinding) string {
+	lines := []string{
+		fmt.Sprintf("风险等级：%s", firstNonEmpty(finding.RiskLevel, models.CloudOperationRiskMedium)),
+		fmt.Sprintf("风险来源：%s", firstNonEmpty(finding.Source, "-")),
+		fmt.Sprintf("风险规则：%s", firstNonEmpty(finding.RuleName, finding.RuleKey, "-")),
+		fmt.Sprintf("云厂商/区域：%s / %s", firstNonEmpty(finding.Provider, "-"), firstNonEmpty(finding.Region, "-")),
+		fmt.Sprintf("资源：%s", firstNonEmpty(finding.ResourceName, finding.ResourceId, finding.AssetId.String(), "-")),
+	}
+	if finding.Recommendation != "" {
+		lines = append(lines, fmt.Sprintf("修复建议：%s", finding.Recommendation))
+	}
+	lines = append(lines, "请按风险证据完成整改、验证并回填处理结果。")
+	return strings.Join(lines, "\n")
+}
+
+func cloudRiskRemediationParams(finding models.CloudRiskFinding, extra models.ResAttrs) models.ResAttrs {
+	params := models.ResAttrs{}
+	for key, value := range extra {
+		params[key] = value
+	}
+	params["riskRemediation"] = true
+	params["riskId"] = finding.Id.String()
+	params["riskSource"] = finding.Source
+	params["riskStatus"] = finding.Status
+	params["riskLevel"] = finding.RiskLevel
+	params["ruleKey"] = finding.RuleKey
+	params["ruleName"] = finding.RuleName
+	params["provider"] = finding.Provider
+	params["accountId"] = finding.AccountId
+	params["region"] = finding.Region
+	params["resourceType"] = finding.ResourceType
+	params["resourceId"] = finding.ResourceId
+	params["resourceName"] = finding.ResourceName
+	params["assetId"] = finding.AssetId.String()
+	params["cloudAccountId"] = finding.CloudAccountId.String()
+	params["projectId"] = finding.ProjectId.String()
+	params["envId"] = finding.EnvId.String()
+	params["recommendation"] = finding.Recommendation
+	params["evidence"] = finding.Evidence
+	if finding.Source == models.CloudRiskSourceDrift || finding.RuleKey == "terraform_drift_detected" {
+		params["driftRemediation"] = true
+		params["targetState"] = "iac_desired_state"
+	}
+	return params
+}
+
 func cloudRiskSummary(c *ctx.ServiceContext) (resps.CloudRiskSummaryResp, e.Error) {
 	summary := resps.CloudRiskSummaryResp{}
 	count := func(query *db.Session) (int64, e.Error) {
@@ -592,7 +744,7 @@ func cloudRiskSummary(c *ctx.ServiceContext) (resps.CloudRiskSummaryResp, e.Erro
 	if summary.ActiveCritical, err = count(base().Where("risk_level = ? and status in (?)", models.CloudOperationRiskCritical, []string{models.CloudRiskStatusOpen, models.CloudRiskStatusInProgress})); err != nil {
 		return summary, err
 	}
-	if summary.PublicExposure, err = count(base().Where("rule_key in (?)", []string{"public_ingress_security_rule", "public_egress_security_rule"})); err != nil {
+	if summary.PublicExposure, err = count(base().Where("rule_key in (?)", []string{"public_ingress_security_rule", "public_egress_security_rule", "s3_bucket_public_policy", "s3_bucket_public_acl"})); err != nil {
 		return summary, err
 	}
 	if summary.UnmanagedAssets, err = count(base().Where("rule_key = ?", "unmanaged_cloud_asset")); err != nil {
@@ -645,6 +797,140 @@ func cloudRiskPublicRuleLevel(rule resps.CloudAssetSecurityRuleResp) string {
 	return models.CloudOperationRiskHigh
 }
 
+func cloudRiskS3ConfigCandidates(base cloudRiskCandidate, asset models.CmdbAsset) []cloudRiskCandidate {
+	if !cloudRiskIsS3Bucket(asset) {
+		return nil
+	}
+	attrs := asset.Attributes
+	candidates := make([]cloudRiskCandidate, 0)
+	if policy := modelResAttrs(attrs["bucketPolicy"]); attrBool(policy, "publicAllow") {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_bucket_public_policy"
+		item.RuleName = "S3 Bucket Policy 允许公开访问"
+		item.RiskLevel = models.CloudOperationRiskCritical
+		item.Evidence = models.ResAttrs{
+			"bucket":         firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"publicAllow":    true,
+			"statementCount": attrInt(policy, "statementCount"),
+			"policyVersion":  attrString(policy, "version"),
+		}
+		item.Recommendation = "移除 Bucket Policy 中对 * 或公共主体的 Allow 授权，并配合 Public Access Block 阻断公共访问。"
+		candidates = append(candidates, item)
+	}
+	if value, ok := cloudRiskAttrBool(attrs, "bucketAclPublic"); ok && value {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_bucket_public_acl"
+		item.RuleName = "S3 Bucket ACL 允许公开访问"
+		item.RiskLevel = models.CloudOperationRiskCritical
+		item.Evidence = models.ResAttrs{
+			"bucket":     firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"publicAcl":  true,
+			"grantCount": attrInt(attrs, "bucketAclGrantCount"),
+		}
+		item.Recommendation = "移除 AllUsers/AuthenticatedUsers ACL 授权，优先启用 Bucket owner enforced 并关闭 ACL 公共访问。"
+		candidates = append(candidates, item)
+	}
+	if value, ok := cloudRiskAttrBool(attrs, "publicAccessBlockEnabled"); ok && !value {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_public_access_block_disabled"
+		item.RuleName = "S3 Public Access Block 未完全开启"
+		item.RiskLevel = models.CloudOperationRiskHigh
+		item.Evidence = models.ResAttrs{
+			"bucket":            firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"publicAccessBlock": modelResAttrs(attrs["publicAccessBlock"]),
+		}
+		item.Recommendation = "开启 BlockPublicAcls、IgnorePublicAcls、BlockPublicPolicy 和 RestrictPublicBuckets 四项配置。"
+		candidates = append(candidates, item)
+	}
+	if value, ok := cloudRiskAttrBool(attrs, "encryptionEnabled"); ok && !value {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_default_encryption_disabled"
+		item.RuleName = "S3 Bucket 未开启默认加密"
+		item.RiskLevel = models.CloudOperationRiskHigh
+		item.Evidence = models.ResAttrs{
+			"bucket":            firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"encryptionEnabled": false,
+		}
+		item.Recommendation = "为 Bucket 启用默认服务端加密，优先使用受控 KMS Key 并开启 Bucket Key 降低成本。"
+		candidates = append(candidates, item)
+	}
+	if cloudRiskS3VersioningCollected(attrs) && !strings.EqualFold(attrString(attrs, "versioningStatus"), "Enabled") {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_versioning_disabled"
+		item.RuleName = "S3 Bucket 未开启版本控制"
+		item.RiskLevel = models.CloudOperationRiskMedium
+		item.Evidence = models.ResAttrs{
+			"bucket":           firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"versioningStatus": attrString(attrs, "versioningStatus"),
+			"versioning":       modelResAttrs(attrs["versioning"]),
+		}
+		item.Recommendation = "开启 Bucket Versioning，并结合生命周期规则管理历史版本成本。"
+		candidates = append(candidates, item)
+	}
+	if value, ok := cloudRiskAttrBool(attrs, "loggingEnabled"); ok && !value {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_access_logging_disabled"
+		item.RuleName = "S3 Bucket 未开启访问日志"
+		item.RiskLevel = models.CloudOperationRiskMedium
+		item.Evidence = models.ResAttrs{
+			"bucket":         firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"loggingEnabled": false,
+			"logging":        modelResAttrs(attrs["logging"]),
+		}
+		item.Recommendation = "开启 S3 Server Access Logging 或接入 CloudTrail Data Events，满足访问审计和追踪要求。"
+		candidates = append(candidates, item)
+	}
+	if value, ok := cloudRiskAttrBool(attrs, "objectLockEnabled"); ok && !value {
+		item := base
+		item.Source = models.CloudRiskSourceCloudConfig
+		item.RuleKey = "s3_object_lock_disabled"
+		item.RuleName = "S3 Bucket 未开启 Object Lock"
+		item.RiskLevel = models.CloudOperationRiskMedium
+		item.Evidence = models.ResAttrs{
+			"bucket":            firstNonEmpty(attrString(attrs, "bucket"), asset.NativeId),
+			"objectLockEnabled": false,
+			"objectLock":        modelResAttrs(attrs["objectLock"]),
+		}
+		item.Recommendation = "对关键备份、审计日志或合规留存 Bucket 启用 Object Lock，并配置默认保留周期。"
+		candidates = append(candidates, item)
+	}
+	return candidates
+}
+
+func cloudRiskIsS3Bucket(asset models.CmdbAsset) bool {
+	if asset.AssetType != models.CmdbAssetTypeObjectStorageBucket {
+		return false
+	}
+	return normalizeProvider(asset.Provider) == "aws" || strings.EqualFold(asset.NativeType, "aws_s3_bucket")
+}
+
+func cloudRiskAttrBool(attrs models.ResAttrs, key string) (bool, bool) {
+	if attrs == nil {
+		return false, false
+	}
+	if _, ok := attrs[key]; !ok {
+		return false, false
+	}
+	return attrBool(attrs, key), true
+}
+
+func cloudRiskS3VersioningCollected(attrs models.ResAttrs) bool {
+	if attrs == nil {
+		return false
+	}
+	if _, ok := attrs["versioning"]; ok {
+		return true
+	}
+	_, ok := attrs["versioningStatus"]
+	return ok
+}
+
 func cloudRiskSuppressionExpired(finding models.CloudRiskFinding, now models.Time) bool {
 	if finding.Status != models.CloudRiskStatusSuppressed {
 		return false
@@ -665,4 +951,143 @@ func mergeCloudRiskEvidence(base models.ResAttrs, extra models.ResAttrs) models.
 		merged[key] = value
 	}
 	return merged
+}
+
+func cloudRiskRecommendationAdoptionEvidence(base models.ResAttrs, form forms.AdoptCloudRiskRecommendationForm, userId models.Id, adoptedAt time.Time) (models.ResAttrs, models.ResAttrs, e.Error) {
+	action := strings.TrimSpace(form.Action)
+	targetType := strings.TrimSpace(form.TargetType)
+	targetId := strings.TrimSpace(form.TargetId)
+	if action == "" {
+		return nil, nil, e.New(e.BadParam, fmt.Errorf("推荐动作不能为空"))
+	}
+	recommendations := cloudRiskRecommendationAttrs(base["driftAutoRepairRecommendations"])
+	if len(recommendations) == 0 {
+		return nil, nil, e.New(e.BadParam, fmt.Errorf("当前风险没有可采纳的漂移自动修复推荐"))
+	}
+	matchedIndex := -1
+	for index, item := range recommendations {
+		if !cloudRiskRecommendationMatches(item, action, targetType, targetId) {
+			continue
+		}
+		matchedIndex = index
+		if targetType == "" {
+			targetType = cloudSyncPolicyAttrString(item["targetType"])
+		}
+		if targetId == "" {
+			targetId = cloudSyncPolicyAttrString(item["targetId"])
+		}
+		break
+	}
+	if matchedIndex < 0 {
+		return nil, nil, e.New(e.BadParam, fmt.Errorf("未找到可采纳的推荐动作 %s", action))
+	}
+	matched := recommendations[matchedIndex]
+	adoption := models.ResAttrs{
+		"action":     action,
+		"title":      firstNonEmpty(cloudSyncPolicyAttrString(matched["title"]), action),
+		"priority":   cloudSyncPolicyAttrString(matched["priority"]),
+		"reason":     cloudSyncPolicyAttrString(matched["reason"]),
+		"targetType": targetType,
+		"targetId":   targetId,
+		"adopted":    true,
+		"adoptedAt":  adoptedAt.Format(time.RFC3339),
+		"adoptedBy":  userId.String(),
+		"comment":    strings.TrimSpace(form.Comment),
+	}
+	adoptions := cloudRiskRecommendationAttrs(base["driftAutoRepairRecommendationAdoptions"])
+	adoptions = append(adoptions, adoption)
+	adoptedByKey := map[string]models.ResAttrs{}
+	for _, item := range adoptions {
+		key := cloudRiskRecommendationKey(
+			cloudSyncPolicyAttrString(item["action"]),
+			cloudSyncPolicyAttrString(item["targetType"]),
+			cloudSyncPolicyAttrString(item["targetId"]),
+		)
+		if key != "" {
+			adoptedByKey[key] = item
+		}
+	}
+	adoptedTotal := 0
+	for index, item := range recommendations {
+		key := cloudRiskRecommendationKey(
+			cloudSyncPolicyAttrString(item["action"]),
+			cloudSyncPolicyAttrString(item["targetType"]),
+			cloudSyncPolicyAttrString(item["targetId"]),
+		)
+		if adopted, ok := adoptedByKey[key]; ok {
+			recommendations[index]["adopted"] = true
+			recommendations[index]["adoptedAt"] = adopted["adoptedAt"]
+			recommendations[index]["adoptedBy"] = adopted["adoptedBy"]
+			if comment := cloudSyncPolicyAttrString(adopted["comment"]); comment != "" {
+				recommendations[index]["adoptionComment"] = comment
+			}
+			adoptedTotal++
+		}
+	}
+	total := len(recommendations)
+	rate := 0.0
+	if total > 0 {
+		rate = float64(adoptedTotal) / float64(total) * 100
+	}
+	evidence := mergeCloudRiskEvidence(base, models.ResAttrs{
+		"driftAutoRepairRecommendations":               recommendations,
+		"driftAutoRepairRecommendationAdoptions":       adoptions,
+		"driftAutoRepairLastRecommendationAdoption":    adoption,
+		"driftAutoRepairRecommendationTotal":           total,
+		"driftAutoRepairRecommendationAdoptedTotal":    adoptedTotal,
+		"driftAutoRepairRecommendationAdoptionRate":    rate,
+		"driftAutoRepairRecommendationsAllAdopted":     total > 0 && adoptedTotal == total,
+		"driftAutoRepairRecommendationLastAdoptedAt":   adoption["adoptedAt"],
+		"driftAutoRepairRecommendationLastAdoptedBy":   adoption["adoptedBy"],
+		"driftAutoRepairRecommendationLastAdoptedName": adoption["title"],
+	})
+	return evidence, adoption, nil
+}
+
+func cloudRiskRecommendationAttrs(value interface{}) []models.ResAttrs {
+	switch typed := value.(type) {
+	case []models.ResAttrs:
+		items := make([]models.ResAttrs, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, modelResAttrs(item))
+		}
+		return items
+	case []map[string]interface{}:
+		items := make([]models.ResAttrs, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, modelResAttrs(item))
+		}
+		return items
+	case []interface{}:
+		items := make([]models.ResAttrs, 0, len(typed))
+		for _, item := range typed {
+			if attrs := modelResAttrs(item); attrs != nil {
+				items = append(items, attrs)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func cloudRiskRecommendationMatches(item models.ResAttrs, action string, targetType string, targetId string) bool {
+	if cloudSyncPolicyAttrString(item["action"]) != action {
+		return false
+	}
+	if targetType != "" && cloudSyncPolicyAttrString(item["targetType"]) != targetType {
+		return false
+	}
+	if targetId != "" && cloudSyncPolicyAttrString(item["targetId"]) != targetId {
+		return false
+	}
+	return true
+}
+
+func cloudRiskRecommendationKey(action string, targetType string, targetId string) string {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return ""
+	}
+	return strings.Join([]string{action, strings.TrimSpace(targetType), strings.TrimSpace(targetId)}, "|")
 }

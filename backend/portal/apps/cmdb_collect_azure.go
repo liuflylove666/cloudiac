@@ -264,9 +264,25 @@ func azureEnrichAssetFromProperties(asset *models.CmdbAsset, resource azureResou
 		asset.Attributes["publicIpIds"] = publicIpIds
 		asset.Attributes["subnetIds"] = subnetIds
 	case "azure_kubernetes_cluster":
+		endpoint := firstNonEmpty(attrString(props, "fqdn"), attrString(props, "privateFQDN"))
+		subnetIds := azureClusterSubnetIds(props)
+		asset.Address = endpoint
 		asset.Attributes["fqdn"] = attrString(props, "fqdn")
+		asset.Attributes["privateFQDN"] = attrString(props, "privateFQDN")
+		asset.Attributes["endpoint"] = endpoint
+		asset.Attributes["apiEndpoint"] = endpoint
 		asset.Attributes["kubernetesVersion"] = attrString(props, "kubernetesVersion")
-		asset.Attributes["subnetIds"] = azureClusterSubnetIds(props)
+		asset.Attributes["version"] = attrString(props, "kubernetesVersion")
+		asset.Attributes["subnetIds"] = subnetIds
+		asset.Attributes["vnetId"] = azureClusterVNetId(subnetIds)
+		asset.Attributes["securityGroupIds"] = azureClusterSecurityGroupIds(subnetIds, resourceIndex)
+		asset.Attributes["nodePools"] = azureClusterNodePools(props)
+		asset.Attributes["nodePoolCount"] = len(resAttrsSlice(asset.Attributes["nodePools"]))
+		asset.Attributes["networkProfile"] = props["networkProfile"]
+		asset.Attributes["endpointConfig"] = models.ResAttrs{
+			"publicEndpoint":  attrString(props, "fqdn"),
+			"privateEndpoint": attrString(props, "privateFQDN"),
+		}
 	case "azure_database":
 		asset.Attributes["engine"] = resource.Type
 		asset.Attributes["version"] = firstNonEmpty(attrString(props, "version"), attrString(props, "currentSku"))
@@ -382,6 +398,77 @@ func azureClusterSubnetIds(props models.ResAttrs) []string {
 		subnetIds = append(subnetIds, attrString(networkProfile, "podSubnetID"))
 	}
 	return dedupeStrings(nonEmptyStrings(subnetIds))
+}
+
+func azureClusterNodePools(props models.ResAttrs) []models.ResAttrs {
+	pools := make([]models.ResAttrs, 0)
+	for _, profile := range resAttrsSlice(props["agentPoolProfiles"]) {
+		subnetIds := dedupeStrings(nonEmptyStrings([]string{
+			attrString(profile, "vnetSubnetID"),
+			attrString(profile, "podSubnetID"),
+		}))
+		scaling := models.ResAttrs{
+			"desiredSize": attrInt(profile, "count"),
+		}
+		if attrString(profile, "enableAutoScaling") != "" {
+			scaling["autoScaling"] = attrString(profile, "enableAutoScaling")
+		}
+		if attrString(profile, "minCount") != "" {
+			scaling["minSize"] = attrInt(profile, "minCount")
+		}
+		if attrString(profile, "maxCount") != "" {
+			scaling["maxSize"] = attrInt(profile, "maxCount")
+		}
+		pools = append(pools, models.ResAttrs{
+			"id":                  attrString(profile, "name"),
+			"name":                attrString(profile, "name"),
+			"status":              attrString(profile, "provisioningState"),
+			"mode":                attrString(profile, "mode"),
+			"type":                attrString(profile, "type"),
+			"version":             firstNonEmpty(attrString(profile, "currentOrchestratorVersion"), attrString(profile, "orchestratorVersion")),
+			"kubernetesVersion":   firstNonEmpty(attrString(profile, "currentOrchestratorVersion"), attrString(profile, "orchestratorVersion")),
+			"instanceTypes":       nonEmptyStrings([]string{attrString(profile, "vmSize")}),
+			"vmSize":              attrString(profile, "vmSize"),
+			"nodeCount":           attrInt(profile, "count"),
+			"osType":              attrString(profile, "osType"),
+			"osSKU":               attrString(profile, "osSKU"),
+			"subnetIds":           subnetIds,
+			"zones":               azureStringList(profile["availabilityZones"]),
+			"scalingConfig":       scaling,
+			"maxPods":             attrString(profile, "maxPods"),
+			"enableAutoScaling":   attrString(profile, "enableAutoScaling"),
+			"enableNodePublicIP":  attrString(profile, "enableNodePublicIP"),
+			"nodeTaints":          profile["nodeTaints"],
+			"nodeLabels":          profile["nodeLabels"],
+			"upgradeSettings":     profile["upgradeSettings"],
+			"powerState":          profile["powerState"],
+			"rawAgentPoolProfile": profile,
+		})
+	}
+	return pools
+}
+
+func azureClusterVNetId(subnetIds []string) string {
+	for _, subnetId := range subnetIds {
+		if vnetId := azureParentResourceId(subnetId, "virtualNetworks"); vnetId != "" {
+			return vnetId
+		}
+	}
+	return ""
+}
+
+func azureClusterSecurityGroupIds(subnetIds []string, resourceIndex map[string]azureResource) []string {
+	securityGroupIds := make([]string, 0)
+	for _, subnetId := range subnetIds {
+		subnet, ok := azureLookupResource(resourceIndex, subnetId)
+		if !ok {
+			continue
+		}
+		if sgId := azureNestedId(subnet.Properties, "networkSecurityGroup"); sgId != "" {
+			securityGroupIds = append(securityGroupIds, sgId)
+		}
+	}
+	return dedupeStrings(nonEmptyStrings(securityGroupIds))
 }
 
 func azureDatabaseSubnetIds(props models.ResAttrs) []string {

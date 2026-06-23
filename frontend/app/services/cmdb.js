@@ -11,8 +11,23 @@ const cmdbAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  assetPermissions: ({ orgId }) => {
+    return getWithArgs('/api/v1/cmdb/assets/permissions', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  assetGovernanceReport: ({ orgId }) => {
+    return getWithArgs('/api/v1/cmdb/assets/governance-report', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
   assetDetail: ({ orgId, id }) => {
     return getWithArgs(`/api/v1/cmdb/assets/${id}`, {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  assetRelations: ({ orgId, id, ...restParams }) => {
+    return getWithArgs(`/api/v1/cmdb/assets/${id}/relations`, restParams, {
       'IaC-Org-Id': orgId
     });
   },
@@ -43,6 +58,16 @@ const cmdbAPI = {
   },
   updateApplicationRelations: ({ orgId, ...restParams }) => {
     return put('/api/v1/cmdb/applications/relations', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  riskRuleConfig: ({ orgId }) => {
+    return getWithArgs('/api/v1/cmdb/risk-rules', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  updateRiskRuleConfig: ({ orgId, ...restParams }) => {
+    return put('/api/v1/cmdb/risk-rules', restParams, {
       'IaC-Org-Id': orgId
     });
   },

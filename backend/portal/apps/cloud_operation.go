@@ -204,6 +204,10 @@ func ApproveCloudOperation(c *ctx.ServiceContext, form *forms.CloudOperationAppr
 	}
 
 	approval := cloudOperationApprovalAttrs(operation, c, form)
+	if operation.OperationType == models.CloudOperationTypeSelfService &&
+		operation.Action == models.CloudOperationActionItsmDeadLetter {
+		return approveCloudItsmDeadLetterOperation(c, operation, form, approval)
+	}
 	if form.Action == "rejected" {
 		result := models.ResAttrs{
 			"approval": approval,

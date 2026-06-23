@@ -11,7 +11,7 @@ import DetailDrawer from '../components/detail-drawer';
 
 const TableLayout = ({ setMode }) => {
 
-  const { taskId, type, orgId, projectId, envId } = useContext(DetailPageContext);
+  const { taskId, type, orgId, projectId, envId, sourceResourceId } = useContext(DetailPageContext);
   const [ expandedRowKeys, setExpandedRowKeys ] = useState([]);
   const [ search, setSearch ] = useState('');
   const [ detailDrawerProps, setDetailDrawerProps ] = useState({
@@ -21,6 +21,16 @@ const TableLayout = ({ setMode }) => {
   useEffect(() => {
     fetchResourceData();
   }, [search]);
+
+  useEffect(() => {
+    const id = Array.isArray(sourceResourceId) ? sourceResourceId[0] : sourceResourceId;
+    if (id) {
+      setDetailDrawerProps({
+        visible: true,
+        id
+      });
+    }
+  }, [sourceResourceId]);
   
   const { data: resourceData = [], run: fetchResourceData, loading } = useRequest(
     () => {

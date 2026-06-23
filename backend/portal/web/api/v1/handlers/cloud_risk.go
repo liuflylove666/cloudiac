@@ -34,3 +34,19 @@ func (CloudRisk) Suppress(c *ctx.GinRequest) {
 	}
 	c.JSONResult(apps.SuppressCloudRisk(c.Service(), &form))
 }
+
+func (CloudRisk) CreateRemediationTicket(c *ctx.GinRequest) {
+	form := forms.CreateCloudRiskRemediationTicketForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.CreateCloudRiskRemediationTicket(c.Service(), &form))
+}
+
+func (CloudRisk) AdoptRecommendation(c *ctx.GinRequest) {
+	form := forms.AdoptCloudRiskRecommendationForm{}
+	if err := c.Bind(&form); err != nil {
+		return
+	}
+	c.JSONResult(apps.AdoptCloudRiskRecommendation(c.Service(), &form))
+}

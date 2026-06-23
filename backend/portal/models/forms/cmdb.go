@@ -31,6 +31,7 @@ type ImportCmdbAssetForm struct {
 
 	Assets             []models.CmdbAsset `json:"assets" binding:"required"`
 	OverwriteOwnership bool               `json:"overwriteOwnership" form:"overwriteOwnership"`
+	DryRun             bool               `json:"dryRun" form:"dryRun"`
 }
 
 type SearchCmdbApplicationForm struct {
@@ -54,10 +55,52 @@ type UpdateCmdbApplicationRelationsForm struct {
 	Downstreams []string `json:"downstreams" form:"downstreams" binding:"dive,max=128"`
 }
 
+type UpdateCmdbRiskRuleConfigForm struct {
+	BaseForm
+
+	ChangeWindowDays int `json:"changeWindowDays" form:"changeWindowDays" binding:"omitempty,gte=1,lte=90"`
+
+	RecentChangeWeight           int `json:"recentChangeWeight" form:"recentChangeWeight" binding:"omitempty,gte=0,lte=100"`
+	ChangedAssetWeight           int `json:"changedAssetWeight" form:"changedAssetWeight" binding:"omitempty,gte=0,lte=100"`
+	IncomingAppWeight            int `json:"incomingAppWeight" form:"incomingAppWeight" binding:"omitempty,gte=0,lte=100"`
+	OutgoingAppWeight            int `json:"outgoingAppWeight" form:"outgoingAppWeight" binding:"omitempty,gte=0,lte=100"`
+	HighComplianceRiskWeight     int `json:"highComplianceRiskWeight" form:"highComplianceRiskWeight" binding:"omitempty,gte=0,lte=100"`
+	CriticalComplianceRiskWeight int `json:"criticalComplianceRiskWeight" form:"criticalComplianceRiskWeight" binding:"omitempty,gte=0,lte=100"`
+	MaintenanceLifecycleWeight   int `json:"maintenanceLifecycleWeight" form:"maintenanceLifecycleWeight" binding:"omitempty,gte=0,lte=100"`
+	RetiredLifecycleWeight       int `json:"retiredLifecycleWeight" form:"retiredLifecycleWeight" binding:"omitempty,gte=0,lte=100"`
+	CrossBusinessLineWeight      int `json:"crossBusinessLineWeight" form:"crossBusinessLineWeight" binding:"omitempty,gte=0,lte=100"`
+
+	CriticalIncomingThreshold int `json:"criticalIncomingThreshold" form:"criticalIncomingThreshold" binding:"omitempty,gte=1,lte=100"`
+	MediumIncomingThreshold   int `json:"mediumIncomingThreshold" form:"mediumIncomingThreshold" binding:"omitempty,gte=1,lte=100"`
+	MediumOutgoingThreshold   int `json:"mediumOutgoingThreshold" form:"mediumOutgoingThreshold" binding:"omitempty,gte=1,lte=100"`
+
+	CriticalScoreThreshold int `json:"criticalScoreThreshold" form:"criticalScoreThreshold" binding:"omitempty,gte=1,lte=1000"`
+	HighScoreThreshold     int `json:"highScoreThreshold" form:"highScoreThreshold" binding:"omitempty,gte=1,lte=1000"`
+	MediumScoreThreshold   int `json:"mediumScoreThreshold" form:"mediumScoreThreshold" binding:"omitempty,gte=1,lte=1000"`
+
+	RecentCriticalBoost int `json:"recentCriticalBoost" form:"recentCriticalBoost" binding:"omitempty,gte=0,lte=1000"`
+	RecentHighBoost     int `json:"recentHighBoost" form:"recentHighBoost" binding:"omitempty,gte=0,lte=1000"`
+	RecentMediumBoost   int `json:"recentMediumBoost" form:"recentMediumBoost" binding:"omitempty,gte=0,lte=1000"`
+	WideDependencyBoost int `json:"wideDependencyBoost" form:"wideDependencyBoost" binding:"omitempty,gte=0,lte=1000"`
+}
+
 type CmdbAssetParam struct {
 	BaseForm
 
 	Id models.Id `uri:"id" json:"id" binding:"required,max=32" swaggerignore:"true"`
+}
+
+type CmdbAssetRelationsForm struct {
+	CmdbAssetParam
+
+	Limit              int    `form:"limit" json:"limit" binding:"omitempty,gte=1,lte=1000"`
+	Offset             int    `form:"offset" json:"offset" binding:"omitempty,gte=0,lte=100000"`
+	Cursor             string `form:"cursor" json:"cursor" binding:"omitempty,max=64"`
+	IncludeApplication *bool  `form:"includeApplication" json:"includeApplication"`
+	Sources            string `form:"sources" json:"sources" binding:"omitempty,max=255"`
+	RelationTypes      string `form:"relationTypes" json:"relationTypes" binding:"omitempty,max=255"`
+	Direction          string `form:"direction" json:"direction" binding:"omitempty,oneof=all incoming outgoing"`
+	Keyword            string `form:"keyword" json:"keyword" binding:"omitempty,max=255"`
 }
 
 type UpdateCmdbAssetOwnershipForm struct {
@@ -138,6 +181,8 @@ type CreateCmdbSyncTaskForm struct {
 	SyncPolicyId           models.Id `json:"syncPolicyId" form:"syncPolicyId" binding:"max=32"`
 	SyncPolicyScheduleKey  string    `json:"syncPolicyScheduleKey" form:"syncPolicyScheduleKey" binding:"max=64"`
 	SyncPolicyScheduleName string    `json:"syncPolicyScheduleName" form:"syncPolicyScheduleName" binding:"max=128"`
+	SlowApiThresholdMs     int64     `json:"slowApiThresholdMs" form:"slowApiThresholdMs" binding:"omitempty,gte=1,lte=600000"`
+	SlowApiSilenceMinutes  int64     `json:"slowApiSilenceMinutes" form:"slowApiSilenceMinutes" binding:"omitempty,gte=0,lte=10080"`
 	Reason                 string    `json:"reason" form:"reason" binding:"max=255"`
 	Provider               string    `json:"provider" form:"provider" binding:"omitempty,oneof=aws oci oracle alicloud azure gcp tencentcloud huawei"`
 	Regions                []string  `json:"regions" form:"regions"`

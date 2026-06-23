@@ -5,6 +5,10 @@ const TerserPlugin = require('terser-webpack-plugin');
 
 const htmlChunks = [ 'app', 'login' ];
 const getExcludeHtmlChunks = (value) => htmlChunks.filter((htmlChunk) => value !== htmlChunk);
+const nodeModulesRE = /[\\/]node_modules[\\/]/;
+const antdRE = /[\\/]node_modules[\\/](antd|@ant-design|rc-[^\\/]+)[\\/]/;
+const graphRE = /[\\/]node_modules[\\/](@antv|d3|d3-[^\\/]+|dagre|graphlib)[\\/]/;
+const editorRE = /[\\/]node_modules[\\/](codemirror|codemirror-rego|react-codemirror2)[\\/]/;
 
 module.exports = require('./webpack.base.babel')({
   mode: 'production',
@@ -42,10 +46,53 @@ module.exports = require('./webpack.base.babel')({
     runtimeChunk: 'single',
     splitChunks: {
       chunks: 'all',
-      maxInitialRequests: 10,
-      minSize: 0,
-      cacheGroups: {},
-      name: 'vendor'
+      maxInitialRequests: 20,
+      maxAsyncRequests: 20,
+      minSize: 30000,
+      cacheGroups: {
+        antdVendor: {
+          test: antdRE,
+          name: 'vendor-antd',
+          chunks: 'all',
+          priority: 30,
+          reuseExistingChunk: true
+        },
+        graphVendor: {
+          test: graphRE,
+          name: 'vendor-graph',
+          chunks: 'async',
+          priority: 25,
+          reuseExistingChunk: true
+        },
+        editorVendor: {
+          test: editorRE,
+          name: 'vendor-editor',
+          chunks: 'async',
+          priority: 25,
+          reuseExistingChunk: true
+        },
+        asyncVendor: {
+          test: nodeModulesRE,
+          name: 'vendor-async',
+          chunks: 'async',
+          priority: 10,
+          reuseExistingChunk: true
+        },
+        commonVendor: {
+          test: nodeModulesRE,
+          name: 'vendor-common',
+          chunks: 'initial',
+          priority: 5,
+          reuseExistingChunk: true
+        },
+        routeCommon: {
+          name: 'route-common',
+          minChunks: 2,
+          chunks: 'async',
+          priority: 0,
+          reuseExistingChunk: true
+        }
+      }
     }
   },
   plugins: [

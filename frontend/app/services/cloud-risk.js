@@ -15,6 +15,16 @@ const cloudRiskAPI = {
     return post(`/api/v1/cloud/risks/${id}/suppress`, restParams, {
       'IaC-Org-Id': orgId
     });
+  },
+  createRemediationTicket: ({ orgId, id, ...restParams }) => {
+    return post(`/api/v1/cloud/risks/${id}/remediation-ticket`, restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  adoptRecommendation: ({ orgId, id, ...restParams }) => {
+    return post(`/api/v1/cloud/risks/${id}/recommendations/adopt`, restParams, {
+      'IaC-Org-Id': orgId
+    });
   }
 };
 

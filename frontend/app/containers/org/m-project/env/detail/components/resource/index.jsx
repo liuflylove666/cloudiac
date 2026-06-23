@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo, memo } from 'react';
+import React, { useState, useContext, useMemo, memo, useEffect } from 'react';
 import { Collapse } from 'antd';
 import { useEventEmitter } from 'ahooks';
 import { Eb_WP } from 'components/error-boundary';
@@ -11,9 +11,15 @@ const { Panel } = Collapse;
 
 const Resource = () => {
 
-  const { type } = useContext(DetailPageContext);
+  const { type, sourceResourceId } = useContext(DetailPageContext);
   const event$ = useEventEmitter();
-  const [ mode, setMode ] = useState(type === 'env' ? 'graph' : 'table');
+  const [ mode, setMode ] = useState(sourceResourceId ? 'table' : type === 'env' ? 'graph' : 'table');
+
+  useEffect(() => {
+    if (sourceResourceId) {
+      setMode('table');
+    }
+  }, [sourceResourceId]);
 
   const content = useMemo(() => {
     const modeMap = {

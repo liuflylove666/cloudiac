@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { EyeOutlined, PlusSquareOutlined, MenuOutlined } from '@ant-design/icons';
 import { connect } from 'react-redux';
 import { useSessionStorageState } from 'ahooks';
@@ -10,6 +10,7 @@ import versionCfg from 'assets/version.json';
 import history from "utils/history";
 import ProjectModal from 'components/project-modal';
 import projectAPI from 'services/project';
+import { GLOBAL_SCROLL_DOM_ID } from 'constants/types';
 import getMenus from './menus';
 import styles from './styles.less';
 
@@ -24,6 +25,14 @@ const OrgWrapper = ({ routes, userInfo, curOrg, projects, curProject, match = {}
   const [ pjtSelectActive, setPjtSelectActive ] = useState(false);
   const [ pjtModalVsible, setPjtModalVsible ] = useState(false);
   const pjtSelectRef = useRef();
+
+  useEffect(() => {
+    const scrollDom = document.getElementById(GLOBAL_SCROLL_DOM_ID);
+    if (scrollDom) {
+      scrollDom.scrollTop = 0;
+      scrollDom.scrollLeft = 0;
+    }
+  }, [ orgId, mOrgKey, projectId, mProjectKey ]);
  
   // 跳转 scope作用域
   const linkTo = (scope, menuItemKey) => {

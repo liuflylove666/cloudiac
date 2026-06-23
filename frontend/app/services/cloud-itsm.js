@@ -36,8 +36,58 @@ const cloudItsmAPI = {
       'IaC-Org-Id': orgId
     });
   },
+  updateCatalogPolicy: ({ orgId, key, data }) => {
+    return put(`/api/v1/cloud/itsm/catalog-policies/${key}`, data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  catalogPolicyHistory: ({ orgId, key, ...restParams }) => {
+    return getWithArgs(`/api/v1/cloud/itsm/catalog-policies/${key}/history`, restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
   updateTicketStatus: ({ orgId, id, data }) => {
     return put(`/api/v1/cloud/itsm/tickets/${id}/status`, data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  syncDueTicketStatuses: ({ orgId, data }) => {
+    return post('/api/v1/cloud/itsm/tickets/sync-due', data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  retryFailedTicketSubmissions: ({ orgId, data }) => {
+    return post('/api/v1/cloud/itsm/tickets/retry-failed', data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  retryQueueSummary: ({ orgId }) => {
+    return getWithArgs('/api/v1/cloud/itsm/tickets/retry-queue/summary', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  retryQueueReport: ({ orgId }) => {
+    return getWithArgs('/api/v1/cloud/itsm/tickets/retry-queue/report', {}, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  retryQueue: ({ orgId, ...restParams }) => {
+    return getWithArgs('/api/v1/cloud/itsm/tickets/retry-queue', restParams, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  replayTicketSubmission: ({ orgId, id, data }) => {
+    return post(`/api/v1/cloud/itsm/tickets/${id}/replay-submit`, data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  batchDeadLetterAction: ({ orgId, data }) => {
+    return post('/api/v1/cloud/itsm/tickets/retry-queue/dead-letters/action', data, {
+      'IaC-Org-Id': orgId
+    });
+  },
+  createDeadLetterApproval: ({ orgId, data }) => {
+    return post('/api/v1/cloud/itsm/tickets/retry-queue/dead-letters/approval', data, {
       'IaC-Org-Id': orgId
     });
   }

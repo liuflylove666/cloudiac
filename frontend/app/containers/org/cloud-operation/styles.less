@@ -20,6 +20,54 @@
   gap: 8px;
 }
 
+.auditPanel {
+  min-width: 0;
+  padding: 12px;
+  background: #fbfcfe;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+
+  :global(.ant-table-wrapper),
+  :global(.ant-table),
+  :global(.ant-table-content) {
+    max-width: 100%;
+  }
+
+  :global(.ant-descriptions-item-content) {
+    min-width: 0;
+  }
+}
+
+.auditPanelTitle {
+  margin-bottom: 8px;
+  color: #172b4d;
+  font-weight: 600;
+}
+
+.auditSubsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 12px;
+}
+
+.auditLink {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.tagList {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+
+  :global(.ant-tag) {
+    margin-right: 0;
+  }
+}
+
 .jsonBlock {
   max-height: 220px;
   margin: 0;

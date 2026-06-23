@@ -273,10 +273,10 @@ func collectGcpInstances(ctx context.Context, account *cmdbCloudAccount, token, 
 				"selfLink":          instance.SelfLink,
 				"creationTimestamp": instance.CreationTimestamp,
 				"networkInterfaces": instance.NetworkInterfaces,
-				"networkIds":         gcpInstanceNetworkRefs(instance),
-				"subnetIds":          gcpInstanceSubnetworkRefs(instance),
-				"publicIpAddresses":  gcpInstancePublicIPs(instance),
-				"diskIds":            gcpInstanceDiskSources(instance),
+				"networkIds":        gcpInstanceNetworkRefs(instance),
+				"subnetIds":         gcpInstanceSubnetworkRefs(instance),
+				"publicIpAddresses": gcpInstancePublicIPs(instance),
+				"diskIds":           gcpInstanceDiskSources(instance),
 				"disks":             instance.Disks,
 				"networkTags":       instance.Tags,
 				"metadata":          instance.Metadata,
@@ -533,16 +533,41 @@ func collectGcpForwardingRules(ctx context.Context, account *cmdbCloudAccount, t
 }
 
 type gcpCluster struct {
-	Name                 string            `json:"name"`
-	SelfLink             string            `json:"selfLink"`
-	Location             string            `json:"location"`
-	Zone                 string            `json:"zone"`
-	Status               string            `json:"status"`
-	Endpoint             string            `json:"endpoint"`
-	CurrentMasterVersion string            `json:"currentMasterVersion"`
-	Network              string            `json:"network"`
-	Subnetwork           string            `json:"subnetwork"`
-	ResourceLabels       map[string]string `json:"resourceLabels"`
+	Name                  string            `json:"name"`
+	SelfLink              string            `json:"selfLink"`
+	Location              string            `json:"location"`
+	Zone                  string            `json:"zone"`
+	Status                string            `json:"status"`
+	Endpoint              string            `json:"endpoint"`
+	CurrentMasterVersion  string            `json:"currentMasterVersion"`
+	CurrentNodeVersion    string            `json:"currentNodeVersion"`
+	InitialClusterVersion string            `json:"initialClusterVersion"`
+	Network               string            `json:"network"`
+	Subnetwork            string            `json:"subnetwork"`
+	ClusterIpv4Cidr       string            `json:"clusterIpv4Cidr"`
+	ServicesIpv4Cidr      string            `json:"servicesIpv4Cidr"`
+	ResourceLabels        map[string]string `json:"resourceLabels"`
+	NodePools             []gcpNodePool     `json:"nodePools"`
+	NetworkConfig         models.ResAttrs   `json:"networkConfig"`
+	IpAllocationPolicy    models.ResAttrs   `json:"ipAllocationPolicy"`
+	PrivateClusterConfig  models.ResAttrs   `json:"privateClusterConfig"`
+	ReleaseChannel        models.ResAttrs   `json:"releaseChannel"`
+	Locations             []string          `json:"locations"`
+}
+
+type gcpNodePool struct {
+	Name              string          `json:"name"`
+	Status            string          `json:"status"`
+	Version           string          `json:"version"`
+	InitialNodeCount  int             `json:"initialNodeCount"`
+	Locations         []string        `json:"locations"`
+	InstanceGroupUrls []string        `json:"instanceGroupUrls"`
+	Config            models.ResAttrs `json:"config"`
+	Autoscaling       models.ResAttrs `json:"autoscaling"`
+	NetworkConfig     models.ResAttrs `json:"networkConfig"`
+	Management        models.ResAttrs `json:"management"`
+	MaxPodsConstraint models.ResAttrs `json:"maxPodsConstraint"`
+	UpgradeSettings   models.ResAttrs `json:"upgradeSettings"`
 }
 
 func collectGcpClusters(ctx context.Context, account *cmdbCloudAccount, token, projectId string, selectedRegions map[string]bool) ([]*models.CmdbAsset, error) {
@@ -564,17 +589,93 @@ func collectGcpClusters(ctx context.Context, account *cmdbCloudAccount, token, p
 		asset.Status = cluster.Status
 		asset.Address = cluster.Endpoint
 		asset.Tags = gcpLabelsToAttrs(cluster.ResourceLabels)
+		version := firstNonEmpty(cluster.CurrentMasterVersion, cluster.CurrentNodeVersion, cluster.InitialClusterVersion)
+		nodePools := gcpClusterNodePools(cluster)
+		subnetIds := dedupeStrings(nonEmptyStrings([]string{cluster.Subnetwork}))
 		asset.Attributes = models.ResAttrs{
-			"selfLink":             cluster.SelfLink,
-			"location":             cluster.Location,
-			"endpoint":             cluster.Endpoint,
-			"currentMasterVersion": cluster.CurrentMasterVersion,
-			"network":              cluster.Network,
-			"subnetwork":           cluster.Subnetwork,
+			"selfLink":              cluster.SelfLink,
+			"location":              cluster.Location,
+			"locations":             cluster.Locations,
+			"endpoint":              cluster.Endpoint,
+			"apiEndpoint":           cluster.Endpoint,
+			"currentMasterVersion":  cluster.CurrentMasterVersion,
+			"currentNodeVersion":    cluster.CurrentNodeVersion,
+			"initialClusterVersion": cluster.InitialClusterVersion,
+			"kubernetesVersion":     version,
+			"version":               version,
+			"network":               cluster.Network,
+			"networkId":             cluster.Network,
+			"vpcId":                 cluster.Network,
+			"subnetwork":            cluster.Subnetwork,
+			"subnetworkIds":         subnetIds,
+			"subnetIds":             subnetIds,
+			"nodePools":             nodePools,
+			"nodePoolCount":         len(nodePools),
+			"endpointConfig": models.ResAttrs{
+				"publicEndpoint":  cluster.Endpoint,
+				"privateEndpoint": attrString(cluster.PrivateClusterConfig, "privateEndpoint"),
+			},
+			"kubernetesNetwork": models.ResAttrs{
+				"networkConfig":        cluster.NetworkConfig,
+				"ipAllocationPolicy":   cluster.IpAllocationPolicy,
+				"privateClusterConfig": cluster.PrivateClusterConfig,
+				"releaseChannel":       cluster.ReleaseChannel,
+				"clusterIpv4Cidr":      cluster.ClusterIpv4Cidr,
+				"servicesIpv4Cidr":     cluster.ServicesIpv4Cidr,
+			},
 		}
 		assets = append(assets, asset)
 	}
 	return assets, nil
+}
+
+func gcpClusterNodePools(cluster gcpCluster) []models.ResAttrs {
+	pools := make([]models.ResAttrs, 0, len(cluster.NodePools))
+	for _, pool := range cluster.NodePools {
+		scaling := models.ResAttrs{}
+		if pool.InitialNodeCount > 0 {
+			scaling["desiredSize"] = pool.InitialNodeCount
+		}
+		if pool.Autoscaling != nil {
+			if attrString(pool.Autoscaling, "enabled") != "" {
+				scaling["autoScaling"] = attrString(pool.Autoscaling, "enabled")
+			}
+			if attrString(pool.Autoscaling, "minNodeCount") != "" {
+				scaling["minSize"] = attrInt(pool.Autoscaling, "minNodeCount")
+			}
+			if attrString(pool.Autoscaling, "maxNodeCount") != "" {
+				scaling["maxSize"] = attrInt(pool.Autoscaling, "maxNodeCount")
+			}
+			if attrString(pool.Autoscaling, "totalMinNodeCount") != "" {
+				scaling["totalMinSize"] = attrInt(pool.Autoscaling, "totalMinNodeCount")
+			}
+			if attrString(pool.Autoscaling, "totalMaxNodeCount") != "" {
+				scaling["totalMaxSize"] = attrInt(pool.Autoscaling, "totalMaxNodeCount")
+			}
+		}
+		poolSubnetIds := dedupeStrings(nonEmptyStrings([]string{cluster.Subnetwork}))
+		pools = append(pools, models.ResAttrs{
+			"id":                pool.Name,
+			"name":              pool.Name,
+			"status":            pool.Status,
+			"version":           pool.Version,
+			"kubernetesVersion": pool.Version,
+			"instanceTypes":     nonEmptyStrings([]string{attrString(pool.Config, "machineType")}),
+			"nodeCount":         pool.InitialNodeCount,
+			"subnetIds":         poolSubnetIds,
+			"locations":         pool.Locations,
+			"zones":             pool.Locations,
+			"instanceGroupUrls": pool.InstanceGroupUrls,
+			"scalingConfig":     scaling,
+			"nodeConfigDetails": pool.Config,
+			"autoscaling":       pool.Autoscaling,
+			"networkConfig":     pool.NetworkConfig,
+			"management":        pool.Management,
+			"maxPodsConstraint": pool.MaxPodsConstraint,
+			"upgradeSettings":   pool.UpgradeSettings,
+		})
+	}
+	return pools
 }
 
 type gcpSqlInstance struct {

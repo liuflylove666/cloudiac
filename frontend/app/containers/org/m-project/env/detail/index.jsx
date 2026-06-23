@@ -41,7 +41,7 @@ const subNavs = {
 const EnvDetail = (props) => {
 
   const { userInfo, location, match: { params: { orgId, projectId, envId } } } = props;
-  const { tabKey } = queryString.parse(location.search);
+  const { tabKey, resourceId } = queryString.parse(location.search);
   const { PROJECT_OPERATOR } = getPermission(userInfo);
   const [ panel, setPanel ] = useState(tabKey || 'resource');
   const [form] = Form.useForm();
@@ -191,6 +191,7 @@ const EnvDetail = (props) => {
         taskId,
         orgId, 
         projectId,
+        sourceResourceId: resourceId,
         type: 'env',
         changeTabPage: setPanel
       }}

@@ -86,18 +86,26 @@ type CloudCostSyncTaskDetailResp struct {
 type CloudCostSyncScheduleResp struct {
 	models.CloudCostSyncSchedule
 
-	CreatorName                 string `json:"creatorName"`
-	CloudAccountName            string `json:"cloudAccountName"`
-	SourceURLPreview            string `json:"sourceUrlPreview,omitempty"`
-	SourceIndexURLPreview       string `json:"sourceIndexUrlPreview,omitempty"`
-	SourceObjectEndpointPreview string `json:"sourceObjectEndpointPreview,omitempty"`
-	FailureCount                int    `json:"failureCount"`
-	MaxRetryAttempts            int    `json:"maxRetryAttempts"`
-	RetryBackoffSeconds         int    `json:"retryBackoffSeconds"`
-	NotifyOnFailure             bool   `json:"notifyOnFailure"`
-	AutoPauseOnFailure          bool   `json:"autoPauseOnFailure"`
-	NextRetryAt                 string `json:"nextRetryAt,omitempty"`
-	AutoPausedAt                string `json:"autoPausedAt,omitempty"`
+	CreatorName                  string          `json:"creatorName"`
+	CloudAccountName             string          `json:"cloudAccountName"`
+	SourceURLPreview             string          `json:"sourceUrlPreview,omitempty"`
+	SourceIndexURLPreview        string          `json:"sourceIndexUrlPreview,omitempty"`
+	SourceObjectEndpointPreview  string          `json:"sourceObjectEndpointPreview,omitempty"`
+	FailureCount                 int             `json:"failureCount"`
+	MaxRetryAttempts             int             `json:"maxRetryAttempts"`
+	RetryBackoffSeconds          int             `json:"retryBackoffSeconds"`
+	NotifyOnFailure              bool            `json:"notifyOnFailure"`
+	AutoPauseOnFailure           bool            `json:"autoPauseOnFailure"`
+	NotificationOwner            string          `json:"notificationOwner,omitempty"`
+	NotificationRoutes           []string        `json:"notificationRoutes,omitempty"`
+	NotificationAssignees        []string        `json:"notificationAssignees,omitempty"`
+	NotificationSilenceMinutes   int             `json:"notificationSilenceMinutes,omitempty"`
+	NotificationWindows          []string        `json:"notificationWindows,omitempty"`
+	NotificationFailureRoutes    models.ResAttrs `json:"notificationFailureRoutes,omitempty"`
+	NotificationEscalationAt     int             `json:"notificationEscalationAt,omitempty"`
+	NotificationEscalationRoutes []string        `json:"notificationEscalationRoutes,omitempty"`
+	NextRetryAt                  string          `json:"nextRetryAt,omitempty"`
+	AutoPausedAt                 string          `json:"autoPausedAt,omitempty"`
 }
 
 type CloudCostSyncScheduleRunResp struct {

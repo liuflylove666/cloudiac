@@ -1,0 +1,21 @@
+---
+# 所有服务器都跑的基础配置
+- name: 基础环境配置
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+# Web 服务器
+- name: 部署 Nginx
+  hosts: web
+  become: yes
+  roles:
+    - nginx
+
+# 安装 Docker
+- name: 安装 Docker
+  hosts: web
+  become: yes
+  roles:
+    - docker

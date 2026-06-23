@@ -1,0 +1,62 @@
+---
+# 安装 Docker CE 在 Rocky Linux 9 上
+- name: 安装必要的系统工具
+  dnf:
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+    state: present
+
+- name: 添加 Docker CE 仓库
+  yum_repository:
+    name: docker-ce
+    description: Docker CE Stable
+    baseurl: https://mirrors.aliyun.com/docker-ce/linux/centos/9/$basearch/stable
+    gpgcheck: yes
+    gpgkey: https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
+    enabled: yes
+
+- name: 安装 Docker CE 和相关组件
+  dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin   # 可选，包含 docker compose 插件
+    state: present
+  notify: restart docker
+
+- name: 创建 /etc/docker 目录
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: 配置 Docker 守护进程 (镜像加速器 + 日志限制)
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "registry-mirrors": ["https://mc0d5pjk.mirror.aliyuncs.com"],
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart docker
+
+- name: 启动并启用 Docker
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: 安装 docker Python SDK (用于 Ansible 管理容器)
+  pip:
+    name: docker
+    executable: pip3

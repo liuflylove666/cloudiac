@@ -21,6 +21,8 @@ const (
 	CloudOperationActionPermissionRequest   = "permission_request"
 	CloudOperationActionGitOpsIacChange     = "gitops_iac_change"
 	CloudOperationActionDriftRemediation    = "drift_remediation"
+	CloudOperationActionRiskRemediation     = "risk_remediation"
+	CloudOperationActionItsmDeadLetter      = "itsm_dead_letter"
 
 	CloudOperationStatusPending   = "pending"
 	CloudOperationStatusApproving = "approving"

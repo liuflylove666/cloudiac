@@ -40,19 +40,29 @@ const (
 	CmdbSyncLogLevelWarn  = "warn"
 	CmdbSyncLogLevelError = "error"
 
-	CmdbAssetTypeComputeInstance      = "compute_instance"
-	CmdbAssetTypeKubernetesCluster    = "kubernetes_cluster"
-	CmdbAssetTypeNetworkVpc           = "network_vpc"
-	CmdbAssetTypeNetworkSubnet        = "network_subnet"
-	CmdbAssetTypeNetworkRouteTable    = "network_route_table"
-	CmdbAssetTypeNetworkSecurityGroup = "network_security_group"
-	CmdbAssetTypePublicIP             = "public_ip"
-	CmdbAssetTypeLoadBalancer         = "load_balancer"
-	CmdbAssetTypeBlockVolume          = "block_volume"
-	CmdbAssetTypeObjectStorageBucket  = "object_storage_bucket"
-	CmdbAssetTypeRelationalDatabase   = "relational_database"
-	CmdbAssetTypeRedisCache           = "redis_cache"
-	CmdbAssetTypeUnknown              = "unknown"
+	CmdbAssetTypeComputeInstance        = "compute_instance"
+	CmdbAssetTypeKubernetesCluster      = "kubernetes_cluster"
+	CmdbAssetTypeKubernetesNamespace    = "kubernetes_namespace"
+	CmdbAssetTypeKubernetesNode         = "kubernetes_node"
+	CmdbAssetTypeKubernetesWorkload     = "kubernetes_workload"
+	CmdbAssetTypeKubernetesPod          = "kubernetes_pod"
+	CmdbAssetTypeKubernetesService      = "kubernetes_service"
+	CmdbAssetTypeKubernetesIngress      = "kubernetes_ingress"
+	CmdbAssetTypeNetworkVpc             = "network_vpc"
+	CmdbAssetTypeNetworkSubnet          = "network_subnet"
+	CmdbAssetTypeNetworkRouteTable      = "network_route_table"
+	CmdbAssetTypeNetworkNatGateway      = "network_nat_gateway"
+	CmdbAssetTypeNetworkInternetGateway = "network_internet_gateway"
+	CmdbAssetTypeNetworkServiceGateway  = "network_service_gateway"
+	CmdbAssetTypeNetworkDrg             = "network_drg"
+	CmdbAssetTypeNetworkSecurityGroup   = "network_security_group"
+	CmdbAssetTypePublicIP               = "public_ip"
+	CmdbAssetTypeLoadBalancer           = "load_balancer"
+	CmdbAssetTypeBlockVolume            = "block_volume"
+	CmdbAssetTypeObjectStorageBucket    = "object_storage_bucket"
+	CmdbAssetTypeRelationalDatabase     = "relational_database"
+	CmdbAssetTypeRedisCache             = "redis_cache"
+	CmdbAssetTypeUnknown                = "unknown"
 )
 
 type CmdbAsset struct {
@@ -118,9 +128,9 @@ func (a CmdbAsset) Migrate(sess *db.Session) error {
 type CmdbAssetRelation struct {
 	TimedModel
 
-	OrgId         Id       `json:"orgId" gorm:"index;size:32;not null"`
-	SourceAssetId Id       `json:"sourceAssetId" gorm:"index;size:32;not null"`
-	TargetAssetId Id       `json:"targetAssetId" gorm:"index;size:32;not null"`
+	OrgId         Id       `json:"orgId" gorm:"index;index:idx_cmdb_asset_relation_org_source,priority:1;index:idx_cmdb_asset_relation_org_target,priority:1;size:32;not null"`
+	SourceAssetId Id       `json:"sourceAssetId" gorm:"index;index:idx_cmdb_asset_relation_org_source,priority:2;size:32;not null"`
+	TargetAssetId Id       `json:"targetAssetId" gorm:"index;index:idx_cmdb_asset_relation_org_target,priority:2;size:32;not null"`
 	RelationType  string   `json:"relationType" gorm:"index;size:64;not null;default:'depends_on'"`
 	Source        string   `json:"source" gorm:"index;size:64;not null;default:'iac_dependency'"`
 	Metadata      ResAttrs `json:"metadata,omitempty" gorm:"type:json"`
@@ -203,4 +213,43 @@ type CmdbSyncTaskLog struct {
 
 func (CmdbSyncTaskLog) TableName() string {
 	return "iac_cmdb_sync_task_log"
+}
+
+type CmdbRiskRuleConfig struct {
+	TimedModel
+
+	OrgId Id `json:"orgId" gorm:"index;size:32;not null"`
+
+	ChangeWindowDays int `json:"changeWindowDays" gorm:"not null;default:7"`
+
+	RecentChangeWeight           int `json:"recentChangeWeight" gorm:"not null;default:3"`
+	ChangedAssetWeight           int `json:"changedAssetWeight" gorm:"not null;default:2"`
+	IncomingAppWeight            int `json:"incomingAppWeight" gorm:"not null;default:2"`
+	OutgoingAppWeight            int `json:"outgoingAppWeight" gorm:"not null;default:1"`
+	HighComplianceRiskWeight     int `json:"highComplianceRiskWeight" gorm:"not null;default:8"`
+	CriticalComplianceRiskWeight int `json:"criticalComplianceRiskWeight" gorm:"not null;default:12"`
+	MaintenanceLifecycleWeight   int `json:"maintenanceLifecycleWeight" gorm:"not null;default:2"`
+	RetiredLifecycleWeight       int `json:"retiredLifecycleWeight" gorm:"not null;default:4"`
+	CrossBusinessLineWeight      int `json:"crossBusinessLineWeight" gorm:"not null;default:2"`
+
+	CriticalIncomingThreshold int `json:"criticalIncomingThreshold" gorm:"not null;default:3"`
+	MediumIncomingThreshold   int `json:"mediumIncomingThreshold" gorm:"not null;default:3"`
+	MediumOutgoingThreshold   int `json:"mediumOutgoingThreshold" gorm:"not null;default:5"`
+
+	CriticalScoreThreshold int `json:"criticalScoreThreshold" gorm:"not null;default:20"`
+	HighScoreThreshold     int `json:"highScoreThreshold" gorm:"not null;default:12"`
+	MediumScoreThreshold   int `json:"mediumScoreThreshold" gorm:"not null;default:6"`
+
+	RecentCriticalBoost int `json:"recentCriticalBoost" gorm:"not null;default:20"`
+	RecentHighBoost     int `json:"recentHighBoost" gorm:"not null;default:12"`
+	RecentMediumBoost   int `json:"recentMediumBoost" gorm:"not null;default:6"`
+	WideDependencyBoost int `json:"wideDependencyBoost" gorm:"not null;default:4"`
+}
+
+func (CmdbRiskRuleConfig) TableName() string {
+	return "iac_cmdb_risk_rule_config"
+}
+
+func (r CmdbRiskRuleConfig) Migrate(sess *db.Session) error {
+	return r.AddUniqueIndex(sess, "unique_cmdb_risk_rule_config_org", "org_id")
 }

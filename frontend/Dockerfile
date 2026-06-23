@@ -4,10 +4,12 @@ RUN npm i -g npm@11 \
     && npm config set registry https://registry.npmjs.org/ \
     && npm config set replace-registry-host always
 
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
 COPY . .
 # 构建前端执行代码包
-RUN npm ci --legacy-peer-deps \
-    && npm run build:vendor \
+RUN npm run build:vendor \
     && npm run build
 
 # 打包镜像

@@ -16,8 +16,6 @@ import (
 	"cloudiac/portal/models/resps"
 )
 
-const cmdbApplicationChangeWindowDays = 7
-
 type cmdbApplicationAggregate struct {
 	resp            resps.CmdbApplicationResp
 	ownerSet        map[string]bool
@@ -83,6 +81,9 @@ func UpdateCmdbApplicationRelations(c *ctx.ServiceContext, form *forms.UpdateCmd
 	if !knownApplications[sourceApplication] {
 		return nil, e.New(e.ObjectNotExistsOrNoPerm, fmt.Errorf("cmdb application %s not found", sourceApplication))
 	}
+	if err := ensureCmdbApplicationRelationPermission(c, sourceApplication); err != nil {
+		return nil, err
+	}
 
 	upstreams, normalizeErr := normalizeCmdbApplicationRelationNames(sourceApplication, form.Upstreams, knownApplications)
 	if normalizeErr != nil {
@@ -91,6 +92,11 @@ func UpdateCmdbApplicationRelations(c *ctx.ServiceContext, form *forms.UpdateCmd
 	downstreams, normalizeErr := normalizeCmdbApplicationRelationNames(sourceApplication, form.Downstreams, knownApplications)
 	if normalizeErr != nil {
 		return nil, normalizeErr
+	}
+
+	beforeRelations, dbErr := cmdbApplicationManualRelationSnapshot(c, sourceApplication)
+	if dbErr != nil {
+		return nil, e.New(e.DBError, dbErr)
 	}
 
 	tx := c.DB().Begin()
@@ -120,11 +126,82 @@ func UpdateCmdbApplicationRelations(c *ctx.ServiceContext, form *forms.UpdateCmd
 		return nil, e.New(e.DBError, err)
 	}
 
+	if cmdbApplicationRelationSnapshotChanged(beforeRelations, upstreams, downstreams) {
+		cmdbApplicationRelationsEvent(c, sourceApplication, beforeRelations.Upstreams, upstreams, beforeRelations.Downstreams, downstreams)
+	}
+
 	return CmdbApplicationDetail(c, &forms.CmdbApplicationDetailForm{Application: sourceApplication})
+}
+
+type cmdbApplicationManualRelationSnapshotResp struct {
+	Upstreams   []string
+	Downstreams []string
+}
+
+func cmdbApplicationManualRelationSnapshot(c *ctx.ServiceContext, application string) (cmdbApplicationManualRelationSnapshotResp, error) {
+	relations := make([]models.CmdbApplicationRelation, 0)
+	if err := c.DB().
+		Where("org_id = ? and source = ? and (source_application = ? or target_application = ?)",
+			c.OrgId, models.CmdbRelationSourceManualApp, application, application).
+		Find(&relations); err != nil {
+		return cmdbApplicationManualRelationSnapshotResp{}, err
+	}
+
+	upstreamSet := make(map[string]bool)
+	downstreamSet := make(map[string]bool)
+	for _, relation := range relations {
+		if strings.TrimSpace(relation.TargetApplication) == application {
+			appendCmdbApplicationRelationName(upstreamSet, relation.SourceApplication)
+		}
+		if strings.TrimSpace(relation.SourceApplication) == application {
+			appendCmdbApplicationRelationName(downstreamSet, relation.TargetApplication)
+		}
+	}
+	return cmdbApplicationManualRelationSnapshotResp{
+		Upstreams:   sortedCmdbApplicationRelationNames(upstreamSet),
+		Downstreams: sortedCmdbApplicationRelationNames(downstreamSet),
+	}, nil
+}
+
+func appendCmdbApplicationRelationName(set map[string]bool, name string) {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		set[name] = true
+	}
+}
+
+func sortedCmdbApplicationRelationNames(set map[string]bool) []string {
+	items := make([]string, 0, len(set))
+	for item := range set {
+		items = append(items, item)
+	}
+	sort.Strings(items)
+	return items
+}
+
+func cmdbApplicationRelationSnapshotChanged(before cmdbApplicationManualRelationSnapshotResp, upstreams []string, downstreams []string) bool {
+	return !sameCmdbApplicationRelationNames(before.Upstreams, upstreams) ||
+		!sameCmdbApplicationRelationNames(before.Downstreams, downstreams)
+}
+
+func sameCmdbApplicationRelationNames(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func buildCmdbApplications(c *ctx.ServiceContext) ([]resps.CmdbApplicationResp, e.Error) {
 	if _, err := BackfillCmdbAssetsFromIac(c); err != nil {
+		return nil, err
+	}
+	riskConfig, err := loadCmdbRiskRuleConfig(c)
+	if err != nil {
 		return nil, err
 	}
 
@@ -165,7 +242,7 @@ func buildCmdbApplications(c *ctx.ServiceContext) ([]resps.CmdbApplicationResp, 
 	if err := fillCmdbApplicationManualRelations(c, aggregates); err != nil {
 		return nil, err
 	}
-	if err := fillCmdbApplicationRecentChanges(c, aggregates, assetById, assetIds); err != nil {
+	if err := fillCmdbApplicationRecentChanges(c, aggregates, assetById, assetIds, riskConfig.ChangeWindowDays); err != nil {
 		return nil, err
 	}
 
@@ -182,7 +259,7 @@ func buildCmdbApplications(c *ctx.ServiceContext) ([]resps.CmdbApplicationResp, 
 		agg.resp.ImpactedAppCount = len(agg.resp.ImpactedApps)
 		sortCmdbApplicationAssets(agg.resp.Assets)
 		sortCmdbApplicationChanges(agg.resp.RecentChanges)
-		agg.resp.RiskLevel, agg.resp.RiskReason, agg.resp.RiskScore = cmdbApplicationRisk(agg.resp)
+		agg.resp.RiskLevel, agg.resp.RiskReason, agg.resp.RiskScore = cmdbApplicationRisk(agg.resp, riskConfig)
 		resp = append(resp, agg.resp)
 	}
 	return resp, nil
@@ -337,9 +414,13 @@ func fillCmdbApplicationRecentChanges(
 	aggregates map[string]*cmdbApplicationAggregate,
 	assetById map[models.Id]resps.CmdbAssetResp,
 	assetIds []models.Id,
+	changeWindowDays int,
 ) e.Error {
 	changes := make([]models.CmdbAssetChange, 0)
-	cutoff := time.Now().AddDate(0, 0, -cmdbApplicationChangeWindowDays)
+	if changeWindowDays <= 0 {
+		changeWindowDays = 7
+	}
+	cutoff := time.Now().AddDate(0, 0, -changeWindowDays)
 	if err := c.DB().Where("org_id = ? and asset_id in (?) and created_at >= ?", c.OrgId, assetIds, cutoff).
 		Order("created_at desc").
 		Find(&changes); err != nil {
@@ -421,6 +502,7 @@ func cmdbApplicationAssetResp(asset resps.CmdbAssetResp) resps.CmdbApplicationAs
 		Status:         asset.Status,
 		Owner:          asset.Owner,
 		BusinessLine:   asset.BusinessLine,
+		Lifecycle:      asset.Lifecycle,
 		ComplianceRisk: asset.ComplianceRisk,
 		UpdatedAt:      asset.UpdatedAt,
 	}
@@ -517,20 +599,73 @@ func sortCmdbApplicationChanges(changes []resps.CmdbApplicationChangeResp) {
 	})
 }
 
-func cmdbApplicationRisk(app resps.CmdbApplicationResp) (string, string, int) {
-	score := app.RecentChangeCount*3 + app.ChangedAssetCount*2 + app.IncomingAppCount*2 + app.OutgoingAppCount
+func cmdbApplicationRisk(app resps.CmdbApplicationResp, config *models.CmdbRiskRuleConfig) (string, string, int) {
+	if config == nil {
+		defaultConfig := cmdbDefaultRiskRuleConfig("")
+		config = &defaultConfig
+	}
+	highCompliance, criticalCompliance := cmdbApplicationComplianceRiskCounts(app)
+	maintenanceLifecycle, retiredLifecycle := cmdbApplicationLifecycleCounts(app)
+	crossBusinessLineCount := len(app.BusinessLine) - 1
+	if crossBusinessLineCount < 0 {
+		crossBusinessLineCount = 0
+	}
+	score := app.RecentChangeCount*config.RecentChangeWeight +
+		app.ChangedAssetCount*config.ChangedAssetWeight +
+		app.IncomingAppCount*config.IncomingAppWeight +
+		app.OutgoingAppCount*config.OutgoingAppWeight +
+		highCompliance*config.HighComplianceRiskWeight +
+		criticalCompliance*config.CriticalComplianceRiskWeight +
+		maintenanceLifecycle*config.MaintenanceLifecycleWeight +
+		retiredLifecycle*config.RetiredLifecycleWeight +
+		crossBusinessLineCount*config.CrossBusinessLineWeight
+	windowText := fmt.Sprintf("近 %d 天", config.ChangeWindowDays)
 	switch {
-	case app.RecentChangeCount > 0 && app.IncomingAppCount >= 3:
-		return "critical", "近 7 天有变更且存在多个调用方", score + 20
+	case app.RecentChangeCount > 0 && app.IncomingAppCount >= config.CriticalIncomingThreshold:
+		return "critical", fmt.Sprintf("%s有变更且存在多个调用方", windowText), score + config.RecentCriticalBoost
 	case app.RecentChangeCount > 0 && app.IncomingAppCount > 0:
-		return "high", "近 7 天有变更，可能影响调用方", score + 12
+		return "high", fmt.Sprintf("%s有变更，可能影响调用方", windowText), score + config.RecentHighBoost
 	case app.RecentChangeCount > 0:
-		return "medium", "近 7 天存在资产变更", score + 6
-	case app.IncomingAppCount >= 3 || app.OutgoingAppCount >= 5:
-		return "medium", "应用依赖面较广", score + 4
+		return "medium", fmt.Sprintf("%s存在资产变更", windowText), score + config.RecentMediumBoost
+	case app.IncomingAppCount >= config.MediumIncomingThreshold || app.OutgoingAppCount >= config.MediumOutgoingThreshold:
+		return "medium", "应用依赖面较广", score + config.WideDependencyBoost
+	case score >= config.CriticalScoreThreshold:
+		return "critical", "风险评分达到严重阈值", score
+	case score >= config.HighScoreThreshold:
+		return "high", "风险评分达到高阈值", score
+	case score >= config.MediumScoreThreshold:
+		return "medium", "风险评分达到中阈值", score
 	default:
 		return "low", "暂无明显变更风险", score
 	}
+}
+
+func cmdbApplicationComplianceRiskCounts(app resps.CmdbApplicationResp) (int, int) {
+	high := 0
+	critical := 0
+	for _, asset := range app.Assets {
+		switch strings.TrimSpace(asset.ComplianceRisk) {
+		case models.CloudOperationRiskHigh:
+			high++
+		case models.CloudOperationRiskCritical:
+			critical++
+		}
+	}
+	return high, critical
+}
+
+func cmdbApplicationLifecycleCounts(app resps.CmdbApplicationResp) (int, int) {
+	maintenance := 0
+	retired := 0
+	for _, asset := range app.Assets {
+		switch strings.TrimSpace(asset.Lifecycle) {
+		case "maintenance":
+			maintenance++
+		case "retired":
+			retired++
+		}
+	}
+	return maintenance, retired
 }
 
 func filterCmdbApplications(apps []resps.CmdbApplicationResp, form *forms.SearchCmdbApplicationForm) []resps.CmdbApplicationResp {

@@ -89,6 +89,8 @@ func main() {
 	go apps.StartCloudBudgetEvaluationWorker(configs.Get().Consul.ServiceID)
 	go apps.StartCloudCostSyncScheduleWorker(configs.Get().Consul.ServiceID)
 	go apps.StartCloudSyncPolicyWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudItsmStatusSyncWorker(configs.Get().Consul.ServiceID)
+	go apps.StartCloudItsmSubmitRetryWorker(configs.Get().Consul.ServiceID)
 	go apps.StartNotificationDeliveryCleanupWorker(configs.Get().Consul.ServiceID)
 
 	// // 获取演示组织ID

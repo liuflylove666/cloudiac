@@ -131,10 +131,16 @@ type CloudAccountHealthShardResp struct {
 }
 
 type CloudAccountRegionResp struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	Default bool   `json:"default"`
-	Source  string `json:"source"`
+	Name          string          `json:"name"`
+	Enabled       bool            `json:"enabled"`
+	Default       bool            `json:"default"`
+	SyncEnabled   bool            `json:"syncEnabled"`
+	Source        string          `json:"source"`
+	Status        string          `json:"status"`
+	Message       string          `json:"message"`
+	ResourceTypes []string        `json:"resourceTypes"`
+	LastSyncAt    models.Time     `json:"lastSyncAt"`
+	Metadata      models.ResAttrs `json:"metadata,omitempty"`
 }
 
 type CloudAccountRegionsResp struct {
@@ -147,12 +153,15 @@ type CloudAccountRegionsResp struct {
 }
 
 type CloudAccountPermissionResp struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
-	Resource string `json:"resource"`
-	Action   string `json:"action"`
-	Status   string `json:"status"`
-	Message  string `json:"message"`
+	Key       string          `json:"key"`
+	Name      string          `json:"name"`
+	Resource  string          `json:"resource"`
+	Action    string          `json:"action"`
+	Status    string          `json:"status"`
+	Message   string          `json:"message"`
+	Source    string          `json:"source"`
+	CheckedAt models.Time     `json:"checkedAt"`
+	Evidence  models.ResAttrs `json:"evidence,omitempty"`
 }
 
 type CloudAccountPermissionsResp struct {
@@ -164,5 +173,6 @@ type CloudAccountPermissionsResp struct {
 	MissingCredentialKeys []string                     `json:"missingCredentialKeys"`
 	SupportedAssetTypes   []string                     `json:"supportedAssetTypes"`
 	Regions               []string                     `json:"regions"`
+	LastCheckedAt         models.Time                  `json:"lastCheckedAt"`
 	Permissions           []CloudAccountPermissionResp `json:"permissions"`
 }

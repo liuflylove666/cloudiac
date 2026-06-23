@@ -16,7 +16,7 @@
 
 .goalGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -59,6 +59,94 @@
   margin-bottom: 12px;
 }
 
+.catalogSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dimensionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dimensionPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.callbackAlert {
+  margin-bottom: 16px;
+
+  :global(.ant-typography code) {
+    white-space: normal;
+    word-break: break-all;
+  }
+}
+
+.catalogPolicyHistory {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #edf2f7;
+}
+
+.catalogPolicyHistoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.retryReportGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.retryReportPanel {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+
+  :global(.ant-table-small .ant-table-thead > tr > th),
+  :global(.ant-table-small .ant-table-tbody > tr > td) {
+    padding: 8px 7px;
+  }
+
+  :global(.ant-tag) {
+    margin-right: 0;
+  }
+}
+
+.retryReportTitle {
+  margin-bottom: 8px;
+  color: #172b4d;
+  font-weight: 600;
+}
+
+.retryReportTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .retryReportTitle {
+    margin-bottom: 0;
+  }
+}
+
 .jsonBlock {
   max-height: 220px;
   margin: 0;
@@ -71,9 +159,61 @@
   white-space: pre-wrap;
 }
 
+.deadLetterEvidenceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deadLetterEvidenceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deadLetterEvidenceItem {
+  min-width: 0;
+  padding: 12px;
+  background: #fbfcfe;
+  border: 1px solid #e6edf5;
+  border-radius: 4px;
+
+  :global(.ant-form-item) {
+    margin-bottom: 8px;
+  }
+
+  :global(.ant-form-item:last-child) {
+    margin-bottom: 0;
+  }
+}
+
+.deadLetterEvidenceItemHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 32px;
+  gap: 8px;
+  align-items: start;
+}
+
+.deadLetterEvidenceLabel,
+.deadLetterEvidenceType {
+  min-width: 0;
+}
+
 @media (max-width: 1180px) {
   .goalGrid,
-  .guardGrid {
+  .guardGrid,
+  .dimensionGrid,
+  .retryReportGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .deadLetterEvidenceHeader,
+  .deadLetterEvidenceItemHeader {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
   }
 }

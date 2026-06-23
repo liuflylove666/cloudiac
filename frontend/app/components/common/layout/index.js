@@ -4,6 +4,7 @@ import { GLOBAL_SCROLL_DOM_ID } from 'constants/types';
 
 const LayoutWrapper = styled.div`
   height: 100%;
+  min-width: 0;
   overflow: auto;
   padding: 24px 0;
   background-color: #ffffff;
@@ -12,6 +13,7 @@ const LayoutWrapper = styled.div`
 const Container = styled.div`
    display: flex;
    flex-direction: column;
+   min-width: 0;
  `;
  
 const Header = styled.div`
@@ -21,6 +23,7 @@ const Header = styled.div`
 const Content = styled.div`
    flex: 1;
    position: relative;
+   min-width: 0;
    overflow-y: auto;
    background-color: #ffffff;
    .ant-form-item-control-input-content {
@@ -71,4 +74,3 @@ const CommonLayout = ({
 };
  
 export default CommonLayout;
- 

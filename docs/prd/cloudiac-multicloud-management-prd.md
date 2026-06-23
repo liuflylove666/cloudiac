@@ -55,7 +55,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 任务执行 | 已有 | 支持 Terraform plan/apply/destroy、Ansible play、日志、步骤、状态回传 |
 | 审批和评论 | 已有 | 环境任务具备审批、评论、重试、自动审批等能力 |
 | 自动部署和定时漂移检测 | 已有 | 环境模型包含 cron deploy、cron drift、自动修复等字段 |
-| 回调和事件 | 部分完成 | 任务回调、VCS webhook 已存在；已新增平台级云事件模型、事件列表 API、事件中心页面和 Webhook 第一阶段，云账号验证/健康检查、风险状态、云操作、CMDB 变更和成本预算可写入/推送事件 |
+| 回调和事件 | 部分完成 | 任务回调、VCS webhook 已存在；已新增平台级云事件模型、事件列表 API、事件中心页面和 Webhook 第一阶段，云账号验证/健康检查、云采集慢 API 告警、风险状态、云操作、CMDB 变更和成本预算可写入/推送事件 |
 
 ### 3.3 合规治理
 
@@ -65,7 +65,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 模板扫描、环境扫描 | 已有 | 支持扫描任务、扫描结果、策略状态 |
 | 在线测试与解析 | 已有 | 支持策略 parse/test |
 | 策略抑制 | 已有 | 支持 suppress 来源查询、更新和删除 |
-| 多云资产合规映射 | 部分完成 | 已新增云风险发现模型、风险列表 API 和风险合规页面，首批支持公网安全规则、未纳管、无负责人、高合规风险和漂移风险派生 |
+| 多云资产合规映射 | 部分完成 | 已新增云风险发现模型、风险列表 API 和风险合规页面，支持公网安全规则、未纳管、无负责人、高合规风险、漂移风险和 AWS S3 Bucket 配置风险派生 |
 
 ### 3.4 资源、漂移和平台概览
 
@@ -86,7 +86,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | AliCloud 账单采集 | 部分已有 | `billcollect` 当前主要支持 AliCloud |
 | 环境/项目成本统计 | 部分已有 | 项目资源增长和费用趋势已有接口基础 |
 | 多云账单统一 | 部分完成 | 已新增统一成本明细、成本汇总、趋势、明细、未匹配账单视图，支持 AWS CUR/AWS Cost Explorer、OCI Usage/Cost、Azure/GCP/TencentCloud/Huawei Billing Export 导入型数据源，Azure Cost Management / GCP Billing Export / 多云 JSON/CSV/TSV URL 拉取、gzip/zip 压缩账单、导出文件索引 URL、增量游标，以及 S3/GCS/Azure Blob/OCI Object Storage 对象存储原生列表 API、签名授权、分页、文件元数据审计、重复文件跳过和前端文件审计展示第一阶段；成本同步任务、日志、失败重试、同步计划、后台 worker、失败退避、自动暂停、拉取事件审计和前端配置入口已完成第一阶段；汇率、摊销、真实云环境联调和复杂财务规则仍待建设 |
-| 预算管理 | 部分完成 | 已新增月度预算配置、预算评估、到期评估入口、超阈值事件和成本中心预算视图；后台定时队列、预算审批和复杂财务编码仍待建设 |
+| 预算管理 | 部分完成 | 已新增月度预算配置、预算评估、到期评估入口、后台定时评估 worker、超阈值事件和成本中心预算视图；预算审批、专用告警渠道和复杂财务编码仍待建设 |
 
 ### 3.6 CMDB 和云资产
 
@@ -98,14 +98,15 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | IaC dependency 资产关系 | 已有 | 依赖关系会写入资产关系表 |
 | 应用依赖 | 已有 | 支持应用列表、详情、上下游关系、人工维护关系和风险信息 |
 | 应用推演资产关联 | 已有 | 资产详情关系中已增加基于应用依赖的推演关联 |
-| 导入导出 | 已有 | 支持 JSON 导入、CSV/JSON 导出和归属字段覆盖 |
+| 导入导出 | 已有 | 支持 JSON 导入、导入模板、预检差异预览、CSV/JSON 导出、归属字段覆盖和权限门禁 |
 | 云账号识别 | 部分已有 | 从变量组、资源账号识别可采集账号，但尚未统一账号中心 |
-| AWS 云采集 | 部分已有 | 已支持 EC2、VPC、Subnet、SecurityGroup、EBS、EKS、RDS、ElastiCache 等 |
-| OCI 云采集 | 已有 | 已支持 Compute、VCN/Subnet、安全列表/NSG、公网 IP、块存储、LB、Bucket、OKE、DB、Redis 等 |
+| AWS 云采集 | 部分完成 | 已支持 EC2、VPC、Subnet、Route Table、NAT Gateway、Internet Gateway、SecurityGroup、EIP、EBS、ELB/ALB/NLB、LB Listener/Rule/Auth Action/Target Group/Target Health、S3 Bucket 深层配置和 S3 风险规则映射、EKS、RDS、ElastiCache 等；真实 AWS 账号端到端联调、跨账号/跨 VPC target 和更完整成本/合规映射仍待继续 |
+| OCI 云采集 | 已完成第一阶段 | 已支持 Compute、VCN/Subnet、Route Table、NAT Gateway、Internet Gateway、Service Gateway、DRG、安全列表/NSG、公网 IP、块存储、LB、Bucket、OKE、DB、Redis 等；已补充 compartment/identity 归属映射、provider 原生错误码解析、限流/临时错误短重试和失败 scope 自动局部重试第一阶段；真实账号端到端联调、更细 identity 权限漂移、分页和 API 子调用级局部补偿仍待继续 |
 | AliCloud 云采集 | 部分完成 | 已支持 ECS、VPC、VSwitch、SecurityGroup、EIP、SLB、RDS、Redis、OSS、ACK 第一阶段采集 |
 | Azure/GCP 云采集 | 部分完成 | Azure 已接入 ARM 资源列表归一化与 VM 网卡/子网/公网 IP/磁盘引用增强；GCP 已接入 Compute/GKE/SQL/Storage 基础采集和网络/磁盘引用增强 |
 | 腾讯云/华为云 | 部分完成 | 已支持真实 API collector、COS/OBS 对象存储桶采集和离线 inventory JSON 回退；成本账单导出 URL 导入第一阶段已完成，真实云账单环境联调和复杂财务规则仍待继续 |
-| Kubernetes 集群信息 | 部分完成 | AWS EKS 与 OCI OKE 已作为 `kubernetes_cluster` 资产采集；已补充 EKS NodeGroup、OKE NodePool 和资产详情 K8S 信息页签，多集群工作负载/Namespace/Pod 级管理仍待后续阶段 |
+| Kubernetes 集群信息 | 已完成第一阶段 | AWS EKS、OCI OKE、Azure AKS 与 GCP GKE 已作为 `kubernetes_cluster` 资产采集；已补充 EKS NodeGroup、OKE NodePool、AKS NodePool、GKE NodePool、资产详情 K8S 信息页签，以及基于资产属性/导入数据的 Namespace、Node、Pod、Workload、Service、Ingress 工作负载层展示和关系推演；K8S 详情已兼容旧数据、导入数据、`rawData.response/properties`、大小写变体和 OKE `endpoints`；kubeconfig/Agent 实时采集仍待后续阶段 |
+| 资产治理报表 | 已完成第一阶段 | 云资产页已提供成本、合规风险、生命周期和归属缺口治理报表，支持总成本、平均风险分、负责人/应用缺口、高/严重风险、生命周期/合规分布、高成本资产和高风险资产入口 |
 | 云资源生命周期操作 | 部分完成 | 已建立开停重启动作目录、dry-run、审批、异步任务、最终态轮询、取消/重试和审计；AWS/OCI/AliCloud 已覆盖多类生命周期动作，Azure/GCP 已接入计算实例 live read 与启停重启 adapter，真实写操作默认关闭 |
 | 安全组/规则视图 | 部分完成 | 已支持从云资产属性解析安全组/安全列表规则并标识公网暴露；AWS 安全组规则采集字段已展开，安全组写操作待继续 |
 
@@ -120,7 +121,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 成本 | AliCloud 有账单基础，多云 FinOps 能力不足 | 建设多云账单、预算、分摊、异常和优化建议 |
 | 合规 | 已有 IaC 扫描，缺少基于真实云资产的跨云风险治理 | 将策略结果、CMDB 资产和云配置检查打通 |
 | 拓扑 | 已有资产关系和应用关系，缺少跨账号、跨区域、网络安全拓扑 | 建设网络/安全/应用拓扑视图 |
-| 权限 | 现有权限不足以约束云账号、资源类型、资源动作和敏感字段 | 增加云资源动作级 RBAC 和审计 |
+| 权限 | CMDB/云资产编辑、导出、导入、同步权限细分和响应层敏感字段脱敏已完成第一阶段；云账号、资源类型和标签级授权仍需增强 | 增加云资源动作级 RBAC、标签级授权和审计 |
 | 任务 | IaC task 完整，但云原生操作任务模型缺失 | 新增 cloud operation task 及步骤结果模型 |
 | 体验 | 多云能力分散在环境、资源、CMDB、合规、账单中 | 新增多云管理一级信息架构 |
 
@@ -150,8 +151,8 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 云账号列表 | P0 | 展示 provider、账号 ID、账号名、区域数、状态、最近验证时间、最近同步时间 |
 | 云账号创建/编辑 | P0 | 支持 AWS、OCI、AliCloud，后续扩展 Azure/GCP/腾讯云/华为云 |
 | 凭证安全存储 | P0 | 凭证只保存引用或加密密文，页面不回显敏感值；响应层已按字段名强制脱敏私钥、Token、Password、Secret、AccessKey 等敏感凭证 |
-| 账号权限验证 | P0 | 校验凭证有效性、可访问区域、基础只读权限和操作权限 |
-| 区域管理 | P0 | 支持启用/禁用区域、默认同步区域、按区域配置资源类型 |
+| 账号权限验证 | P0 | 校验凭证有效性、可访问区域、基础只读权限和操作权限；权限验证结果已落入 `iac_cloud_account_permission` 快照表，支持最近检查时间和来源展示 |
+| 区域管理 | P0 | 已完成第一阶段：支持启用/禁用区域、默认同步区域、区域同步开关、状态和资源类型范围持久化到 `iac_cloud_account_region`；真实云区域健康探测待 provider adapter 增强 |
 | Runner 绑定 | P1 | 指定账号同步和操作使用的 Runner/tag |
 | 账号健康检查 | P1 | 第一阶段已支持本地健康状态、最近健康检查、批量检查、事件通知、同步策略阈值、同步策略子周期健康详情、同步失败分类影响、后台周期刷新、健康依据/同步摘要展示、周期配置化、后台重复事件降噪和多实例锁保护；直接云 API 探测待 provider adapter 增强 |
 | 账号迁移兼容 | P1 | 兼容变量组和资源账号，提供迁移/关联能力 |
@@ -174,13 +175,13 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 功能 | 优先级 | 说明 |
 | --- | --- | --- |
 | Provider adapter 接口 | P0 | 标准化 `ListAssets`、`GetAsset`、`NormalizeAsset`、`ListRelations`、`ValidateAccount` |
-| AWS collector 补齐 | P0 | 补齐 EIP、ELB/ALB/NLB、S3、Route Table、NAT Gateway、Internet Gateway |
-| OCI collector 稳定化 | P0 | 增加错误分类、分页、限流重试和更多关系映射 |
+| AWS collector 补齐 | P0 | 第一阶段已补齐 EIP、ELB/ALB/NLB、S3 Bucket 深层配置、Route Table、NAT Gateway、Internet Gateway、LB Listener/Rule/Auth Action/Target Group/Target Health；后续继续补真实云联调、跨账号/跨 VPC target 和更细错误映射 |
+| OCI collector 稳定化 | P0 | Route Table、NAT Gateway、Internet Gateway、Service Gateway、DRG 已完成第一阶段采集与关系推演，compartment/identity 归属映射、provider 原生错误码解析、429/5xx 短重试和失败 scope 自动局部重试已完成第一阶段；后续继续增强分页、API 子调用级局部补偿、更细 identity 权限漂移和真实云联调 |
 | AliCloud collector | P1 | ECS、VPC、VSwitch、SecurityGroup、EIP、SLB、RDS、Redis、OSS、ACK |
 | Azure collector | P2 | 已完成第一阶段：VM、VNet、Subnet、NSG、Public IP、Disk、LB、AKS、SQL、Storage |
 | GCP collector | P2 | 已完成第一阶段：Compute、VPC、Subnet、Firewall、Disk、LB、GKE、Cloud SQL、Bucket |
 | 腾讯云/华为云 collector | P2 | 已完成真实 API collector、COS/OBS 对象存储桶采集和离线 inventory JSON 回退；成本账单导出 URL 导入第一阶段已完成，真实云账单环境联调仍待继续 |
-| Kubernetes 集群信息 | P1 | EKS/OKE/GKE/AKS 集群作为 `kubernetes_cluster` 标准资产展示，至少呈现版本、API Endpoint、VPC/VCN、子网、安全组、节点组/节点池和采集错误 |
+| Kubernetes 集群信息 | P1 | 已完成第一阶段：EKS/OKE/GKE/AKS 集群作为 `kubernetes_cluster` 标准资产展示，呈现版本、API Endpoint、VPC/VNet/VCN、子网、安全组/NSG、节点组/节点池，并支持 Namespace、Node、Pod、Workload、Service、Ingress 工作负载资产类型、详情展示和关系推演；K8S 详情已增强旧数据、导入数据、原生字段、大小写变体和 OKE endpoint 可见性；真实云账号端到端联调和 kubeconfig/Agent 实时采集仍待继续 |
 | 同步策略 | P1 | 第一阶段已支持定时同步策略模型、手动运行、到期 worker、按账号/区域/类型同步、按区域/资源类型独立子周期、失败重试、通知事件、自动暂停和资产 `syncPolicyId` 写入 |
 | 同步日志 | P1 | 展示阶段、区域、资源类型、成功数、失败数、错误详情和耗时 |
 | 未纳管资产识别 | P1 | 对比 IaC 资源与云采集资产，标记 IaC managed、cloud-only、manual |
@@ -288,7 +289,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | 漂移风险 | P1 | 将 drift 结果纳入风险列表 |
 | 未纳管资产风险 | P1 | cloud-only 资产可标记为治理项 |
 | 风险例外 | P1 | 复用/扩展 suppress，支持到期时间和审批记录 |
-| 整改工作流 | P2 | 支持创建整改任务、Webhook/ITSM 推送、状态回写 |
+| 整改工作流 | P2 | 已完成第一阶段：风险/漂移可一键创建 ITSM 自助整改工单，ITSM 状态可同步风险处理中/已解决/重新打开，外部 ITSM 可通过验签 callback 或周期拉取回写状态；漂移类风险已可在工单解决后触发环境漂移自动修复任务 |
 | 风险评分 | P2 | 按资产暴露、重要性、应用依赖、违规数量计算综合风险 |
 
 #### 6.6.3 验收标准
@@ -326,8 +327,8 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 | --- | --- | --- |
 | `iac_cloud_account` | 新增 | 统一云账号主表，保存 provider、accountId、name、status、owner、runnerTag、lastValidatedAt、lastSyncAt |
 | `iac_cloud_account_credential` | 新增 | 云账号凭证引用或加密密文，按 provider 存储 key schema |
-| `iac_cloud_account_region` | 新增 | 账号启用区域、默认区域、同步开关和区域状态 |
-| `iac_cloud_account_permission` | 新增 | 最近权限验证结果、缺失权限、支持动作 |
+| `iac_cloud_account_region` | 新增 | 已完成第一阶段：账号启用区域、默认区域、同步开关、区域状态、资源类型范围和最近同步时间 |
+| `iac_cloud_account_permission` | 新增 | 已完成第一阶段：持久化最近权限验证结果、检查来源、检查时间、资源、动作、状态、说明和证据 |
 | `iac_cloud_sync_policy` | 新增 | 定时同步策略、资源类型范围、重试策略 |
 | `iac_cloud_operation` | 新增 | 云资源操作任务主表，记录资源、动作、状态、风险等级、审批 ID |
 | `iac_cloud_operation_step` | 新增 | 操作步骤、日志、错误、耗时 |
@@ -521,7 +522,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 - 云资源操作第一阶段是否允许生产账号执行，还是只开放测试账号/只读和标签类操作。
 - 成本中心是否需要对接企业现有成本中心、财务编码、预算审批和汇率规则。
 - 风险整改是否需要直接接入现有 ITSM/工单系统。
-- Kubernetes 集群信息已纳入云资产视图；后续需确认是否继续扩展到 Namespace、Node、Pod、Workload、Service/Ingress 和 kubeconfig/Agent 接入等多集群管理能力。
+- Kubernetes 集群和基于资产属性/导入数据的 Namespace、Node、Pod、Workload、Service/Ingress 信息已纳入云资产视图；kubeconfig/Agent 实时采集、事件和多集群管理仍待后续阶段。
 - 是否需要按私有云/OpenStack/vSphere 设计 provider adapter 扩展点。
 
 ## 16. 开发进展
@@ -571,7 +572,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 待继续：
 
 - 云资产中心包装路由 `/api/v1/cloud/sync-tasks` 和 `/api/v1/cloud/sync-tasks/:id` 已在当前实现中提供；同步任务区域/资源类型级统计、阶段耗时、失败分类和重试提示已在 16.122 完成第一阶段。
-- 更细的 provider 原生分页游标、云厂商错误码映射、collector 内部单 API 子调用耗时，以及按失败 scope 自动局部重试仍待继续补强。
+- OCI 云厂商错误码映射已在 16.179 完成第一阶段，429/5xx/临时网络错误短重试已在 16.180 完成第一阶段，OCI collector 内部单 API 子调用耗时已在 16.181 完成第一阶段，任务详情 API 调用耗时可视化已在 16.182 完成第一阶段，API 维度趋势已在 16.183 完成第一阶段，事件中心慢调用告警已在 16.184 完成第一阶段，同步策略级慢调用阈值持久化已在 16.185 完成第一阶段，慢 API 告警静默窗口已在 16.187 完成第一阶段，失败 scope 自动局部重试已在 16.188 完成第一阶段，负责人分派和通知路由元数据已在 16.189 完成第一阶段，云采集事件按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段，成本同步计划通知静默和路由已在 16.190 完成第一阶段；更细的 provider 原生分页游标、真实错误样本和企业级值班升级仍待继续补强。
 
 ### 16.3 2026-06-20 V1.0 P0 多云总览
 
@@ -647,8 +648,8 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 待继续：
 
-- 当前权限验证仍是本地只读预检查，真实云 API 权限校验需在 provider adapter 中继续增强。
-- 区域和权限暂未拆分独立表，后续可按 PRD 的 `iac_cloud_account_region`、`iac_cloud_account_permission` 模型持久化区域状态、缺失权限和最近验证结果。
+- 当前权限验证结果持久化已在 16.169 完成第一阶段，但仍是本地只读预检查；真实云 API 权限校验需在 provider adapter 中继续增强。
+- 区域独立表已在 16.170 完成第一阶段；真实云 API 区域可用性、区域级权限漂移和区域级同步失败矩阵仍待 provider adapter 增强。
 
 ### 16.6 2026-06-20 V1.0 P1 云资产覆盖率和未纳管识别
 
@@ -2007,13 +2008,13 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 验证限制：
 
-- 当前预算评估支持查询触发和手动到期评估入口，尚未接入后台定时任务。
+- 当前预算评估支持查询触发、手动到期评估入口和后台定时评估 worker；后台 worker 已在 16.66 完成第一阶段。
 - 超阈值事件已写入事件中心并可投递 Webhook，但尚未接入 ITSM 或专用告警渠道。
 - 预算暂不支持审批、预算版本、汇率、摊销、财务编码和复杂预算周期。
 
 待继续：
 
-- 建设预算后台定时队列、专用告警渠道和预算审批。
+- 预算后台定时评估 worker 已在 16.66 完成第一阶段；继续建设专用告警渠道和预算审批。
 - 扩展多账期成本异常、资源使用率驱动的优化建议、Webhook 重试和 ITSM 成本事件推送。
 
 ### 16.36 2026-06-20 V1.2 P1 Webhook 集成第一阶段
@@ -2256,7 +2257,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 ### 16.39 2026-06-20 V1.2 P1 预算到期评估与通知投递第一阶段
 
-状态：已完成预算评估间隔、到期评估 API、成本中心页面“立即评估”入口和超阈值事件投递联动；后续后台 cron/worker 可直接复用本次新增 API。
+状态：已完成预算评估间隔、到期评估 API、成本中心页面“立即评估”入口和超阈值事件投递联动；后台定时评估 worker 已在 16.66 复用本阶段 API 完成第一阶段。
 
 已完成：
 
@@ -2313,13 +2314,13 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 验证限制：
 
-- 当前到期评估由页面按钮、API 或查询链路触发，尚未接入后台常驻调度器。
+- 当前到期评估由页面按钮、API、查询链路和后台常驻 worker 触发；后台 worker 已在 16.66 完成第一阶段。
 - 当前通知通道复用事件中心和 Webhook，尚未接入 ITSM、企业微信、钉钉、Slack 或邮件。
 - 当前预算仍为单账期模型，预算版本、审批、汇率、摊销和财务编码仍待后续建设。
 
 待继续：
 
-- 接入后台 cron/worker 调用 `evaluate-due`，并增加失败重试和调度审计。
+- 后台 cron/worker 调用 `evaluate-due` 已在 16.66 完成第一阶段；继续增加失败重试、调度审计和 worker 指标。
 - 建设预算审批、预算版本、财务编码和专用告警渠道。
 
 ### 16.40 2026-06-20 V1.2 P1 云账号健康检查与事件接入第一阶段
@@ -3886,6 +3887,12 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
   - `last_exceeded_at=2026-06-20 20:42:51`
 - 回读事件表确认生成 `cost.budget.threshold_exceeded` 事件，`resource_id=cbd-codex-worker-2042`。
 - 验证后已软删除临时预算和对应事件，避免污染后续测试数据。
+- 2026-06-22 补充后台调度核心单元测试：
+  - `TestCloudBudgetEvaluationDue` 覆盖未评估、到期边界、未到期跳过和默认评估间隔。
+  - `TestCloudBudgetEvaluationWorkerInterval` 覆盖环境变量默认值、非法值、最小值、正常值和最大值裁剪。
+  - `TestCloudBudgetEvaluateResultCount` 覆盖 worker 聚合计数类型兼容和累加。
+  - `TestCloudBudgetRespAmounts` 覆盖预算响应金额、使用率、剩余额度下限和超阈值/超预算状态。
+  - `TestCloudBudgetEvaluationLockName` 覆盖预算评估命名锁格式。
 
 验证限制：
 
@@ -6022,7 +6029,2223 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 - 对象存储列表 API 继续补齐真实云环境联调、provider SDK/REST 错误映射、ETag 和更复杂目录规则。
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
-- 继续增强成本计划通知模板、调度窗口、静默期和负责人分派。
+- 成本同步计划通知静默、通知窗口、负责人和路由已在 16.190 完成第一阶段，按错误类型路由和失败次数升级策略已在 16.191 完成第一阶段；继续增强真实通知通道端到端联调和更细的企业升级策略。
+
+### 16.179 2026-06-22 V1.2 P0 OCI provider 原生错误码解析与同步失败分类第一阶段
+
+状态：已完成 OCI collector 非 2xx API 响应的 provider 原生错误码保留、同步失败详情结构化和账号健康失败分类复用第一阶段。
+
+已完成：
+
+- OCI REST 调用失败时不再只返回 `HTTP status + body` 文本，改为保留 `provider=oci`、`status`、`code`、`requestId`、`retryAfter`、`service` 和 `path`。
+- 支持解析 OCI 常见错误体 `{"code":"...","message":"..."}`，并在错误体不是 JSON 或字段缺失时回退原始 body。
+- CMDB 同步任务 `failureDetails` 结构化写入 `provider`、`httpStatus`、`providerCode`、`requestId`、`retryAfter`、`providerService` 和 `providerPath`，便于前端、健康检查和审计定位。
+- 同步失败分类优先读取 provider 原生元数据：
+  - HTTP 429、`TooManyRequests`、`LimitExceeded` 等归类为 `rate_limit`，可重试。
+  - HTTP 401、`NotAuthenticated`、`InvalidCredentials` 等归类为 `credential`，需更新凭证。
+  - HTTP 403、`NotAuthorizedOrNotFound`、`Forbidden`、`Authorization*` 等归类为 `permission`，需检查权限策略。
+  - HTTP 5xx 归类为 `network`，可重试。
+- 云账号健康的同步失败影响分类改为复用 CMDB 同步分类函数，避免账号健康和同步任务对同一 provider 错误给出不同结论。
+
+验证：
+
+- 新增单元测试覆盖 OCI 原生错误 metadata 保留、`failureDetails` 结构化写入、限流/权限/凭证/5xx 分类和账号健康分类复用。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务；验证命令记录见本次开发回归输出。
+
+验证限制：
+
+- 本阶段基于代码路径和模拟 OCI 错误样本验证，未连接真实 OCI 账号触发真实 `opc-request-id`、限流窗口和权限错误。
+- provider 原生分页 token 和真实云端错误样本库仍待继续；按 region/assetType scope 的自动局部重试已在 16.188 完成第一阶段，API 子调用级局部补偿仍待 provider adapter 继续细化。
+
+### 16.180 2026-06-22 V1.2 P0 OCI API 限流与临时错误短重试第一阶段
+
+状态：已完成 OCI collector GET 调用层的有限短重试；采集遇到 429、5xx、408 或临时网络/读取错误时，会在当前请求上下文内短暂退避后重试，最终失败时保留尝试次数。
+
+已完成：
+
+- OCI REST GET 调用新增最多 3 次请求尝试，覆盖所有 OCI collector 复用的 `ociDoAPI` 调用路径。
+- 重试条件：
+  - HTTP 429：API 限流。
+  - HTTP 408：请求超时。
+  - HTTP 5xx：云 API 服务端临时异常。
+  - 非上下文取消/超时类的 HTTP 客户端临时错误或响应体读取错误。
+- 重试延迟：
+  - 优先解析 OCI/API 返回的 `Retry-After` 秒数或 HTTP 时间。
+  - 未返回 `Retry-After` 时使用短指数退避，默认 500ms、1s、2s，并设置最大 5s 上限。
+  - 等待过程尊重采集上下文取消，避免 collector 超时后继续等待。
+- 最终失败的 `failureDetails` 会写入 `providerAttempts`，便于任务详情判断是否已经过短重试。
+- 401/403 等凭证和权限错误不进入 HTTP 短重试，继续交由 16.179 的失败分类给出不可重试建议。
+
+验证：
+
+- 新增单元测试覆盖 429/5xx/403/context cancel 的重试判定、`Retry-After` 秒数/HTTP 时间解析、指数退避和最大延迟上限。
+- 新增单元测试覆盖最终错误中的 `attempts` 进入同步任务 `failureDetails.providerAttempts`。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- 本阶段为单请求内短重试；按 region/assetType scope 的失败范围补偿已在 16.188 完成第一阶段，API 子调用级局部补偿队列仍待继续。
+- 未连接真实 OCI 账号验证生产限流窗口、真实 `Retry-After` 差异和跨 compartment API 错误样本。
+
+### 16.181 2026-06-22 V1.2 P0 OCI API 子调用耗时与尝试次数指标第一阶段
+
+状态：已完成 OCI collector 内部 API 子调用指标第一阶段；同步任务 stats 会记录每个 OCI API 调用的区域、服务、路径、耗时、尝试次数、HTTP 状态、错误分类和分页/compartment 范围信息。
+
+已完成：
+
+- OCI collector 创建按 region 隔离的 API metrics recorder，并将结果写入同步任务 `stats.apiMetrics`。
+- 每次 `ociDoAPI` 完成后记录：
+  - `provider=oci`
+  - `region`
+  - `service`
+  - `path`
+  - `durationMs`
+  - `attempts`
+  - `retryCount`
+  - `httpStatus`
+  - `requestId`
+  - `retryAfter`
+  - `compartmentId`
+  - `pageTokenUsed`
+  - `status`
+  - `errorCategory`
+  - `retryable`
+  - `retryHint`
+- 新增 `stats.apiMetricSummary`，汇总 API 调用总数、失败数、发生重试的调用数、最大耗时、最大尝试次数、最慢 endpoint 和 service 计数。
+- 该指标覆盖所有复用 `ociDoAPI` 的 OCI 采集路径，包括列表分页请求和原始 JSON 请求。
+
+验证：
+
+- 新增单元测试覆盖 API metric recorder、失败指标字段、query scope 字段、重试计数和 summary 汇总。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- `apiMetrics` 第一阶段已经写入 stats JSON，并在 16.182 增加任务详情 API 调用页签、region/service/status 筛选、慢调用阈值过滤、任务详情慢调用告警和筛选结果 CSV 导出；按 API 维度趋势已在 16.183 完成第一阶段，事件中心慢调用告警已在 16.184 完成第一阶段。
+- 未连接真实 OCI 账号验证生产 API 耗时分布、分页 token 长链路和跨 compartment 样本。
+
+### 16.182 2026-06-22 V1.2 P0 云采集任务 API 调用耗时可视化第一阶段
+
+状态：已完成任务详情 API 调用耗时可视化第一阶段；前端会把同步任务 `stats.apiMetrics` 展开为独立页签，并提供 region/service/status、慢调用阈值过滤、慢调用告警和筛选结果 CSV 导出，辅助定位 OCI 采集慢接口、重试接口和失败 API scope。
+
+已完成：
+
+- 云采集任务详情摘要新增 API 调用统计，展示总调用数、失败数、重试调用数、最大尝试次数、最大耗时和最慢 API。
+- 云采集任务详情新增 `API调用` 页签，按行展示 region、service、API path、任务状态、HTTP 状态、耗时、尝试次数、重试次数、compartment scope、分页请求标记、错误分类、可重试标记和重试建议。
+- `API调用` 页签支持按 region、service、status 多选过滤，并支持开启“只看慢调用”后按毫秒阈值过滤。
+- `API调用` 页签基于当前慢调用阈值展示慢调用告警，汇总慢调用总数、失败慢调用数、重试慢调用数、最慢 API 和耗时；存在失败慢调用时提升为错误提示。
+- `API调用` 页签支持导出当前筛选结果为 CSV，包含任务、账号、云厂商、region、service、API、状态、HTTP 状态、耗时、尝试/重试次数、compartment、分页、错误分类、重试建议、Request ID 和 Retry-After。
+- 打开或关闭任务详情时会重置 API 调用过滤条件，避免跨任务串用筛选条件。
+- 支持后端按 region 存储的 `stats.apiMetrics` 展平展示；当后续 provider 使用同一字段结构时，前端无需额外改造即可展示。
+- 空数据时保留原始 `统计` 页签，可继续通过 stats JSON 排查历史任务或未上报 provider。
+
+验证：
+
+- 已通过前端构建验证任务详情新增页签语法和依赖引用。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- 事件中心慢调用告警已在 16.184 完成第一阶段，同步策略级慢调用阈值持久化已在 16.185 完成第一阶段，策略级慢 API 告警静默窗口已在 16.187 完成第一阶段，负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段；按子周期独立阈值和真实通知通道联调仍待继续。
+- 未连接真实 OCI 账号验证生产慢调用样本和分页链路展示。
+
+### 16.183 2026-06-22 V1.2 P0 云采集任务 API 维度趋势第一阶段
+
+状态：已完成云采集任务 API 维度趋势第一阶段；云采集任务 summary 会基于当前任务筛选条件和趋势日期范围，从同步任务 `stats.apiMetrics` 聚合 Top API 调用维度，前端在云采集统计区展示调用、失败、重试和耗时趋势。
+
+已完成：
+
+- `GET /api/v1/cmdb/sync-tasks` 与云资产包装接口的 summary 新增 `apiMetrics` 数组，按 provider、region、service、path 聚合。
+- 每个 API 维度返回调用次数、失败次数、重试次数、失败率、平均耗时、最大耗时和日期趋势点。
+- 日期趋势点与现有任务趋势范围保持一致，支持 7/14/30 天和自定义日期范围。
+- 前端云采集统计区新增 `按 API 拆分（Top 10）` 表格，展示接口维度、调用/失败/重试、平均/最大耗时和最近有调用日期趋势。
+- 聚合逻辑兼容后端按 region map 存储的 `stats.apiMetrics`，也兼容后续 provider 直接写入数组形式的 `apiMetrics`。
+
+验证：
+
+- 新增单元测试覆盖 API metrics region map 展平和趋势点补零/平均耗时计算。
+- 已通过后端单元测试和前端构建验证。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- 第一阶段只返回 Top 10 API 维度，未实现按 API 搜索、后端分页和自定义排序。
+- 未连接真实 OCI 账号验证生产 API 趋势、长分页链路和跨 compartment 样本。
+
+### 16.184 2026-06-22 V1.2 P0 云采集慢 API 事件中心告警第一阶段
+
+状态：已完成云采集慢 API 事件中心告警第一阶段；同步任务完成时会从 `stats.apiMetrics` 识别耗时不低于默认阈值的 API 调用，写入统一事件中心并复用 Webhook/通知策略分发链路。
+
+已完成：
+
+- 后端新增慢 API 摘要计算：
+  - 默认阈值 `1000ms`。
+  - 汇总慢调用数、失败慢调用数、重试慢调用数、最大耗时、最慢 API 和 Top 慢调用样本。
+  - 保留 provider、region、service、path、status、durationMs、attempts、retryCount、requestId、错误分类、分页和 compartment 等排障字段。
+- 云采集任务完成后自动写入事件中心：
+  - 事件类型 `cloud.sync.task.slow_api_detected`。
+  - 事件来源 `sync`，资源类型 `cmdb_sync_task`，资源 ID 为采集任务 ID。
+  - 普通慢调用写入 warning，慢调用中存在失败 API 时提升为 error。
+  - 同一任务同一事件类型按 `org_id/event_type/resource_type/resource_id` 去重。
+- 事件 payload 提供：
+  - `taskId`、`status`、`thresholdMs`、`slowCount`、`failedCount`、`retriedCount`、`maxDurationMs`。
+  - `slowest`、`top`、`regions`、`assetTypes`、`syncPolicyId`、`syncPolicyScheduleKey`、`syncPolicyScheduleName`。
+- 前端事件中心和组织通知设置新增中文事件类型：
+  - `cloud.sync.task.slow_api_detected` -> `云采集慢 API 告警`。
+- 通知模板变量中心新增慢 API 告警样例变量组，便于配置企业微信、钉钉、Slack、邮件和 Webhook 通知模板。
+
+验证：
+
+- 新增单元测试覆盖慢 API 摘要阈值过滤、失败/重试计数、最慢 API 选择、Top 排序和 requestId 保留。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- 同步策略级慢调用阈值持久化已在 16.185 完成第一阶段，策略级慢 API 告警静默窗口已在 16.187 完成第一阶段，负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段；按子周期独立阈值和真实通知通道联调仍待继续。
+- 未连接真实 OCI/AWS 账号验证生产慢调用样本、通知通道投递和 Webhook 验签。
+
+### 16.185 2026-06-22 V1.2 P0 云采集慢 API 阈值持久化第一阶段
+
+状态：已完成云采集慢 API 阈值持久化第一阶段；云账号同步策略可在 `params.slowApiThresholdMs` 中保存慢 API 告警阈值，策略触发的采集任务会把该阈值写入任务 `stats`，任务详情过滤、页面慢调用告警和事件中心告警使用同一个阈值。
+
+已完成：
+
+- 同步策略参数新增 `slowApiThresholdMs`：
+  - 后端 `cloudSyncPolicyNormalizeParams` 会规范化并持久化正整数阈值。
+  - 最大值限制为 `600000ms`，避免误配置导致异常大阈值。
+  - 未配置时回退默认 `1000ms`。
+- 同步策略触发采集任务时传递阈值：
+  - 普通策略任务和按区域/资源类型独立子周期任务都会传入阈值。
+  - 任务创建时写入 `stats.slowApiThresholdMs`。
+  - 任务实际运行中 collector 返回 stats 后会重新保留该阈值，避免 provider 统计覆盖。
+- 事件中心慢 API 告警改为使用任务 `stats.slowApiThresholdMs`：
+  - `cloud.sync.task.slow_api_detected` 的 `payload.thresholdMs` 与任务详情页阈值一致。
+  - 批量重跑、任务组和历史任务继续从任务 stats 回放阈值。
+- 前端“云账号 - 同步策略”增强：
+  - 创建/编辑同步策略表单新增“慢 API 告警阈值（毫秒）”。
+  - 同步策略列表新增“慢 API”列展示当前阈值。
+- 前端“云资产/资产 CMDB - 云采集任务详情”增强：
+  - 打开任务详情时优先读取任务 `stats.slowApiThresholdMs` 作为 API 调用页签慢调用过滤默认值。
+  - 重置 API 调用筛选时回到当前任务阈值，而不是固定回到 1000ms。
+
+验证：
+
+- 新增单元测试覆盖同步策略慢 API 阈值持久化、最大值裁剪、零值删除，以及任务 stats 中阈值参与慢调用摘要计算。
+- 本阶段在清理部署服务和运行数据后进行代码级验证，不启动 compose 服务。
+
+验证限制：
+
+- 第一阶段为策略级统一阈值，策略级慢 API 告警静默窗口已在 16.187 完成，负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段；尚未支持每个子周期独立阈值。
+- 未连接真实 OCI/AWS 账号验证生产慢调用样本、通知通道投递和 Webhook 验签。
+
+### 16.186 2026-06-22 V1.2 P1 EKS/OKE K8S 信息字段兼容增强
+
+状态：已完成 EKS/OKE K8S 信息字段兼容增强；在已有 K8S 信息页签、Kubernetes 概览和快速入口基础上，继续解决“数据已采集但详情页看不到”的兼容问题。
+
+已完成：
+
+- 前端 K8S 详情读取增强：
+  - `assetAttrValue` 支持大小写兼容、点路径读取、`rawData.response`、`rawData.properties` 和 `rawData.metadata` 来源。
+  - K8S 集群识别兼容 `nodeGroups/nodegroups/node_groups`、`nodePools/nodepools/node_pools`、`kubernetesVersion/kubernetes_version`、`endpoints.kubernetes`、`endpointConfig` 和 `kubernetesNetwork`。
+  - 节点组/节点池列表兼容 EKS `nodeGroups`、OKE `nodePools`、Azure `agentPoolProfiles`、导入数据中的 snake_case 字段和对象包装数组。
+  - 工作负载层列表兼容 `statefulSets/daemonSets/replicaSets/cronJobs` 的大小写与 snake_case 变体。
+- 前端 K8S 信息页签展示增强：
+  - API Endpoint 兼容 `endpoints.kubernetes`、`publicEndpoint`、`privateEndpoint`、`fqdn` 等原生字段。
+  - VPC/VNet/VCN、子网、安全组/NSG 和网络配置兼容 EKS `resourcesVpcConfig`、OKE `endpointConfig`、AKS/GKE 网络字段。
+  - 节点表兼容 OKE `displayName/lifecycleState/nodeShape/subnetIds`、AKS `vmSize/provisioningState` 和 GKE `machineType`。
+- OKE collector 增强：
+  - OKE Cluster 采集写入 `attributes.endpoints`。
+  - 优先把 `endpoints.kubernetes` 回填到资产 `address`，并回退 `publicEndpoint/privateEndpoint/endpoint`。
+  - 写入 `attributes.version`，与 EKS/AKS/GKE 的版本展示字段保持一致。
+
+验证：
+
+- 新增单元测试覆盖 OKE endpoint 优先级和 public endpoint 回退。
+- 使用 Docker Go 镜像执行 `gofmt`，覆盖 `backend/portal/apps/cmdb_collect_oci.go` 和 `backend/portal/apps/cmdb_collect_kubernetes_test.go`。
+- 本阶段继续遵守部署清理约束：不启动 compose 服务，验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 当前增强解决字段归一和展示兼容；真实 EKS/OKE 账号端到端采集、NodeGroup/NodePool 分页、权限错误码和 kubeconfig/Agent 实时工作负载采集仍待真实环境继续验证。
+
+### 16.187 2026-06-22 V1.2 P0 云采集慢 API 告警静默窗口第一阶段
+
+状态：已完成云采集慢 API 告警静默窗口第一阶段；同步策略可配置 `params.slowApiSilenceMinutes`，同一云账号、同步策略、子周期和最慢 API endpoint 在静默窗口内只写入一次 `cloud.sync.task.slow_api_detected` 事件，避免重复 Webhook/通知刷屏。
+
+已完成：
+
+- 同步策略参数新增 `slowApiSilenceMinutes`：
+  - 后端 `cloudSyncPolicyNormalizeParams` 会规范化并持久化正整数分钟数。
+  - `0` 或未配置表示不启用静默窗口。
+  - 最大值限制为 `10080` 分钟，避免误配置导致长期静默。
+- 同步策略触发采集任务时传递静默窗口：
+  - 普通策略任务和按区域/资源类型独立子周期任务都会传入静默窗口。
+  - 任务创建和运行 stats 会写入 `slowApiSilenceMinutes`。
+  - collector 返回 stats 后会重新保留该配置，避免 provider 统计覆盖。
+- 慢 API 事件写入增强：
+  - 事件 payload 新增 `silenceMinutes` 和 `slowApiFingerprint`。
+  - `slowApiFingerprint` 由 provider、account、syncPolicyId、syncPolicyScheduleKey 和最慢 API endpoint 组成。
+  - 写事件前查询静默窗口内同 fingerprint 的历史事件；命中时跳过事件写入，并在同步任务日志写入 `slow_api_silenced`。
+  - 不同 endpoint 的新慢调用不会被同一静默窗口误抑制。
+- 前端“云账号 - 同步策略”增强：
+  - 创建/编辑同步策略表单新增“慢 API 告警静默窗口（分钟）”。
+  - 同步策略列表“慢 API”列同时展示阈值和静默窗口。
+
+验证：
+
+- 新增单元测试覆盖同步策略静默窗口持久化、最大值裁剪、零值删除、任务 stats 读取和 slow API fingerprint 生成。
+- 本阶段继续遵守部署清理约束：不启动 compose 服务，验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段为策略级静默窗口；每个子周期单独配置静默窗口仍待继续；负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/服务动态路由和真实通知通道投递验签仍待后续增强。
+
+### 16.188 2026-06-22 V1.2 P0 云采集失败 scope 自动局部重试第一阶段
+
+状态：已完成同步策略级失败 scope 自动局部重试第一阶段；策略显式开启后，失败采集任务会在可重试错误且识别到失败范围时自动创建一条 `auto_failed_scope` 重跑任务，只重跑失败的 region/assetType 范围。
+
+已完成：
+
+- 同步策略参数新增：
+  - `autoRetryFailedScopes`：是否开启失败 scope 自动局部重试，默认关闭。
+  - `autoRetryMaxScopes`：单次自动补偿最大 scope 数，默认 10，上限 50。
+- 自动触发保护：
+  - 仅同步策略触发的失败任务生效，手工任务和无策略任务不自动补偿。
+  - 仅 `failureDetails.retryable=true` 或 `failureSummary.retryableTotal>0` 的错误生效，凭证/权限/配置类不可重试错误只写跳过日志。
+  - 自动创建的重试任务带 `rerunMode=auto_failed_scope`，不会再次自动触发补偿，避免循环重试。
+  - 同一源任务已存在自动补偿任务时跳过重复创建。
+  - 当只有粗粒度 `scopeMetrics` 且失败范围覆盖整个原任务范围时，不自动隐藏创建全量重跑。
+- scope 推导：
+  - `failureDetails` 支持解析 provider 错误消息中的 `region`、`assetType`/`resourceType`，优先用于精准补偿。
+  - 未提供精准失败详情时，回退读取 `stats.scopeMetrics` 中非 `complete` 的 region+assetType。
+  - 新任务 stats 写入 `autoRetry`、`rerunFromTaskId`、`rerunGroupId`、`rerunMode` 和 `rerunParameterDiffs`，源任务日志写入 `auto_scope_rerun_created` 或跳过原因。
+- 事件中心新增 `cloud.sync.task.auto_scope_rerun_started`，payload 包含源任务、重试任务、失败 scope、同步策略和子周期信息。
+- 前端“云账号 - 同步策略”新增“失败 scope 自动局部重试”和“单次最大补偿 scope 数”，策略列表新增“失败补偿”列。
+
+验证：
+
+- 新增单元测试覆盖：
+  - 策略参数 `autoRetryFailedScopes/autoRetryMaxScopes` 持久化、禁用删除和最大值裁剪。
+  - provider 错误消息中的 `region`、`assetType` 元数据解析。
+  - 基于 `failureDetails` 的精准失败 scope 推导。
+  - 基于 `scopeMetrics` 的失败 scope 回退推导。
+- 定向后端测试通过：
+  - `go test -vet=off ./portal/apps -run 'Test(CmdbSyncTaskFailedRetryScopes|CloudSyncPolicyNormalizeSlowAPIThreshold|CmdbSyncFailureDetailsExtractsProviderMetadata|CmdbSyncTaskSlowAPI|OciAPI)' -count=1 -timeout=120s`
+
+验证限制：
+
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+- 精准局部重试依赖 provider 错误详情或 `scopeMetrics` 提供 region/assetType；真实 provider 的更多错误样本、分页游标和 API 子调用级补偿仍待继续。
+- 负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段；外部通知通道投递验签和企业级值班升级仍待后续增强。
+
+### 16.189 2026-06-22 V1.2 P0 云采集事件负责人分派与通知路由第一阶段
+
+状态：已完成同步策略级通知负责人、通知路由和分派对象元数据第一阶段；云采集策略失败、慢 API 告警和失败 scope 自动局部重试事件会继承同一套路由元数据，并复用现有通知订阅机制做路由匹配。
+
+已完成：
+
+- 同步策略 `params` 新增并规范化：
+  - `notificationOwner`：通知负责人或值班 owner。
+  - `notificationRoutes`：通知路由 key，可填写如 `sre`、`cloud-platform`。
+  - `notificationAssignees`：分派对象，可填写用户、团队或值班组标识。
+- 云事件 payload 自动注入上述字段：
+  - `cloud.sync.policy.triggered` / `cloud.sync.policy.completed` / `cloud.sync.policy.failed` / `cloud.sync.policy.auto_paused` 由 `cloudSyncPolicyEvent` 统一注入。
+  - 慢 API 事件 `cloud.sync.task.slow_api_detected` 会按 `syncPolicyId` 读取策略并继承路由。
+  - 自动局部重试事件 `cloud.sync.task.auto_scope_rerun_started` 继承源策略路由。
+- 通知订阅匹配增强：
+  - 保留现有精确事件、`cloud.*`、`sync.*`、前缀通配匹配。
+  - 新增 `cloud.route.<route>`、`cloud.owner.<owner>`、`cloud.assignee.<assignee>` 候选事件类型，可直接在现有通知配置中订阅。
+  - 通知 Markdown 默认模板新增“通知负责人 / 通知路由 / 分派对象”展示。
+- 前端“云账号 - 同步策略”抽屉新增中文配置项：通知负责人、通知路由、分派对象。
+
+验证：
+
+- 新增单元测试覆盖同步策略通知路由参数标准化、事件 payload 注入和通知候选事件类型生成。
+
+验证限制：
+
+- 本阶段为事件元数据和通知订阅路由第一阶段；按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段，云事件自动创建 ITSM 工单已在 16.193 完成第一阶段。组织架构/值班表模型、外部通知通道投递验签和外部 ITSM 双向同步仍待后续增强。
+
+### 16.190 2026-06-22 V1.2 P2 成本同步计划通知静默与路由第一阶段
+
+状态：已完成成本同步计划通知静默、通知窗口、负责人、通知路由和分派对象元数据第一阶段；成本计划失败事件可按计划参数控制通知频率，并可通过 `cost.route.*`、`cost.owner.*`、`cost.assignee.*` 订阅到不同处理组。
+
+已完成：
+
+- 成本同步计划 `params` 新增并规范化：
+  - `notificationSilenceMinutes`：失败事件静默期，后端限制最大 7 天，`0` 表示不静默。
+  - `notificationWindows`：通知窗口，支持 `HH:MM-HH:MM` 和跨天窗口，窗口外抑制普通失败事件。
+  - `notificationOwner`：通知负责人或值班 owner。
+  - `notificationRoutes`：通知路由 key，可填写如 `finops`、`cloud-platform`。
+  - `notificationAssignees`：分派对象，可填写用户、团队或值班组标识。
+- 成本同步计划失败事件增强：
+  - 普通 `cost.sync.schedule.failed` 事件会按静默期和通知窗口做抑制。
+  - `cost.sync.schedule.auto_paused` 自动暂停事件不被静默抑制，确保需要人工处理的停用事件一定落入事件中心。
+  - 事件 payload 注入 `notificationOwner`、`notificationRoutes`、`notificationAssignees`、`notificationSilenceMinutes`、`notificationWindows` 和 `notificationSource`。
+- 通知订阅匹配增强：
+  - 在已有 `cost.*`、精确事件和通用 `cloud.route.*` 候选基础上，新增源类型维度候选。
+  - 成本事件可通过 `cost.route.<route>`、`cost.owner.<owner>`、`cost.assignee.<assignee>` 精准订阅。
+  - 通知 Markdown 默认模板继续展示“通知负责人 / 通知路由 / 分派对象”。
+- 前端成本中心增强：
+  - “账单同步计划”列表新增“通知”列，展示静默期、通知窗口、负责人、路由和分派对象摘要。
+  - “新建/编辑账单同步计划”弹窗新增中文配置项：通知静默期、通知窗口、通知负责人、通知路由、分派对象。
+
+验证：
+
+- `gofmt` 覆盖 `cloud_event_notification.go`、`cloud_cost.go`、`cloud_cost_schedule_test.go` 和成本响应模型。
+- 新增单元测试覆盖成本计划通知参数标准化、路由 payload 注入、跨天通知窗口判断和 `cost.route.*` 候选事件类型生成。
+
+验证限制：
+
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+- 本阶段使用计划级静默和窗口配置；按失败错误类型追加路由和失败次数升级策略已在 16.191 完成第一阶段，更细的云服务、成本中心、业务线和值班表升级仍待后续增强。
+- 云事件自动创建 ITSM 工单已在 16.193 完成第一阶段；外部通知通道投递验签、外部 ITSM 双向状态同步和企业真实机器人/SMTP 端到端联调仍待后续增强。
+
+### 16.191 2026-06-22 V1.2 P2 成本同步计划按错误类型路由与升级策略第一阶段
+
+状态：已完成成本同步计划失败事件按错误类型追加通知路由和失败次数升级策略第一阶段；成本计划失败不再只能走固定路由，可根据失败原因自动归类并追加处理组。
+
+已完成：
+
+- 成本同步计划 `params` 新增并规范化：
+  - `notificationFailureRoutes`：错误类型到通知路由的映射，例如 `permission -> iam/security`、`rate_limit -> cloud-platform`。
+  - `notificationEscalationAt`：失败次数升级阈值，后端限制最大 `100`，`0` 表示不按次数升级。
+  - `notificationEscalationRoutes`：达到升级阈值或自动暂停时追加的升级路由。
+- 成本计划失败原因归类：
+  - `rate_limit`：429、限流、throttling、LimitExceeded。
+  - `credential`：Token、AccessKey、签名、凭证过期或认证失败。
+  - `permission`：AccessDenied、Forbidden、NotAuthorized、权限拒绝。
+  - `not_found`：404、对象或账单文件不存在。
+  - `network`：timeout、连接失败、临时网络错误、5xx。
+  - `config`：非法参数、格式错误、unsupported、bad request。
+  - `unknown`：未命中明确规则的其他失败。
+- 成本同步计划失败事件 payload 增强：
+  - 注入 `failureCategory`，便于模板、Webhook 和 ITSM 解析。
+  - 命中 `notificationFailureRoutes` 时追加到最终 `notificationRoutes`。
+  - 达到 `notificationEscalationAt` 或发生 `auto_paused` 时注入 `notificationEscalated`、`notificationEscalationReason`、`notificationEscalationRoutes`。
+- 通知订阅匹配增强：
+  - 新增 `cloud.failure.<category>` / `cost.failure.<category>` 候选事件类型。
+  - 新增 `cloud.escalation.<reason>` / `cost.escalation.<reason>` 候选事件类型。
+  - Markdown 默认通知展示“失败类型”和“通知升级”状态。
+- 前端成本中心增强：
+  - “账单同步计划”通知摘要展示错误路由配置数量和升级阈值。
+  - “新建/编辑账单同步计划”弹窗新增“错误类型路由”“升级阈值（失败次数）”“升级路由”中文配置项。
+
+验证：
+
+- 新增单元测试覆盖错误类型路由参数标准化、失败原因分类、payload 路由合并、失败次数升级和 `cost.failure.*` / `cost.escalation.*` 通知候选事件类型。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段按文本错误原因归类，真实云 provider 原生错误码到成本计划失败分类的更细映射仍待结合真实账单拉取样本继续补强。
+- 云事件自动创建 ITSM 工单已在 16.193 完成第一阶段；企业级值班表、逐级升级时间线、外部 ITSM 双向状态同步和真实通知通道端到端验签仍待后续增强。
+
+### 16.192 2026-06-22 V1.2 P0 云采集事件按错误类型/云服务路由与升级策略第一阶段
+
+状态：已完成云采集同步策略事件按失败类型、云服务和失败次数动态追加通知路由第一阶段；同步策略失败、自动暂停、慢 API 告警和失败 scope 自动局部重试事件不再只依赖固定路由。
+
+已完成：
+
+- 同步策略 `params` 新增并规范化：
+  - `notificationFailureRoutes`：失败类型到通知路由的映射，例如 `permission -> iam/security`、`rate_limit -> cloud-platform`。
+  - `notificationServiceRoutes`：云服务到通知路由的映射，例如 `ec2 -> compute-oncall`、`iaas -> oci-team`。
+  - `notificationEscalationAt`：失败次数升级阈值，后端限制最大 `100`，`0` 表示不按次数升级。
+  - `notificationEscalationRoutes`：达到升级阈值或自动暂停时追加的升级路由。
+- 云采集事件 payload 增强：
+  - 基于 `cmdbSyncClassifyFailure`、`failureDetails` 和 provider 原生错误元数据推导 `failureCategory`。
+  - 基于 payload、慢 API `slowest/top`、`failureDetails` 和 provider 错误元数据推导 `cloudService`。
+  - 命中失败类型路由或云服务路由时追加最终 `notificationRoutes`，并保留原有负责人、基础路由和分派对象。
+  - 达到 `notificationEscalationAt` 或发生 `auto_paused` 时注入 `notificationEscalated`、`notificationEscalationReason`、`notificationEscalationRoutes`。
+- 通知订阅匹配增强：
+  - 新增 `cloud.failure.<category>` / `sync.failure.<category>` 候选事件类型。
+  - 新增 `cloud.service.<service>` / `sync.service.<service>` 候选事件类型。
+  - 新增 `cloud.escalation.<reason>` / `sync.escalation.<reason>` 候选事件类型。
+  - Markdown 默认通知展示“失败类型”“云服务”和“通知升级”状态。
+- 前端“云账号 - 同步策略”增强：
+  - 同步策略列表新增“通知路由”摘要，展示负责人、基础路由、错误路由、服务路由和升级配置。
+  - 同步策略抽屉新增“错误类型路由”“云服务路由”“升级阈值（失败次数）”“升级路由”中文配置项。
+
+验证：
+
+- 新增/更新单元测试覆盖同步策略通知参数标准化、失败类型路由、云服务路由、失败次数升级和通知候选事件类型。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段仍依赖已有错误文本、`failureDetails` 和 provider 元数据推导分类/服务；云事件自动创建 ITSM 工单已在 16.193 完成第一阶段，真实云 provider 更完整错误样本库、服务码映射、值班表、外部 ITSM 双向状态同步和真实通知通道端到端验签仍待后续增强。
+
+### 16.193 2026-06-22 V1.2 P0 云事件自动创建 ITSM 工单第一阶段
+
+状态：已完成云事件到 ITSM 工单自动分派第一阶段；事件中心不再只负责查询、Webhook 和通知投递，当事件 payload 显式启用 `itsmAutoTicket` 或指定 ITSM 连接器时，可自动生成本地或外部 ITSM 工单。
+
+已完成：
+
+- 事件中心派发链路增强：
+  - `recordCloudEventWithDispatch` 在 Webhook 和通知派发后新增 ITSM 派发。
+  - `source=itsm` 的事件不会再次触发 ITSM 派发，避免递归创建工单。
+  - 仅当 payload 中存在 `itsmAutoTicket=true`、`itsmTicketAutoCreate=true` 或 `itsmConnectorId(s)` / `itsmTicketConnectorId(s)` 时才创建工单，避免普通事件无控制地产生工单。
+- ITSM 事件工单创建：
+  - 无连接器 ID 且启用自动工单时，复用 `CloudIaC 本地工单` 默认连接器。
+  - 指定连接器 ID 时按连接器创建工单，连接器禁用或不存在时跳过并记录警告。
+  - 同一源事件和同一连接器只创建一张工单，重复派发返回已有工单。
+  - 本地连接器保留为 `pending` 工单；外部连接器继续复用现有 HTTP POST 提交能力。
+  - 工单请求 payload 新增 `event`、`dispatch`、`requester`、`connector` 结构，包含事件类型、来源、级别、云账号、资源、失败分类、云服务、原始 payload 和连接器信息。
+- 数据模型兼容：
+  - `iac_cloud_itsm_ticket` 唯一约束从 `org_id + operation_id + connector_id` 调整为 `org_id + operation_id + cloud_event_id + connector_id`，兼容云操作工单和事件工单两种来源。
+- 同步策略配置增强：
+  - 同步策略 `params` 新增并规范化 `itsmAutoTicket`、`itsmConnectorIds`、`itsmPriority`。
+  - 云采集失败、自动暂停、慢 API 和失败 scope 自动局部重试事件可从同步策略继承 ITSM 自动工单配置。
+- 前端“云账号 - 同步策略”增强：
+  - 同步策略抽屉新增“ITSM 自动工单”“ITSM 连接器 ID”“ITSM 优先级”配置项。
+  - 同步策略列表“通知路由”摘要会展示 ITSM 自动工单配置数量或本地工单兜底状态。
+
+验证：
+
+- 新增单元测试覆盖事件 payload 到 ITSM 派发计划的解析、显式关闭优先级、连接器路由触发和事件工单请求 payload 生成。
+- 更新同步策略通知路由测试，覆盖 ITSM 自动工单参数规范化和事件 payload 注入。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段完成平台内自动建单和通用 HTTP 提交路径，真实企业 ITSM 的字段映射、审批回调、SLA、双向状态同步和失败补偿仍待结合目标系统接口继续增强。
+
+### 16.194 2026-06-22 V1.2 P0 GitOps/IaC PR review 门禁第一阶段
+
+状态：已完成 GitOps/IaC 变更申请 PR review 和自动化流水线门禁第一阶段；自助申请不再只是普通 ITSM 工单，而是要求填写 PR/MR 地址，并把 Review 状态、Pipeline 状态和门禁结论写入云操作参数与工单载荷。
+
+已完成：
+
+- 后端自助申请增强：
+  - `gitops_iac_change` 申请会规范化并校验 GitOps/IaC 门禁参数。
+  - PR/MR 地址为必填，且仅接受 `http/https` URL，避免基础设施变更绕过 PR review 流程。
+  - 支持识别 `gitOpsRepository`、`gitOpsBranch`、`gitOpsTargetBranch`、`gitOpsChangePath`、`gitOpsPullRequestUrl`、`gitOpsReviewStatus`、`gitOpsPipelineUrl`、`gitOpsPipelineStatus`。
+  - Review 状态统一归一为 `pending/approved/changes_requested/rejected`。
+  - Pipeline 状态统一归一为 `pending/running/passed/failed/canceled`。
+  - 门禁结论写入 `params.gitOpsGate`，状态包括：
+    - `passed`：Review 已通过、Pipeline 已通过且有流水线地址。
+    - `waiting`：PR 已创建，但 Review 或 Pipeline 仍在等待。
+    - `blocked`：Review 要求修改、拒绝，或 Pipeline 失败/取消。
+  - `params.gateStatus` 写入顶层，便于后续列表筛选、统计、风险治理和通知路由复用。
+- 工单与审计闭环：
+  - GitOps/IaC 门禁信息随 `CloudOperation.Params` 进入 ITSM 工单请求 payload。
+  - 本地工单、外部 ITSM 提交、操作任务结果和操作审计均能保留同一份门禁证据。
+- 前端 ITSM 自助申请弹窗增强：
+  - 选择“GitOps/IaC 变更申请”时展示 IaC 仓库、变更分支、目标分支、PR/MR 地址、Review 状态、Pipeline 地址、Pipeline 状态和 IaC 变更路径。
+  - PR/MR 地址和 Review/Pipeline 状态在前端必填。
+  - 用户无需手写 JSON；专用字段会合并进补充参数 JSON 后提交，原补充参数仍可承载团队扩展字段。
+
+验证：
+
+- 新增单元测试覆盖 GitOps/IaC 门禁参数规范化、PR/MR 地址必填、Review/Pipeline 状态归一化和 `passed/waiting/blocked` 判定。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段由申请人或上游系统提交 PR/MR 与 Pipeline 状态；外部 callback 回写已在 16.214 完成第一阶段，尚未主动调用 GitLab/GitHub API 拉取实时 Review/Pipeline 状态。
+- 未新增 GitOps Repo 变更记录模型；后续可继续接入 GitLab/GitHub/Jenkins 主动拉取、GitOps repo diff 记录和更完整审批明细。
+
+### 16.195 2026-06-22 V1.2 P0 风险/漂移到 ITSM 自助整改联动第一阶段
+
+状态：已完成风险/漂移到 ITSM 自助整改工单联动第一阶段；风险合规页面不再只支持状态流转和例外处理，用户可以从风险列表或风险详情一键发起整改工单，平台会自动关联风险证据、资源、修复建议和处理状态。
+
+已完成：
+
+- ITSM 自助目录增强：
+  - 新增 `risk_remediation` 自助申请类型，作为“风险整改申请”服务项。
+  - `risk_remediation` 会写入 `riskRemediationRequired=true` 和默认 `targetState=risk_remediated_state`，便于后续自动化执行、SLA 统计和通知路由识别。
+  - 保留既有 `drift_remediation`，用于专门的 IaC 漂移修复申请。
+- 后端风险整改 API：
+  - 新增 `POST /api/v1/cloud/risks/:id/remediation-ticket`。
+  - 请求可选 `connectorId/title/description/priority/params/dryRun`；未指定连接器时复用 `CloudIaC 本地工单` 兜底。
+  - 自动根据风险 finding 生成整改标题、说明和优先级。
+  - 自动组装工单参数，包含 `riskId`、`riskSource`、`riskStatus`、`riskLevel`、`ruleKey`、`ruleName`、云厂商、账号、区域、资源类型、资源 ID、资产 ID、云账号 ID、项目/环境、修复建议和原始证据。
+  - 漂移类风险会额外标记 `driftRemediation=true` 和 `targetState=iac_desired_state`，便于后续联动漂移自动修复。
+  - 创建成功后将风险状态推进为 `in_progress`，并在风险 evidence 写入最近整改工单、操作任务、连接器、状态、发起人和时间。
+  - 写入 `risk.remediation_ticket_created` 事件，事件 payload 记录风险状态变化、工单 ID、操作 ID 和连接器。
+- 前端风险合规页面增强：
+  - 风险列表操作列新增“整改”入口。
+  - 风险详情抽屉新增“发起整改”按钮。
+  - 调用成功后刷新风险列表，风险状态进入“处理中”。
+- 事件展示增强：
+  - 通知事件类型和事件中心页面新增 `risk.remediation_ticket_created` 中文展示。
+
+验证：
+
+- 新增单元测试覆盖风险整改参数生成、漂移风险自动标记、整改标题/说明生成和 `risk_remediation` 自助申请参数规范化。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 根据 ITSM 工单状态同步风险整改状态已在 16.196 完成第一阶段；外部 ITSM callback endpoint 和签名校验已在 16.197 完成第一阶段，外部状态周期拉取 worker 已在 16.198 完成第一阶段。
+- 漂移风险已携带 `targetState=iac_desired_state`；工单解决后触发环境 drift 自动修复任务已在 16.199 完成第一阶段，风险/漂移详情页入口已在 16.201 完成第一阶段，任务审批策略配置已在 16.204 完成第一阶段，完整任务时间线已在 16.205 完成第一阶段，自动关联推荐已在 16.206 完成第一阶段。
+- 前端当前使用默认本地工单兜底；如需在风险页直接选择外部连接器，可继续补充连接器选择弹窗。
+
+### 16.196 2026-06-22 V1.2 P0 ITSM 状态同步风险整改第一阶段
+
+状态：已完成 ITSM 工单状态同步风险整改第一阶段；风险整改不再停留在“创建工单后进入处理中”，当 ITSM 工单状态被平台更新为处理中、已解决、已关闭、失败或取消时，会反向同步风险状态、风险证据和风险事件。
+
+已完成：
+
+- ITSM 状态更新链路增强：
+  - `UpdateCloudItsmTicketStatus` 在更新工单和记录 `itsm.ticket.updated` 事件后，识别关联云操作是否为 `risk_remediation`。
+  - 支持通过云操作 action、`requestType`、`riskRemediation` 或 `riskRemediationRequired` 判断风险整改工单。
+  - 支持从 `riskId`、`riskFindingId`、`cloudRiskId` 提取风险 ID。
+- 工单状态到风险状态映射：
+  - `submitted`、`in_progress` -> 风险 `in_progress`。
+  - `resolved`、`closed` -> 风险 `resolved`，并写入 `resolvedAt`。
+  - `failed`、`canceled` -> 风险重新打开为 `open`，便于继续处理。
+  - `pending` 不触发风险状态变化，避免刚创建本地工单时误改风险。
+- 风险 evidence 回写：
+  - 写入最近同步时间、工单 ID、工单状态、风险状态、操作任务 ID、外部 ID、外部单号、外部 URL、连接器 ID、状态备注和外部状态 payload。
+  - 对处理中/重新打开状态清空 `resolvedAt` 和过期例外时间，确保风险面板能反映真实待处理状态。
+- 风险事件增强：
+  - 新增 `risk.remediation_status_synced` 事件。
+  - 事件 payload 记录上一风险状态、同步后状态、工单 ID、工单状态、操作任务、外部单号和备注。
+  - 通知事件类型和事件中心页面新增中文展示“风险整改状态同步”。
+
+验证：
+
+- 新增单元测试覆盖 ITSM 工单状态到风险状态映射、风险整改操作识别、风险 ID 提取和 evidence 生成。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 外部 ITSM callback endpoint 和签名校验已在 16.197 完成第一阶段；周期状态拉取 worker 仍待继续。
+- 风险状态同步仅覆盖 `risk_remediation` 工单；普通云操作工单和事件工单暂不反向更新风险。
+
+### 16.197 2026-06-22 V1.2 P0 外部 ITSM 状态回调与签名校验第一阶段
+
+状态：已完成外部 ITSM 状态回调与签名校验第一阶段；外部 Jira、ServiceNow 或通用 HTTP 工单系统不需要登录态即可把工单状态回写到 CloudIaC，平台通过连接器级共享密钥校验 HMAC-SHA256 签名，并复用 16.196 的风险整改状态同步逻辑。
+
+已完成：
+
+- 新增公开回调接口：
+  - `POST /api/v1/cloud/itsm/callbacks/:connectorId/status`
+  - 路由位于登录鉴权之前，适配外部 ITSM 系统主动回调。
+  - 服务层通过 `connectorId` 反查连接器所属组织，并在验签通过后绑定 `OrgId` 执行状态更新。
+- 签名校验：
+  - 回调密钥从连接器 `metadata.callbackSecret` 读取，兼容 `statusCallbackSecret`、`incomingSecret`、`webhookSecret` 和 `signatureSecret`。
+  - 签名头使用 `X-CloudIaC-ITSM-Signature`，兼容平台 Webhook 既有 `X-CloudIaC-Signature`。
+  - 签名格式为 `sha256=<hmac_sha256>`，签名内容为原始 JSON 请求体；也兼容只传 hex 摘要。
+  - 未配置回调密钥、缺少签名或签名不匹配时返回权限错误。
+- 工单定位：
+  - 支持通过 CloudIaC 本地 `ticketId` 定位。
+  - 支持通过外部系统返回的 `externalId` 或 `externalKey` 定位。
+  - 限定在同一连接器和同一组织内查询，避免跨租户或跨连接器误更新。
+- 状态回写：
+  - 回调 payload 复用 `UpdateCloudItsmTicketStatus`，继续写入 `itsm.ticket.updated` 事件、`lastSyncedAt`、关闭时间、外部单号和响应 payload。
+  - 回调 payload 会追加 `callback.signatureVerified=true`、签名算法、签名版本、连接器 ID 和接收时间，便于审计。
+  - 风险整改工单会继续触发 `risk.remediation_status_synced`，把外部 ITSM 的 `resolved/closed/failed/canceled/in_progress` 等状态同步回风险视图。
+- 前端提示：
+  - ITSM 连接器编辑弹窗展示状态回调 URL、签名头和 `callbackSecret` 配置说明。
+  - 扩展配置 placeholder 补充 `callbackSecret` 示例，降低对接外部 ITSM 时的配置成本。
+
+验证：
+
+- 新增单元测试覆盖 ITSM callback 签名匹配、bare hex 签名兼容、无效签名拒绝、callback 转状态更新表单和 payload 审计信息保留。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 平台主动周期拉取外部 ITSM 状态的 worker 已在 16.198 完成第一阶段；失败补偿队列和 provider 专用字段映射仍待继续。
+- 回调密钥复用连接器 metadata，尚未提供独立密钥轮换 UI 和双密钥灰度期。
+
+### 16.198 2026-06-22 V1.2 P0 外部 ITSM 状态周期拉取第一阶段
+
+状态：已完成外部 ITSM 状态周期拉取第一阶段；除 16.197 的外部主动 callback 外，平台也可以按连接器配置主动查询外部工单状态，并复用已有工单状态更新、事件记录和风险整改状态同步链路。
+
+已完成：
+
+- 后端新增手动触发 API：
+  - `POST /api/v1/cloud/itsm/tickets/sync-due`
+  - 支持 `connectorId`、`force`、`limit` 参数。
+  - 只处理当前组织内启用且配置了状态拉取能力的 ITSM 连接器。
+- 后端新增后台 worker：
+  - 新增 `StartCloudItsmStatusSyncWorker`，随 portal 后台 worker 一起启动。
+  - 使用组织级 MySQL lock `cloudiac:itsm_status_sync:<orgId>`，避免多实例重复拉取。
+  - 默认每 5 分钟扫描一次，单连接器默认最多同步 50 个待处理工单，单次手动触发最多 200 个。
+- 连接器 metadata 配置：
+  - `statusSyncEnabled=true`：显式开启周期拉取。
+  - `statusFetchUrl/statusQueryUrl/statusUrl/getTicketUrl`：配置完整状态查询 URL 模板。
+  - `statusFetchPath/statusQueryPath/statusPath/getTicketPath`：配置基于 `baseUrl` 的状态查询路径模板。
+  - 模板支持 `{ticketId}`、`{externalId}`、`{externalKey}`、`{key}`、`{number}`。
+  - `statusSyncIntervalSeconds`：控制单工单最小拉取间隔，默认 300 秒，范围 60 到 86400 秒。
+- Provider 默认路径：
+  - Jira：显式开启 `statusSyncEnabled=true` 且有 `externalKey` 时，默认查询 `/rest/api/2/issue/{externalKey}`。
+  - ServiceNow：显式开启 `statusSyncEnabled=true` 且有 `externalId` 时，默认查询 `/api/now/table/<ticketType>/{externalId}`。
+  - 通用 HTTP：要求显式配置状态查询 URL 或路径，避免误请求页面型 `baseUrl`。
+- 外部状态归一：
+  - 支持 metadata `statusMap` 自定义外部状态到平台状态的映射。
+  - 默认识别 `open/new/todo` -> `submitted`，`in progress/active/assigned/on hold` -> `in_progress`，`done/resolved/completed/fixed` -> `resolved`，`closed` -> `closed`，`canceled/rejected/aborted` -> `canceled`，`failed/error` -> `failed`。
+  - 兼容 Jira `fields.status.name`、ServiceNow `result.state/result.incident_state` 和通用 `status/state/ticket.status/data.status`。
+- 状态回写闭环：
+  - 周期拉取结果复用 `UpdateCloudItsmTicketStatus`，继续写入 `itsm.ticket.updated`、`lastSyncedAt`、关闭时间、响应 payload 和风险整改同步事件。
+  - 响应 payload 追加 `statusSync.source=poll`、同步时间和远端状态，便于审计。
+- 前端增强：
+  - ITSM 工单页新增“同步外部状态”按钮，可手动触发当前组织的外部状态拉取。
+  - 连接器编辑弹窗补充 `statusSyncEnabled`、`statusFetchPath/statusFetchUrl` 配置提示和 placeholder 示例。
+
+验证：
+
+- 新增单元测试覆盖状态查询 URL 模板替换、Jira 默认状态查询路径、metadata `statusMap`、常见外部状态归一、嵌套 JSON 状态提取。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 本阶段使用通用 HTTP GET 拉取外部状态；Jira/ServiceNow 更完整字段映射、分页批量查询、失败补偿队列、重试退避和状态同步审计报表仍待继续。
+- 未新增独立 ITSM 同步任务表，第一阶段结果通过工单 `responsePayload`、事件和风险 evidence 保留。
+
+### 16.199 2026-06-22 V1.2 P0 漂移风险整改触发自动修复第一阶段
+
+状态：已完成漂移风险整改触发自动修复第一阶段；风险/漂移 ITSM 工单被外部回调、周期拉取或平台手动更新为 `resolved/closed` 后，平台会识别漂移类风险并尝试复用环境现有漂移任务克隆逻辑创建 drift apply 自动修复任务。
+
+已完成：
+
+- 触发入口：
+  - 复用 `UpdateCloudItsmTicketStatus` 和 16.196 的风险整改状态同步链路。
+  - 仅当风险整改工单同步后的风险状态为 `resolved` 时触发自动修复检查，避免处理中或失败状态误创建任务。
+  - 支持通过风险 `source=drift`、`ruleKey=terraform_drift_detected`、工单参数 `driftRemediation=true`、`requestType=drift_remediation` 或 `targetState=iac_desired_state` 识别漂移整改。
+- 环境定位和安全校验：
+  - envId 按风险 finding、云操作、工单参数依次兜底。
+  - 要求环境属于当前组织、状态为 `active`、未锁定、已开启 `openCronDrift` 且开启 `autoRepairDrift`。
+  - 要求环境存在 `lastTaskId`，并且当前没有 pending/running/approving 的 drift task。
+- 自动修复任务创建：
+  - 复用 `services.GetTaskById` 和 `services.CloneNewDriftTask`。
+  - 因环境开启 `autoRepairDrift`，克隆任务会自动使用 `TaskTypeApply` 和 `TaskSourceDriftApply`。
+  - 保留既有任务参数、模板、Runner、变量和审批策略，不新增旁路执行器。
+- 风险证据和事件：
+  - 风险 evidence 写入 `driftAutoRepairCheckedAt`、`driftAutoRepairSource`、`driftAutoRepairEnvId`、`driftAutoRepairTriggered`、`driftAutoRepairTaskId`、`driftAutoRepairSkippedReason` 或错误原因。
+  - `risk.remediation_status_synced` 事件 payload 增加 `driftAutoRepair` 明细。
+  - 新增 `risk.drift_auto_repair_triggered` 事件，事件中心和通知事件类型新增中文展示“漂移自动修复任务触发”。
+- 失败处理：
+  - 自动修复触发按 best-effort 执行；环境未满足条件、已有漂移任务、源任务缺失或克隆失败不会阻断 ITSM 状态回写。
+  - 所有跳过和失败原因都会沉淀到风险 evidence，便于后续审计和人工处理。
+
+验证：
+
+- 新增单元测试覆盖漂移整改识别、envId 优先级、自动修复 evidence 和触发标记解析。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段复用环境级 `openCronDrift/autoRepairDrift` 策略，不提供工单级覆盖开关。
+- 自动修复任务仍沿用现有 drift apply 执行与审批能力；任务执行结果回写风险已在 16.200 完成第一阶段，回滚策略已在 16.203 完成第一阶段，详情页自动关联推荐已在 16.206 完成第一阶段。
+
+### 16.200 2026-06-22 V1.2 P0 漂移自动修复任务结果回写风险第一阶段
+
+状态：已完成漂移自动修复任务结果回写风险第一阶段；16.199 创建的 drift apply 自动修复任务结束后，任务状态会回写到关联风险 finding 的 evidence 和事件中心，失败/取消/驳回会重新打开风险，避免 ITSM 工单已解决但 IaC 自动修复实际失败时被误判为闭环完成。
+
+已完成：
+
+- 任务结束 hook：
+  - 在 `TaskManager.processTaskDone` 的 `ChangeTaskStatusWithStep` 之后追加 best-effort 回写。
+  - 仅处理 `isDriftTask=true`、`type=apply`、`source=driftApply` 且任务已进入终态的任务。
+  - 不改变普通部署、普通 drift plan、手工 apply、webhook apply 和自动部署任务的状态流。
+- 风险定位：
+  - 通过风险 evidence 中的 `driftAutoRepairTaskId` 反查 16.199 创建的自动修复任务。
+  - 限定同一组织，避免跨租户任务 ID 误关联。
+- 状态映射：
+  - drift apply `complete` -> 风险保持/确认 `resolved`。
+  - drift apply `failed/aborted/rejected` -> 风险重新打开为 `open`，并清空 `resolvedAt/suppressedUntil`。
+  - 非终态不回写，避免运行中任务误改风险状态。
+- 证据回写：
+  - 写入 `driftAutoRepairTaskLastSyncedAt`、`driftAutoRepairTaskStatus`、`driftAutoRepairTaskMessage`、`driftAutoRepairTaskRiskStatus`、`driftAutoRepairTaskStartedAt`、`driftAutoRepairTaskEndedAt`、`driftAutoRepairTaskCompleted` 和 `driftAutoRepairTaskFailed`。
+  - 保留 16.199 的 `driftAutoRepairTaskId`、触发时间、触发来源和 skip/error 信息。
+- 事件中心：
+  - 新增 `risk.drift_auto_repair_result_synced` 事件。
+  - 事件 payload 记录上一风险状态、同步后状态、任务 ID、任务状态、任务类型、任务来源、任务消息和环境 ID。
+  - 事件中心和通知事件类型新增中文展示“漂移自动修复结果同步”。
+
+验证：
+
+- 新增单元测试覆盖 drift auto repair 任务识别、任务状态到风险状态映射、任务结果 evidence 生成和失败标记。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段按任务 ID 回写最近一次自动修复结果，不处理一个风险并发触发多次修复任务时的历史结果列表。
+- 风险详情页自动修复入口已在 16.201 完成第一阶段，失败后重试审批已在 16.202 完成第一阶段，回滚策略记录已在 16.203 完成第一阶段，审批策略配置已在 16.204 完成第一阶段，完整任务时间线已在 16.205 完成第一阶段，自动关联推荐已在 16.206 完成第一阶段。
+
+### 16.201 2026-06-22 V1.2 P0 风险详情页漂移自动修复入口第一阶段
+
+状态：已完成风险详情页漂移自动修复入口第一阶段；风险详情抽屉不再只展示原始 evidence JSON，而是把 16.199/16.200 写入的漂移自动修复触发、跳过、任务执行和结果同步信息结构化展示，并提供环境和任务详情跳转。
+
+已完成：
+
+- 风险详情展示：
+  - 新增“漂移自动修复”详情区。
+  - 当 evidence 含 `driftAutoRepair*` 字段时自动展示，不影响普通云配置、CMDB、策略风险。
+  - 展示触发状态、触发检查时间、环境 ID、环境状态、漂移检测开关、自动修复开关、源任务、修复任务、任务状态、风险同步状态、任务开始/结束时间、结果同步时间和任务消息。
+- 跳转入口：
+  - 有 `projectId/envId` 时，环境 ID 可跳转到环境详情。
+  - 有 `driftAutoRepairTaskId` 时，修复任务可跳转到环境任务详情。
+  - 有 `driftAutoRepairSourceTaskId` 时，源任务可跳转到任务详情。
+- 审计提示：
+  - 触发失败或跳过时，将 `driftAutoRepairSkippedReason` 映射为中文原因。
+  - `driftAutoRepairError` 以错误提示展示。
+  - `driftAutoRepairTaskFailed=true` 时展示自动修复任务失败提示。
+  - `driftAutoRepairTaskCompleted=true` 时展示自动修复任务完成提示。
+
+验证：
+
+- 本阶段为前端详情入口增强，不新增后端接口；数据来源为风险详情已有 evidence。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段展示最近一次自动修复任务，不提供多次修复历史时间线。
+- 失败后重试审批已在 16.202 完成第一阶段，回滚策略记录已在 16.203 完成第一阶段，自动关联推荐已在 16.206 完成第一阶段。
+
+### 16.202 2026-06-22 V1.2 P0 漂移自动修复失败后重试审批第一阶段
+
+状态：已完成漂移自动修复失败后重试审批第一阶段；当 16.199/16.200 触发的 drift apply 自动修复任务失败、取消或被驳回后，平台会在风险回写链路中创建一个新的 drift apply 重试任务，并强制 `AutoApprove=false`，让重试进入既有 Terraform apply 审批流程。
+
+已完成：
+
+- 后端任务克隆能力：
+  - `CloneNewDriftTask` 保持原有行为，继续按环境 `AutoApproval` 决定自动审批。
+  - 新增可指定自动审批策略的漂移任务克隆入口，用于失败后重试审批场景。
+- 风险回写链路增强：
+  - `SyncCloudRiskDriftAutoRepairTaskResult` 在自动修复任务失败、取消或驳回时检查是否需要创建重试审批任务。
+  - 默认仅自动创建 1 次重试审批任务，最大支持 evidence 配置到 3 次，避免失败任务无限循环重试。
+  - 创建重试前会校验环境存在、状态活跃、未锁定、已开启漂移检测、已开启自动修复且当前没有 pending/running/approving 的漂移任务。
+  - 重试任务复用原 drift apply 任务的模板、变量、Runner、代码版本和环境配置，但强制关闭自动审批，使 apply/destroy 步骤进入既有审批流。
+- 风险 evidence 增强：
+  - 写入 `driftAutoRepairRetryApprovalRequired`、`driftAutoRepairRetryApprovalRequested`、`driftAutoRepairRetryTaskId`、`driftAutoRepairRetryFromTaskId`、`driftAutoRepairRetryAttempt`、`driftAutoRepairRetryMaxAttempts`、`driftAutoRepairRetrySkippedReason`。
+  - 保留失败任务快照 `driftAutoRepairLastFailedTaskId`、`driftAutoRepairLastFailedTaskStatus`、`driftAutoRepairLastFailedTaskMessage`，同时把当前 `driftAutoRepairTaskId` 指向待审批重试任务，便于后续结果继续回写同一风险。
+- 事件中心：
+  - 新增 `risk.drift_auto_repair_retry_approval_requested` 事件，事件中心和通知事件类型新增中文展示“漂移自动修复重试审批”。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增失败任务、重试任务、重试审批、重试次数和重试检查时间。
+  - 已创建重试审批时展示“待审批”提示，并可跳转到重试任务详情。
+  - 未创建重试时展示中文跳过原因，例如达到重试上限、已有重试任务、环境锁定或自动修复关闭。
+
+验证：
+
+- 新增单元测试覆盖失败/取消/驳回状态需要重试审批、重试次数默认值和上限、重试审批 evidence 关键字段。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段创建的是待审批 drift apply 重试任务，审批策略配置已在 16.204 完成第一阶段，审批通知/SLA 升级已在 16.207 完成第一阶段；团队/项目策略模板仍待后续增强。
+- 本阶段只做失败后重试审批；失败后的回滚策略记录和前端提示已在 16.203 完成第一阶段。
+
+### 16.203 2026-06-22 V1.2 P0 漂移自动修复回滚策略记录第一阶段
+
+状态：已完成漂移自动修复回滚策略记录第一阶段；平台不再把 drift apply 失败只表现为普通任务失败，而是在风险 evidence、事件中心和风险详情中明确记录回滚评审策略、疑似部分变更、安全级别和下一步动作，避免自动修复失败后无人判断是否需要回退。
+
+已完成：
+
+- 后端回滚策略评估：
+  - `cloudItsmDriftAutoRepairTaskResultEvidence` 在写入任务结果时同步生成 `driftAutoRepairRollback*` evidence。
+  - 自动修复完成态写入 `driftAutoRepairRollbackRequired=false` 和 `no_platform_rollback_required`，说明已按 IaC 期望态完成，不需要平台自动回滚。
+  - 自动修复失败、取消或驳回时写入 `driftAutoRepairRollbackRequired=true`、`gitops_iac_change_or_manual_review_required` 和人工评审下一步动作。
+  - 当 Terraform 结果里存在 added/changed/destroyed 计数时，标记 `driftAutoRepairRollbackPartialApplySuspected=true`，并将安全级别提升为 `high`。
+- 风险 evidence 增强：
+  - 写入 `driftAutoRepairRollbackEvaluatedAt`、`driftAutoRepairRollbackStrategy`、`driftAutoRepairRollbackSafetyLevel`、`driftAutoRepairRollbackHint`、`driftAutoRepairRollbackNextAction`、`driftAutoRepairRollbackRequiresApproval`。
+  - 写入 `driftAutoRepairRollbackPlanChanges` 和 `driftAutoRepairRollbackApplyChanges`，保留 plan/apply 的资源变更计数和成本摘要。
+- 事件中心：
+  - 自动修复失败且需要回滚评审时新增 `risk.drift_auto_repair_rollback_strategy_recorded` 事件。
+  - 事件中心和通知事件类型新增中文展示“漂移自动修复回滚策略记录”。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增回滚策略、回滚安全级别、是否需要回滚评审、是否疑似部分变更、回滚评估时间、是否需要审批和回滚下一步动作。
+  - 需要回滚评审时展示告警，提示先核对云端资源、Terraform state 和 IaC 代码，再决定审批重试或通过 GitOps/IaC PR 回退。
+
+验证：
+
+- 新增单元测试覆盖完成态无需回滚、失败且疑似部分 apply 时需要高风险回滚评审、资源变更摘要和审批标记。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段是“回滚策略记录和提示”，不会自动执行反向 Terraform apply，也不会绕过 GitOps/IaC PR review。
+- 真正的回滚动作仍建议通过 GitOps/IaC 变更申请、PR review、流水线和既有任务审批执行；按团队/项目定制审批策略已在 16.204 完成第一阶段，审批通知/SLA 升级已在 16.207 完成第一阶段。
+
+### 16.204 2026-06-22 V1.2 P0 漂移自动修复审批策略配置第一阶段
+
+状态：已完成漂移自动修复审批策略配置第一阶段；平台不再只用固定环境自动审批或失败重试强制审批，而是在环境扩展配置中支持漂移自动修复专用审批策略，并把策略判定结果写入风险 evidence 和风险详情页，便于审计“为什么自动审批/为什么需要审批”。
+
+已完成：
+
+- 后端审批策略解析：
+  - 新增 `cloudItsmDriftAutoRepairApprovalPolicyForEnv`，从 `env.extraData.driftAutoRepairApprovalPolicy` 读取漂移自动修复审批策略。
+  - 支持 `mode=inherit_env`、`require_approval`、`auto_approve`、`retry_require_approval`。
+  - 支持 `autoApprove`、`retryAutoApprove`、`requireApproval`、`retryRequireApproval` 作为覆盖项，支持 `approverRoles` 记录审批角色。
+  - 默认策略保持兼容：首次自动修复继承环境 `AutoApproval`；失败后重试默认仍需要审批，避免失败任务直接循环自动 apply。
+  - 无效策略模式按 fail-closed 处理，强制进入审批，避免配置拼写错误导致绕过人工检查。
+- 任务创建链路：
+  - 初次漂移自动修复改为按策略调用 `CloneNewDriftTaskWithAutoApprove`，而不是只继承环境 `AutoApproval`。
+  - 失败后重试改为按策略决定是否自动审批；默认行为仍是创建待审批重试任务。
+  - 写入 `driftAutoRepairTaskAutoApprove`，保留任务实际自动审批状态。
+- 风险 evidence 增强：
+  - 写入 `driftAutoRepairApprovalPolicyContext`、`driftAutoRepairApprovalPolicySource`、`driftAutoRepairApprovalPolicyMode`。
+  - 写入 `driftAutoRepairApprovalAutoApprove`、`driftAutoRepairApprovalRequired`、`driftAutoRepairApprovalReason`、`driftAutoRepairApprovalRoles`。
+  - 失败重试 evidence 根据策略同步 `driftAutoRepairRetryApprovalRequired`、`driftAutoRepairRetryApprovalStatus` 和 `driftAutoRepairTaskRetryPendingApproval`。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增审批策略、策略来源、自动审批、需要审批、审批角色和策略原因。
+  - 中文展示默认环境审批、默认重试保护、环境扩展策略、强制审批、自动审批和失败重试需审批等策略含义。
+
+验证：
+
+- 新增单元测试覆盖默认策略、环境扩展强制审批、审批角色 evidence、失败重试自动审批覆盖、无效策略 fail-closed。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段复用 `env.extraData` 承载策略，不新增独立审批策略表，也不改变既有 Terraform apply 审批步骤。
+- 策略只决定漂移自动修复任务 `AutoApprove`；审批通知/SLA 升级已在 16.207 完成第一阶段，团队/项目维度策略模板仍待后续补齐。
+
+### 16.205 2026-06-22 V1.2 P0 漂移自动修复完整任务时间线第一阶段
+
+状态：已完成漂移自动修复完整任务时间线第一阶段；风险详情不再只依赖散落的 `driftAutoRepair*` 字段判断处理过程，而是在风险 evidence 中生成统一的 `driftAutoRepairTimeline`，前端按阶段展示触发检查、源任务定位、审批策略判定、任务创建、任务执行、结果同步、失败重试和回滚评估。
+
+已完成：
+
+- 后端时间线生成：
+  - 新增 `cloudItsmDriftAutoRepairTimeline` 和 `cloudItsmDriftAutoRepairAppendTimeline`，从现有 risk evidence 派生结构化时间线。
+  - ITSM 工单解决触发自动修复时，自动写入触发检查、源任务定位、审批策略判定和任务创建节点。
+  - 自动修复任务结果回写风险时，自动补齐任务结束、风险结果同步、失败重试检查/重试任务创建和回滚策略评估节点。
+  - 时间线节点包含 `stage`、`title`、`status`、`time`、`taskId`、`reason`、`attempt`、`maxAttempts`、`safetyLevel` 等审计字段。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增“处理时间线”。
+  - 时间线按节点状态显示已触发、已跳过、自动审批、需要审批、执行中、完成、失败、待审批、需回滚评审等状态标签。
+  - 节点附带任务 ID、风险状态、审批策略、跳过/审批原因、重试次数、回滚安全级别和任务消息。
+- 兼容性：
+  - 第一阶段不新增数据库表；时间线由 evidence 派生并持久化在风险 finding 中。
+  - 旧 evidence 即使没有 `driftAutoRepairTimeline` 也仍可通过原有明细字段展示。
+
+验证：
+
+- 新增单元测试覆盖完成态自动修复时间线、失败后重试待审批时间线和需要回滚评审节点。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段为风险详情内的处理时间线，不提供跨风险/跨任务的全局时间线检索。
+- 自动关联推荐已在 16.206 完成第一阶段，审批通知/SLA 升级已在 16.207 完成第一阶段，机器人处理标签已在 16.208 完成第一阶段，推荐采纳确认流已在 16.209 完成第一阶段，自助目录权限策略和 SLA 趋势已在 16.210 完成第一阶段。
+
+### 16.206 2026-06-22 V1.2 P0 漂移自动修复自动关联推荐第一阶段
+
+状态：已完成漂移自动修复自动关联推荐第一阶段；风险详情不再只展示任务和时间线，而是根据自动修复当前 evidence 派生下一步推荐动作，帮助运维/业务在跳过、待审批、失败、回滚评审和完成场景下直接定位环境、任务、审批或 GitOps/IaC PR 动作。
+
+已完成：
+
+- 后端推荐生成：
+  - 新增 `driftAutoRepairRecommendations` evidence，由 `cloudItsmDriftAutoRepairRecommendations` 从当前 `driftAutoRepair*` evidence 自动派生。
+  - 自动修复跳过时，按原因推荐开启漂移检测、开启自动修复、解除环境锁定、恢复环境活跃状态、先执行一次部署任务或检查已有漂移任务。
+  - 自动修复任务创建后，推荐查看 drift apply 自动修复任务。
+  - 审批策略要求人工审批时，推荐审批自动修复任务或失败后的重试任务。
+  - 自动修复失败时，推荐查看失败任务日志和 Terraform 输出。
+  - 回滚策略要求人工评审时，推荐回滚评审，并提示通过 GitOps/IaC PR 提交修复或回滚变更。
+  - 自动修复完成且无需回滚时，推荐确认风险关闭并观察下一次漂移检测结果。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增“关联推荐”。
+  - 推荐项展示动作标题、优先级、目标链接和原因。
+  - 环境类目标跳转环境详情，任务类目标跳转对应环境任务详情。
+  - 支持严重/高/中/低优先级展示，便于优先处理待审批、失败和回滚评审。
+- 兼容性：
+  - 第一阶段不新增推荐表，不改变审批和任务执行流程；推荐内容由 evidence 派生并持久化。
+  - 旧风险没有 `driftAutoRepairRecommendations` 时仍按时间线和明细字段展示。
+
+验证：
+
+- 新增单元测试覆盖自动修复跳过时的配置推荐、失败重试审批推荐、回滚评审推荐和 GitOps/IaC PR 推荐。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 推荐项展示和跳转已在 16.206 完成第一阶段；“一键确认采纳推荐”的闭环记录已在 16.209 完成第一阶段。
+- 审批通知/SLA 升级已在 16.207 完成第一阶段，机器人处理标签已在 16.208 完成第一阶段，推荐采纳确认流和采纳率统计已在 16.209 完成第一阶段，自助目录权限策略和 SLA 趋势已在 16.210 完成第一阶段。
+
+### 16.207 2026-06-22 V1.2 P0 漂移自动修复审批通知/SLA 升级第一阶段
+
+状态：已完成漂移自动修复审批通知/SLA 升级第一阶段；自动修复任务进入人工审批、失败重试审批或回滚评审时，平台会在风险 evidence 中写入 SLA 状态，并通过风险事件复用现有事件中心、通知策略、Webhook 和 ITSM 自动派单链路进行通知或升级。
+
+已完成：
+
+- 后端 SLA 策略：
+  - 新增 `driftAutoRepairSla*` evidence，记录 SLA 策略来源、审批截止分钟、回滚评审截止分钟、即将超时阈值、通知路由、负责人、指派人和是否超时自动创建 ITSM 工单。
+  - 默认自动修复审批 SLA 为 4 小时，回滚评审 SLA 为 24 小时，即将超时阈值为 30 分钟。
+  - 支持从环境 `extraData.driftAutoRepairSlaPolicy` / `driftAutoRepairSLA` / `driftSlaPolicy` 覆盖 SLA 分钟数、通知路由、负责人、指派人和超时自动派单开关。
+- SLA 状态推导：
+  - 自动修复任务需要人工审批时，生成 `approve_repair` SLA 动作。
+  - 自动修复失败后创建重试审批任务时，生成 `approve_retry` SLA 动作。
+  - 自动修复失败并需要回滚评审时，生成 `review_rollback` SLA 动作。
+  - 计算 `driftAutoRepairSlaStartedAt`、`driftAutoRepairSlaDueAt`、`driftAutoRepairSlaStatus`、`driftAutoRepairSlaMinutesRemaining` 和 `driftAutoRepairSlaEscalationRequired`。
+  - SLA 阶段写入 `driftAutoRepairTimeline`，与触发检查、审批策略、任务执行、重试和回滚评估一起展示。
+- 通知和升级事件：
+  - 新增 `risk.drift_auto_repair_approval_notification_requested`，用于审批/评审未超时但需要通知负责人处理的场景。
+  - 新增 `risk.drift_auto_repair_sla_escalated`，用于 SLA 已超时并需要升级处理的场景。
+  - 事件 payload 写入 `notificationRoutes`、`notificationOwner`、`notificationAssignees` 和 `notificationEscalationReason`，复用现有通知候选路由能力。
+  - 环境策略开启 `autoTicket` 时，SLA 超时事件会带上 `itsmAutoTicket`、标题、描述和优先级，复用现有事件自动创建 ITSM 工单能力。
+- 前端风险详情：
+  - “漂移自动修复”详情区新增审批/评审 SLA 提示。
+  - 展示 SLA 动作、状态、开始时间、截止时间、剩余分钟、是否升级、通知路由和负责人。
+  - SLA 超时时展示错误提示；即将超时或进行中时展示通知提示。
+- 事件中文展示：
+  - 事件中心和通知事件类型新增“漂移自动修复审批通知”“漂移自动修复 SLA 升级”。
+
+验证：
+
+- 新增单元测试覆盖环境 SLA 策略覆盖、审批即将超时、回滚评审 SLA 超时升级、通知路由和超时自动派单 payload。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段在自动修复触发和任务结果回写时计算 SLA；尚未新增独立后台扫描器对长期未处理 SLA 做周期性二次升级。
+- 审批通知复用平台事件/通知/Webhook/ITSM 派单链路；真实邮件、钉钉、企业微信、Slack、外部 ITSM 通道仍需按企业配置做端到端联调。
+- 机器人处理标签已在 16.208 完成第一阶段，推荐采纳确认流已在 16.209 完成第一阶段，自助目录权限策略和 SLA 趋势统计已在 16.210 完成第一阶段，项目/申请类型维度目标趋势已在 16.211 完成第一阶段；组织架构团队维度仍待继续增强。
+
+### 16.208 2026-06-22 V1.2 P0 ITSM 机器人处理标签第一阶段
+
+状态：已完成 ITSM 机器人处理标签第一阶段；自助运维工单和云事件自动派单不再只依赖“提交痕迹”估算自动化处理，而是在工单请求载荷、响应和前端台账中显式记录平台机器人处理证据。
+
+已完成：
+
+- 后端工单载荷增强：
+  - 自助运维申请在创建 `CloudOperation` 前写入 `robotProcessed`、`robotProcessor`、`robotProcessingTags`、`robotAutomationMode` 和 `robotTicketChannel`。
+  - GitOps/IaC 变更、漂移修复、风险整改、权限申请会自动打上对应机器人处理标签。
+  - 本地待提交工单标记 `local_ticket`，外部 ITSM 提交标记 `external_itsm`。
+  - 云事件自动派单写入 `event_auto_ticket` 标签，并保留派单原因、失败分类和云服务信息。
+- 响应和指标：
+  - `CloudItsmTicketResp` 返回机器人处理状态、处理器、标签、自动化模式和处理通道。
+  - ITSM 概览新增 `robotProcessedTicketTotal` 与 `robotProcessingRate`。
+  - “工单自动化处理率”统计优先合并 `request_payload.robotProcessed=true`，兼容历史有提交痕迹的工单。
+- 前端 ITSM 页面：
+  - 工单列表新增“机器人处理”列。
+  - 工单详情展示机器人处理状态、处理器、自动化模式、处理通道和处理标签。
+  - 目标卡片补充机器人处理单数，便于跟踪公司要求的自动化处理率目标。
+
+验证：
+
+- 新增单元测试覆盖自助运维 GitOps/IaC 工单机器人标签、事件自动建单机器人标签和响应字段解析。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段提供平台内机器人处理标签和统计口径；项目/申请类型维度目标趋势已在 16.211 完成第一阶段，外部 ITSM 专用字段映射已在 16.212 完成第一阶段，失败补偿队列已在 16.213 完成第一阶段，组织架构团队维度仍待继续增强。
+- 推荐采纳确认流和推荐采纳率统计已在 16.209 完成第一阶段，自助目录权限策略和组织级 SLA 趋势统计已在 16.210 完成第一阶段，项目/申请类型维度目标趋势已在 16.211 完成第一阶段，外部 ITSM 专用字段映射已在 16.212 完成第一阶段，失败补偿队列已在 16.213 完成第一阶段；组织架构团队维度仍待继续增强。
+
+### 16.209 2026-06-22 V1.2 P0 漂移自动修复推荐采纳确认流第一阶段
+
+状态：已完成漂移自动修复推荐采纳确认流第一阶段；风险详情中的自动修复关联推荐不再只是静态提示，用户可以确认已采纳某条推荐，平台会把采纳记录写回风险 evidence 并生成风险事件。
+
+已完成：
+
+- 后端推荐采纳 API：
+  - 新增 `POST /api/v1/cloud/risks/:id/recommendations/adopt`。
+  - 请求参数支持 `action`、`targetType`、`targetId` 和 `comment`。
+  - 后端会校验推荐动作必须存在于当前风险 `driftAutoRepairRecommendations`，避免写入无效动作。
+- Evidence 闭环：
+  - 推荐项写入 `adopted`、`adoptedAt`、`adoptedBy` 和 `adoptionComment`。
+  - 采纳历史追加到 `driftAutoRepairRecommendationAdoptions`。
+  - 写入 `driftAutoRepairLastRecommendationAdoption`、`driftAutoRepairRecommendationTotal`、`driftAutoRepairRecommendationAdoptedTotal`、`driftAutoRepairRecommendationAdoptionRate` 和是否全部采纳。
+  - 采纳动作生成 `risk.recommendation_adopted` 风险事件，便于事件中心、通知和审计追踪。
+- 前端风险详情：
+  - “关联推荐”每条推荐新增“确认采纳”按钮。
+  - 已采纳推荐展示采纳状态和采纳时间。
+  - 点击确认后刷新风险列表和详情，采纳记录即时可见。
+
+验证：
+
+- 新增单元测试覆盖推荐采纳 evidence 写入、采纳率计算、推荐项打标、采纳备注和未知推荐动作拒绝。
+- 本阶段不启动 compose 服务，遵守已清理部署数据约束；验证以单测、静态检查和镜像构建为主。
+
+验证限制：
+
+- 第一阶段只记录“已采纳”确认，不自动执行环境配置、审批、GitOps PR 或风险关闭动作。
+- 采纳统计先落在单个风险 evidence 中；跨团队/项目的推荐采纳趋势报表仍待后续增强。
+
+### 16.210 2026-06-22 V1.2 P0 ITSM 自助目录权限策略/SLA 趋势第一阶段
+
+状态：已完成 ITSM 自助目录权限策略和 SLA 趋势第一阶段；自助运维目录不再只是服务项列表，而是为每个目录项返回平台内置权限策略、适用范围和 SLA 目标，并在工单载荷与概览页中形成可审计的组织级趋势口径。
+
+已完成：
+
+- 后端目录策略增强：
+  - `CloudItsmCatalogItemResp` 新增 `policyKey`、`policyName`、`policyDescription`、`requiredRoles`、`allowedScopes`、`slaMinutes` 和 `slaDescription`。
+  - 内置自助申请提供专门策略：权限申请、GitOps/IaC 变更、风险整改、漂移修复分别绑定不同角色、范围和 SLA。
+  - 云操作目录按生命周期、扩缩容、配置变更、备份和审批型操作自动补齐默认策略。
+- 工单载荷增强：
+  - 自助申请创建时把 `selfServicePolicy` 和 `sla` 快照写入 operation params。
+  - ITSM 请求载荷顶层同步返回 `selfServicePolicy` 和 `sla`，便于外部 ITSM、审计和后续报表读取同一份策略证据。
+- SLA 趋势统计：
+  - ITSM overview 新增 `selfServicePolicyTotal`、`selfServicePolicyCovered`、`selfServicePolicyRate`。
+  - 新增 `selfServiceSlaTicketTotal`、`selfServiceSlaMetTotal`、`selfServiceSlaBreached`、`selfServiceSlaMetRate` 和 `selfServiceSlaTarget`。
+  - 返回近 7 天组织级 `slaTrend`，按工单创建日期统计 SLA 工单数、达成数、超时数和达成率。
+  - 已解决/已关闭且未超时的工单计为达成；终态失败/取消或超时仍未完成的工单计为超时；仍在 SLA 窗口内的处理中工单计入 SLA 工单但不提前判定达成或超时。
+- 前端 ITSM 页面：
+  - 顶部新增“自助 SLA 达成”目标卡片，展示目标、达成数、SLA 工单数和超时数。
+  - 自助目录新增“权限策略”“范围”“SLA”列。
+  - 自助目录页签新增近 7 天自助 SLA 趋势表。
+
+验证：
+
+- 新增单元测试覆盖自助目录策略返回、策略/SLA 写入工单载荷和 SLA 达成/超时/处理中判定。
+- 使用 Docker Go 镜像完成 `gofmt`。
+- 容器化目标单元测试通过：`TestCloudItsmCatalogPolicyForSelfService`、`TestCloudItsmSelfServicePolicyPayload`、`TestCloudItsmTicketSlaResult`、既有 ITSM 机器人处理和事件建单测试。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 成功；前端仅存在既有 webpack bundle size warning。
+- 验证后已执行 `docker compose down -v --remove-orphans`，部署数据目录保持清理状态。
+
+验证限制：
+
+- 第一阶段提供平台内置权限策略和组织级 7 日 SLA 趋势；策略尚未做成可配置数据表。
+- 项目和申请类型维度趋势已在 16.211 完成第一阶段；真实组织架构团队、环境维度和更细筛选仍待继续增强。
+- 外部 ITSM 专用字段映射和失败补偿队列仍需继续增强。
+
+### 16.211 2026-06-22 V1.2 P0 ITSM 项目/申请类型目标趋势第一阶段
+
+状态：已完成 ITSM 项目/申请类型目标趋势第一阶段；自助运维目标不再只看组织总览，而是能按项目和申请类型拆分近 30 天的自助占比、自动化处理率和 SLA 达成率，支撑业务团队自助化 80% 与工单自动化 60% 的落地跟踪。
+
+已完成：
+
+- 后端 overview 维度趋势：
+  - `CloudItsmOverviewResp` 新增 `projectTrends` 和 `requestTypeTrends`。
+  - 新增 `CloudItsmDimensionMetricResp`，返回维度类型、维度 ID、维度名称、窗口天数、工单总数、自助工单数、自动化工单数、机器人处理工单数、SLA 工单数、达成数、超时数和目标值。
+  - 近 30 天工单按 `projectId` 归组，未关联项目归入“未关联项目”。
+  - 近 30 天工单按申请类型归组，优先从请求载荷、operation action、params、robot requestType 提取并映射自助目录名称。
+  - 自助占比按 `selfServiceTicketTotal / ticketTotal` 计算。
+  - 自动化处理率复用 16.208 的机器人处理标签和历史提交痕迹兼容口径。
+  - SLA 达成率复用 16.210 的 SLA 达成/超时判定。
+- 前端 ITSM 页面：
+  - 自助目录页签新增“项目目标趋势”和“申请类型趋势”两张表。
+  - 每张表展示工单数、自助占比、自动化处理率和 SLA 达成率。
+  - 指标标签按对应目标值显示达标/预警状态。
+
+验证：
+
+- 新增单元测试覆盖维度指标聚合中的自助占比、自动化处理率、机器人处理数和 SLA 达成/超时数。
+- 使用 Docker Go 镜像完成 `gofmt`。
+- 容器化目标单元测试通过：`TestCloudItsmDimensionMetricAddTicket` 以及既有 ITSM 自助目录、SLA、机器人处理和事件建单测试。
+
+验证限制：
+
+- 第一阶段使用项目作为团队/业务单元的落地点；真实组织架构团队、值班组或业务线模型接入后，可继续扩展团队维度。
+- 第一阶段为 overview 内聚合指标；跨时间序列的项目日报/周报和导出仍待后续增强。
+- 自助目录策略仍为内置规则，可配置策略表仍待继续增强；外部 ITSM 专用字段映射已在 16.212 完成第一阶段，失败补偿队列已在 16.213 完成第一阶段。
+
+### 16.212 2026-06-22 V1.2 P0 外部 ITSM 专用字段映射第一阶段
+
+状态：已完成外部 ITSM 专用字段映射第一阶段；平台在继续保留 CloudIaC 标准审计载荷的同时，可根据连接器 provider 生成 Jira、ServiceNow 或通用 ITSM 系统需要的提交字段，避免把平台内部 canonical payload 直接投递给外部系统。
+
+已完成：
+
+- 后端提交载荷增强：
+  - 工单请求载荷新增 `externalPayload`、`externalPayloadProvider` 和 `externalPayloadMode`。
+  - 本地工单和 dry-run 继续保留完整 CloudIaC canonical payload，便于审计和排障。
+  - 外部提交时优先提交 `externalPayload`；未配置外部字段映射的通用连接器仍按原 canonical payload 提交，保持兼容。
+- Jira 字段映射：
+  - `provider=jira` 默认生成 Jira Create Issue 结构：`fields.project.key`、`fields.summary`、`fields.description`、`fields.issuetype.name`、`fields.priority.name` 和 `fields.labels`。
+  - 支持 `priorityMapping` 和 `labels` 元数据覆盖，保留 `cloudiac` 和 `cloudiac_<priority>` 标签。
+- ServiceNow 字段映射：
+  - `provider=servicenow` 默认生成 Table API 结构：`short_description`、`description`、`urgency`、`impact`、`category`、`subcategory` 和 `u_cloudiac_*` 追踪字段。
+  - 支持 `urgencyMapping`、`impactMapping`、`ticketTable/table`、`category` 和 `subcategory` 元数据覆盖。
+  - 外部响应解析新增兼容 `result.sys_id`、`result.number`、`result.self/link`。
+- 通用字段映射：
+  - 元数据支持 `fieldDefaults/defaultFields`、`fieldMappings/fieldMapping`、`payloadTemplate/externalPayloadTemplate`。
+  - `fieldMappings` 支持 `$.title`、`$.description`、`$.operation.id`、`$.event.id`、`$.operation.params.xxx` 等路径映射，也支持字面量值。
+  - 支持点号目标路径，如 `fields.summary`、`details.operation_id`、`u_cloudiac_operation_id`。
+- 前端连接器配置：
+  - ITSM 连接器“扩展配置” placeholder 增加 `fieldDefaults` 和 `fieldMappings` 示例，降低 Jira、ServiceNow 和自定义 ITSM 对接配置成本。
+
+验证：
+
+- 新增单元测试覆盖 Jira 默认字段、优先级映射和标签生成。
+- 新增单元测试覆盖通用连接器自定义字段默认值、路径映射和字面量映射。
+- 新增 `httptest` 覆盖 ServiceNow 提交体确认为映射后的外部 payload，并验证 `result.sys_id/result.number` 解析为平台工单外部 ID/Key。
+
+验证限制：
+
+- 第一阶段提供 provider 默认字段和配置化字段映射；未接入真实 Jira/ServiceNow 租户做端到端联调。
+- 字段映射先支持对象路径和常见默认值，不包含复杂模板表达式、数组下标、条件分支或 provider API schema 自动发现。
+- 外部 ITSM 失败补偿队列、重试退避和提交失败审计报表仍待继续增强。
+
+### 16.213 2026-06-22 V1.2 P0 外部 ITSM 失败补偿队列第一阶段
+
+状态：已完成外部 ITSM 失败补偿队列第一阶段；外部 Jira、ServiceNow 或通用 HTTP 建单失败后，不再只停留在 failed 状态，而是记录提交 attempt、下一次重试时间、退避策略和死信状态，并支持后台 worker 与页面按钮触发到期补偿。
+
+已完成：
+
+- 后端提交失败留痕：
+  - `submitCloudItsmTicket` 增加 attempt 参数和 `responsePayload.submitRetry`。
+  - 失败提交记录 `attempt`、`maxAttempts`、`lastError`、`lastStatusCode`、`backoffSeconds`、`nextAttempt`、`nextRetryAt`、`deadLetter` 和 `reason`。
+  - 成功提交也记录本次 attempt，便于审计确认补偿是否完成。
+- 失败补偿策略：
+  - 连接器 metadata 支持 `submitRetryEnabled`、`submitRetryMaxAttempts`、`submitRetryBackoffSeconds`、`submitRetryMaxBackoffSeconds`。
+  - 默认启用，最大提交次数默认 3 次，上限 10 次。
+  - 使用指数退避，默认 300 秒，默认最大退避 3600 秒。
+  - 默认不重试已经带外部单号/外部 URL 的 failed 工单，避免重复创建外部工单；如确需覆盖可配置 `submitRetryAllowExternalIdentity=true`。
+- 补偿执行入口：
+  - 新增 `POST /api/v1/cloud/itsm/tickets/retry-failed`，支持 `connectorId`、`force` 和 `limit`。
+  - 新增 `RetryDueCloudItsmTicketSubmissionsForAllOrgs` 和 `StartCloudItsmSubmitRetryWorker`，portal 启动后每 5 分钟处理一次到期失败提交。
+  - 补偿成功生成 `itsm.ticket.retry_submitted` 事件；补偿失败生成 `itsm.ticket.retry_failed` 事件。
+- 前端 ITSM 页面：
+  - 工单页工具栏新增“重试失败提交”按钮。
+  - 连接器扩展配置 placeholder 增加提交失败补偿配置示例。
+
+验证：
+
+- 新增单元测试覆盖补偿 metadata 写入、退避时间、到期判断、外部单号跳过、达到最大次数进入死信和 HTTP 502 失败后写入下一次重试时间。
+
+验证限制：
+
+- 第一阶段复用现有 `iac_cloud_itsm_ticket.response_payload.submitRetry` 作为轻量队列状态，尚未新增独立队列表；轻量队列报表和死信重放入口已在 16.215 完成第一阶段。
+- 第一阶段支持后台 worker、手动触发、最大次数和指数退避；重试抖动、最大重试窗口和更细失败分类统计仍待继续。
+- 未对真实 Jira/ServiceNow 租户做端到端失败补偿联调。
+
+### 16.214 2026-06-22 V1.2 P0 GitOps/IaC 门禁外部回写第一阶段
+
+状态：已完成 GitOps/IaC PR review 和 Pipeline 门禁外部回写第一阶段；自助申请创建后，GitLab/GitHub/Jenkins 等外部系统可通过签名 callback 把 Review、Pipeline 和运行信息回写到 CloudOperation、ITSM 工单载荷、事件和审计记录。
+
+已完成：
+
+- 新增免登录外部回调入口：
+  - `POST /api/v1/cloud/itsm/callbacks/:connectorId/gitops-gate`。
+  - 使用 `X-CloudIaC-ITSM-Signature` 或 `X-CloudIaC-Signature` 进行 HMAC-SHA256 验签。
+  - 连接器 metadata 支持专用 `gitOpsGateCallbackSecret`，并兼容 `gitOpsCallbackSecret`、`vcsCallbackSecret`、`ciCallbackSecret`，未配置专用密钥时回退 `callbackSecret`。
+- 回调定位能力：
+  - 支持通过 `operationId`、`ticketId` 或 `pullRequestUrl` 定位 GitOps/IaC 自助申请。
+  - 限定目标必须是 `self_service + gitops_iac_change`，避免外部回调误写普通工单或云操作任务。
+- 门禁状态回写：
+  - 回调字段支持 `repository`、`branch`、`targetBranch`、`changePath`、`pullRequestUrl`、`reviewStatus`、`pipelineUrl`、`pipelineStatus`、`commitSha`、`externalRunId`、`comment` 和原始 `payload`。
+  - 复用 16.194 的 Review/Pipeline 状态归一化和 `passed/waiting/blocked` 判定。
+  - 回写 `CloudOperation.Params.gitOpsGate`、`gateStatus`、`gitOpsLastCallback`、`gitOpsCallbackCount`、`CloudOperation.Result.gitOpsGate` 和 `gitOpsGateStatus`。
+  - 同步刷新 `CloudItsmTicket.requestPayload.operation.params`、顶层 `gitOpsGate`、`gitOpsGateCallback` 和 `responsePayload.gitOpsGate`。
+- 事件和审计：
+  - 每次回写记录云操作审计。
+  - 每次回写生成 `itsm.gitops_gate.updated` 事件。
+  - `passed` 记为 info，`waiting` 记为 warning，`blocked` 记为 error，便于后续通知和治理统计。
+- 前端 ITSM 连接器配置弹窗：
+  - 展示 GitOps/IaC 门禁回写 URL。
+  - 扩展配置示例新增 `gitOpsGateCallbackSecret`。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化本轮后端 Go 文件。
+- 新增单元测试覆盖：
+  - GitOps 专用回调密钥优先级和 `callbackSecret` 回退。
+  - 回调合并 Review/Pipeline 状态后重新计算 `passed` 门禁。
+  - 回调从既有 `gitOpsGate` 快照恢复 PR/Pipeline URL。
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal iac-web` 通过：
+  - `iac-portal` Go 编译通过。
+  - `iac-web` webpack 编译通过，仅存在既有 bundle size 警告。
+- 使用 `CLOUDIAC_DEPLOY_ROOT=$PWD/.deploy/cloudiac`、`MYSQL_USER=cloudiac`、`MYSQL_PASSWORD=mysqlpass`、`MYSQL_DATABASE=cloudiac` 短暂启动 `iac-portal`：
+  - `GET /api/v1/check` 返回 `success=true`，版本 `v1.3.5`。
+  - `POST /api/v1/cloud/itsm/callbacks/citc-missing/gitops-gate` 命中新路由并返回应用层 `40410013`，确认不是路由缺失。
+- 验证后执行 `docker compose down -v`，并删除 `.deploy/cloudiac` 临时运行目录。
+
+验证限制：
+
+- 第一阶段提供通用 webhook/callback 写入，不主动调用 GitLab/GitHub/Jenkins API 拉取 MR approval 或 Pipeline 结果。
+- 第一阶段不新增 GitOps Repo 变更记录表，diff、commit、approval 明细先保存在回调 payload。
+- 真实 GitLab/GitHub/Jenkins 租户 webhook 端到端联调仍待继续。
+- 目标 Go 单测曾以 Docker Go 容器执行，但受首次依赖下载耗时影响未跑完；当前以 Docker compose 镜像构建、后端健康检查和路由探测作为本轮验证证据。
+
+### 16.215 2026-06-22 V1.2 P0 ITSM 提交失败队列报表与死信重放第一阶段
+
+状态：已完成 ITSM 提交失败补偿队列可观测和死信重放第一阶段；外部 ITSM 建单失败后，平台不再只有“批量重试”按钮，而是可以按 due/future/dead letter/skipped 查看队列、统计原因，并对单个死信或失败工单执行人工重放。
+
+已完成：
+
+- 后端新增提交失败补偿队列 API：
+  - `GET /api/v1/cloud/itsm/tickets/retry-queue/summary`：返回失败总数、待重试、等待退避、死信、跳过、可重试数量、最早到期时间、下一次重试时间和原因分布。
+  - `GET /api/v1/cloud/itsm/tickets/retry-queue`：分页返回失败提交队列，支持 `q`、`connectorId` 和 `queueStatus=due/future/dead_letter/skipped` 过滤。
+  - `POST /api/v1/cloud/itsm/tickets/:id/replay-submit`：对单条失败提交执行人工重放，`force=true` 时允许从 `max_attempts_reached` 死信状态重新提交。
+- 队列分类口径：
+  - `due`：已到期且满足补偿条件。
+  - `future`：仍在退避窗口内。
+  - `dead_letter`：达到最大尝试次数或 `submitRetry.deadLetter=true`。
+  - `skipped`：连接器缺失/停用、缺少外部 endpoint、缺少请求载荷、外部单号保护等不可自动重试场景。
+- 后端执行链路：
+  - 将单票重放和批量到期补偿复用同一个提交 helper，避免事件、状态和 response payload 口径分叉。
+  - 人工重放会写入 `responsePayload.manualReplay`、`forcedReplay` 和 `retryEligibilityReason`。
+  - 成功仍写入 `itsm.ticket.retry_submitted`，失败写入 `itsm.ticket.retry_failed`，继续复用事件中心和审计链路。
+- 前端 ITSM 页面：
+  - 新增“失败补偿队列”页签。
+  - 展示待重试、等待退避、死信和跳过四个指标。
+  - 支持按队列状态过滤、刷新、批量重试到期和单条重放。
+  - 队列条目可打开原工单详情抽屉查看 request/response payload。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化本轮后端 Go 文件。
+- 新增单元测试覆盖队列分类和死信强制重放 eligibility 口径。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal` 通过，后端 Go 编译通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过，前端 webpack 编译通过，仅存在既有 bundle size 警告。
+- 使用 `CLOUDIAC_DEPLOY_ROOT=$PWD/.deploy/cloudiac`、`MYSQL_USER=cloudiac`、`MYSQL_PASSWORD=mysqlpass`、`MYSQL_DATABASE=cloudiac` 短暂启动 `iac-portal`：
+  - `GET /api/v1/check` 返回 `success=true`，版本 `v1.3.5`。
+  - 未登录访问 `GET /api/v1/cloud/itsm/tickets/retry-queue/summary` 返回 `40120000`，确认新路由已进入鉴权链路。
+- 验证后执行 `docker compose down -v`，并删除 `.deploy/cloudiac` 临时运行目录。
+
+验证限制：
+
+- 第一阶段仍复用 `responsePayload.submitRetry` 作为轻量队列状态，未新增独立持久化队列表。
+- 人工重放默认仍保留外部单号保护、endpoint 校验和请求载荷校验，避免重复创建已经带外部身份的工单。
+- 真实 Jira/ServiceNow 租户的失败队列和死信重放端到端联调仍待继续。
+
+### 16.151 2026-06-22 V1.2 P0 AWS collector 资产覆盖补齐第一阶段
+
+状态：已完成 AWS P0 资产采集补齐第一阶段；AWS collector 在原 EC2、VPC、Subnet、SecurityGroup、EBS、EKS、RDS、ElastiCache 基础上，新增 Route Table、NAT Gateway、Internet Gateway、Elastic IP、Classic ELB、ALB/NLB 和 S3 Bucket 采集，并接入标准资产类型、中文展示和云侧关系推演。
+
+已完成：
+
+- 标准资产类型新增：
+  - `network_nat_gateway`：NAT 网关。
+  - `network_internet_gateway`：Internet 网关。
+- AWS 支持资产类型更新：
+  - AWS 账号 `supportedAssetTypes` 新增 NAT Gateway 和 Internet Gateway。
+  - OCI 支持类型与 AWS 分离，避免误报 OCI 已支持新增 AWS 网络网关类型。
+- AWS EC2 Query API 采集增强：
+  - `DescribeRouteTables` 归一化为 `network_route_table / aws_route_table`，保留 VPC、Subnet association、Route、NAT Gateway、Internet Gateway 和 propagating VGW 引用。
+  - `DescribeNatGateways` 归一化为 `network_nat_gateway / aws_nat_gateway`，保留 VPC、Subnet、EIP allocationId、公网 IP、网卡、失败原因和 connectivityType。
+  - `DescribeInternetGateways` 归一化为 `network_internet_gateway / aws_internet_gateway`，保留 VPC attachment 和状态。
+  - `DescribeAddresses` 归一化为 `public_ip / aws_eip`，保留 allocationId、associationId、Public IP、Private IP、Instance、ENI、domain 和 network border group。
+- AWS Elastic Load Balancing 采集增强：
+  - Classic ELB `DescribeLoadBalancers` 归一化为 `load_balancer / aws_elb_load_balancer`。
+  - ALB/NLB/GWLB `DescribeLoadBalancers` 归一化为 `load_balancer / aws_lb`。
+  - 保留 DNS、scheme、type、VPC、Subnet、安全组、可用区、地址、EIP allocationId 和创建时间。
+- AWS S3 采集增强：
+  - `ListBuckets` + `GetBucketLocation` 归一化为 `object_storage_bucket / aws_s3_bucket`。
+  - 按 bucket location 过滤到当前同步 region，`us-east-1` 空 location 和历史 `EU` location 已做兼容映射。
+  - Bucket Tagging、默认加密、版本控制、Public Access Block 和 Lifecycle 已在 16.174 完成第一阶段。
+  - Bucket Policy、ACL、Object Lock、Replication、Logging、Notification、Website 和 Inventory 已在 16.175 完成第一阶段。
+- 云侧关系推演增强：
+  - Route Table 归属 VPC，并关联 Subnet、NAT Gateway、Internet Gateway。
+  - NAT Gateway 归属 VPC/Subnet，并依赖 EIP。
+  - Internet Gateway 归属 VPC。
+  - 关系索引新增 `allocationId/publicIp/publicIpAddress` 等键，便于 EIP 与 NAT/LB 推演关联。
+- 前端资产类型中文展示新增：
+  - `network_nat_gateway` -> `NAT网关`。
+  - `network_internet_gateway` -> `Internet网关`。
+
+验证：
+
+- 使用 Docker Go 镜像 `golang:1.26.4-alpine` 进行 Go 编译检查：
+  - `go test ./portal/apps` 因既有 `portal/apps/cloud_cost.go:727` 的 vet 规则 `non-constant format string in call to fmt.Errorf` 失败；该问题与本轮 AWS collector 改动无关。
+  - `go test -vet=off ./portal/apps` 通过，确认本轮 Go 类型和编译链路通过。
+- `git diff --check` 通过。
+
+验证限制：
+
+- 本阶段完成协议解析、归一化和编译验证；尚未使用真实 AWS 账号做端到端采集。
+- ELB 第一阶段采集负载均衡器主体和网络引用；Listener、Target Group、Target Health 已在 16.171 完成第一阶段，Rule 已在 16.172 完成第一阶段，认证类 Action 已在 16.173 完成第一阶段，跨账号/跨 VPC target 等运行期细节待继续。
+- S3 第一阶段使用 `ListBuckets` 和 `GetBucketLocation`；Bucket Tagging、加密、版本、Public Access Block、Lifecycle 已在 16.174 完成第一阶段，Bucket Policy、ACL、Object Lock、Replication、Logging、Notification、Website 和 Inventory 已在 16.175 完成第一阶段，S3 风险规则映射已在 16.176 完成第一阶段，真实账号联调和更完整成本/合规映射待继续。
+
+待继续：
+
+- 使用真实 AWS 账号验证 Route Table、NAT Gateway、Internet Gateway、EIP、ELB/ALB/NLB、S3 的分页、权限错误和区域过滤。
+- 补充真实目标健康端到端联调、跨账号/跨 VPC target 和更细关系推演。
+- 将 AWS 新增资产接入更细成本、合规和风险规则映射。
+
+### 16.152 2026-06-22 V1.2 P0 CMDB 返回来源环境资源详情入口第一阶段
+
+状态：已完成 CMDB 资产详情返回来源环境资源详情入口第一阶段；当 CMDB 资产存在 `projectId`、`envId` 和 `iacResourceId` 时，资产详情抽屉会展示“返回环境资源详情”，跳转到环境资源页并自动打开对应资源详情抽屉。
+
+已完成：
+
+- CMDB 资产详情增强：
+  - 新增来源资源入口，使用 `projectId/envId/iacResourceId` 生成环境资源深链。
+  - 深链格式为 `/org/:orgId/project/:projectId/m-project-env/detail/:envId?tabKey=resource&resourceId=:iacResourceId`。
+- 环境详情资源页增强：
+  - 读取 URL 参数 `resourceId` 并写入详情页上下文。
+  - 资源组件检测到 `resourceId` 时自动切换到表格模式，避免默认图形模式挡住资源抽屉。
+  - 资源表格组件检测到 `resourceId` 后自动打开现有资源详情抽屉，复用 `getResourcesGraphDetail` 详情接口。
+
+验证：
+
+- 本阶段为前端深链和页面状态联动改造，未新增后端 API。
+- `git diff --check` 通过。
+- `docker compose -f docker-compose.yml build iac-web` 成功，前端生产 bundle 编译通过；仅存在既有 webpack bundle size warning。
+
+验证限制：
+
+- 由于上一轮已按要求删除部署服务和清理数据，本阶段只做镜像构建验证，未重新 `up -d` 启动服务做浏览器点击回归。
+- 若来源资源已被删除或用户缺少项目权限，环境资源详情接口会按现有逻辑返回错误；后续可补专门的友好空态。
+
+### 16.153 2026-06-22 V1.2 P0 云采集任务最近同步、范围和失败日志增强第一阶段
+
+状态：已完成云采集任务最近同步、范围和失败日志增强第一阶段；任务列表、任务详情和多云总览最近任务不再只返回原始 `stats`，会额外返回稳定的范围摘要和失败摘要，前端可直接展示采集影响面、失败范围、失败分类和重试建议。
+
+已完成：
+
+- 后端同步任务响应增强：
+  - `CmdbSyncTaskResp` 新增 `scopeSummary` 和 `failureSummary`。
+  - `CmdbSyncTaskDetailResp` 和批量重跑任务组内任务复用增强后的任务响应。
+  - `CmdbSyncTaskSummaryResp` 新增 `lastSuccessTask` 和 `lastFailureTask`，保留 `lastSuccessAt/lastFailureAt` 兼容字段。
+  - 多云总览最近同步任务统一走增强后的任务响应。
+- 范围摘要：
+  - 从任务 `stats.regions/assetTypes/regionMetrics/assetTypeMetrics/scopeMetrics` 和任务原始 `regions/assetTypes` 兼容派生。
+  - 返回区域数、资产类型数、scope 数、采集/新增/更新/跳过数量、collector/upsert/relation/总耗时。
+  - 返回 region、assetType 和 region+assetType scope 明细，并标识非 `complete` 的失败 scope。
+- 失败摘要：
+  - 从 `stats.failureDetails/failureSummary` 派生失败总数、可重试失败数、分类、首条错误和重试建议。
+  - 旧任务只有 `errorMessage` 时，会按现有文本分类逻辑补齐失败摘要，保持历史数据可读。
+- 前端云采集页增强：
+  - 任务列表新增“范围摘要”和“失败摘要”列。
+  - 统计列展示采集耗时和总耗时。
+  - 子周期任务历史摘要中的“最近成功/最近失败”可直接打开对应任务详情。
+  - 任务详情新增采集范围、采集耗时、总耗时、失败摘要和重试建议。
+  - 任务详情新增“范围明细”和“失败明细”页签，展示 region/assetType/scope 状态、采集数、耗时、错误分类和重试建议。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化 `backend/portal/models/resps/cmdb.go`、`backend/portal/apps/cmdb_sync.go`、`backend/portal/apps/cloud_overview.go`。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 通过；`DOCKER_REGISTRY` 未设置提示和前端 webpack bundle size warning 为既有构建提示。
+
+验证限制：
+
+- 由于当前部署服务已按要求删除并清理数据，本阶段先做编译和镜像构建验证，不重新启动平台做浏览器点击回归。
+- OCI 云厂商原生错误码、短重试、collector 内部单 API 子调用耗时和失败 scope 自动局部重试已在后续阶段完成第一阶段；区域级权限矩阵、其他 provider 原生错误样本和 API 子调用级局部补偿仍待 provider adapter 继续增强。
+
+### 16.154 2026-06-22 V1.2 P1 EKS/OKE K8S 信息可见性增强
+
+状态：已完成 EKS/OKE K8S 信息可见性增强；在 16.150 已完成采集与“K8S信息”页签的基础上，继续放宽前端识别条件并把关键 K8S 摘要前置到资产详情基础信息区，避免老数据或未归一化数据看不到 K8S 信息。
+
+已完成：
+
+- Kubernetes 资产识别增强：
+  - 不再只依赖 `assetType === kubernetes_cluster`。
+  - 兼容 `nativeType` 包含 `eks_cluster`、`containerengine_cluster`、`kubernetes_cluster`、`k8s_cluster` 的历史或未归一化资产。
+  - 兼容已带 `attributes.nodeGroups/nodePools/kubernetesVersion` 的资产。
+- 资产详情基础信息增强：
+  - Kubernetes 资产在基础信息区直接展示 K8S 版本、节点组/节点池摘要和 API Endpoint。
+  - API Endpoint 支持从 `asset.address`、`attributes.endpoint/apiEndpoint/clusterEndpoint`、`attributes.endpoints/endpointConfig` 多来源兜底读取。
+- 详情页签体验增强：
+  - Kubernetes 资产详情默认打开“K8S信息”页签。
+  - “K8S信息”页签继续展示 VPC/VCN、Endpoint 配置、子网、安全组/NSG、网络配置、节点组/节点池表格和采集错误。
+
+验证：
+
+- `git diff --check` 通过。
+- `docker compose build iac-web` 通过；仅存在既有 webpack bundle size warning。
+
+验证限制：
+
+- 当前部署服务已清理，本阶段未重新启动服务做浏览器点击回归。
+- 真实 EKS/OKE 账号的 NodeGroup/NodePool API 权限、分页和云厂商错误码映射仍需在真实环境继续补测。
+
+### 16.155 2026-06-22 V1.2 P1 CMDB 应用依赖事件接入 Webhook 第一阶段
+
+状态：已完成 CMDB 应用依赖变更事件接入第一阶段；CMDB 资产变更已存在 `cmdb.asset.created/updated` 事件，本阶段补齐应用依赖维护保存后的 `cmdb.application.relations_updated` 事件，使 CMDB Webhook/事件推送覆盖资产创建、资产更新、归属变更和应用依赖变更。
+
+已完成：
+
+- `PUT /api/v1/cmdb/applications/relations` 保存前会读取当前人工维护的上游/下游依赖快照。
+- 保存后对比旧上游、旧下游与新上游、新下游；只有真实变化时才产生事件，避免重复保存制造事件噪声。
+- 新增 `cmdb.application.relations_updated` 事件：
+  - `source=cmdb`
+  - `resourceType=cmdb_application`
+  - `resourceName=<应用名称>`
+  - `status=updated`
+  - payload 记录应用名称、关系来源、关系类型、变更前上游/下游和变更后上游/下游。
+- 事件写入后复用平台级事件中心和 Webhook 分发，不新增 CMDB 独立 Webhook 配置入口。
+- CMDB PRD 已同步：
+  - Webhook/事件推送状态更新为“已完成第一阶段”。
+  - `/api/v1/cmdb/events/webhook` 调整为复用 `/api/v1/cloud/webhooks`。
+  - 补充 `source=cmdb`、`eventType=cmdb.*` 的查询和订阅说明。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化 `backend/portal/apps/cloud_event.go` 和 `backend/portal/apps/cmdb_application.go`。
+- `docker run --rm -v backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose build iac-portal` 通过；服务保持停止状态，未执行 `docker compose up -d`。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理数据，本阶段未重新启动服务做 API 或浏览器回归。
+- 下一阶段可在恢复服务后创建测试应用依赖关系，验证事件中心可按 `source=cmdb` 查询到 `cmdb.application.relations_updated`，并用临时 Webhook endpoint 做投递验签。
+
+### 16.156 2026-06-22 V1.2 P1 CMDB 导入模板、预检和差异预览第一阶段
+
+状态：已完成 CMDB/云资产导入模板、预检和差异预览第一阶段；资产导入从“上传后直接写入”优化为“下载模板 -> 上传 JSON -> dryRun 预检 -> 查看逐条差异 -> 确认导入”的两阶段流程。
+
+已完成：
+
+- 新增导入模板接口：
+  - `GET /api/v1/cmdb/assets/import-template`
+  - `GET /api/v1/cloud/assets/import-template`
+  - 返回示例 JSON，包含 `overwriteOwnership` 和 `assets[]` 标准字段。
+- 增强导入接口：
+  - `POST /api/v1/cmdb/assets/import`
+  - `POST /api/v1/cloud/assets/import`
+  - 请求支持 `dryRun=true`，此时只做预检，不写入资产、不产生变更事件。
+- 预检返回：
+  - 汇总：total、created、updated、ownershipUpdated、skipped、errors。
+  - 明细：行号、动作、资产 ID、provider、account、region、assetType、nativeId、现有资产名、资产字段 diff、归属字段 diff、异常原因。
+  - 动作包括 `create`、`update`、`ownership_update`、`skip`、`error`。
+- 前端资产/云资产页面增强：
+  - 操作区新增“下载导入模板”。
+  - 上传 JSON 后先调用 dryRun，弹出“导入预检”弹窗。
+  - 弹窗展示新增、更新、归属更新、跳过和逐条异常/差异。
+  - 用户点击“确认导入”后才调用真实导入；导入成功后刷新资产列表。
+- CMDB PRD 已同步导入/导出状态、API 表和 P1 待开发清单。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化后端变更文件。
+- `docker run --rm -v backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated、webpack bundle size 和 swagger 路由重复提示。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理数据，本阶段未重新启动服务做 API 或浏览器点击回归。
+- 下一阶段可在恢复服务后用模板下载、dryRun 预检、确认导入、事件中心变更记录和导入后列表刷新做完整闭环验证。
+
+### 16.157 2026-06-22 V1.2 P1 CMDB 应用风险规则配置化第一阶段
+
+状态：已完成 CMDB 应用风险规则配置化第一阶段；应用依赖风险从固定代码规则扩展为组织级可配置规则，默认值兼容原有近 7 天变更、上下游依赖和风险加分逻辑。
+
+已完成：
+
+- 新增模型 `iac_cmdb_risk_rule_config`：
+  - 按组织保存一套应用风险规则。
+  - 支持配置变更窗口天数。
+  - 支持近期变更、变更资产、调用方、调用应用、高/严重合规风险、维护期/退役期和跨业务线权重。
+  - 支持严重/高/中评分阈值。
+  - 支持严重调用方、中风险调用方、中风险调用应用阈值。
+  - 支持近期严重/高/中风险加分和依赖面加分。
+- 新增 CMDB 风险规则 API：
+  - `GET /api/v1/cmdb/risk-rules`：查询组织级应用风险规则，未配置时返回默认规则。
+  - `PUT /api/v1/cmdb/risk-rules`：更新组织级应用风险规则，支持局部字段更新。
+- 应用依赖风险计算增强：
+  - `buildCmdbApplications` 加载组织级风险规则。
+  - 近期变更窗口改为读取 `changeWindowDays`。
+  - 风险评分纳入合规风险、生命周期和跨业务线因素。
+  - 风险原因会按配置窗口输出“近 N 天”。
+- 前端资产/云资产页面增强：
+  - “应用依赖”页签新增“风险规则”按钮。
+  - 新增“应用风险规则”弹窗，可编辑窗口、权重、阈值和加分。
+  - 保存规则后刷新应用列表。
+  - “近 N 天变更”列名和应用详情标签跟随配置窗口变化。
+- CMDB PRD 已同步风险规则数据模型、API 表、状态总览、路线图和待开发清单。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化后端变更文件。
+- `docker run --rm -v backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated、webpack bundle size 和 swagger 路由重复提示。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理数据，本阶段未重新启动服务做 API 或浏览器点击回归。
+- 下一阶段可在恢复服务后通过 `GET/PUT /api/v1/cmdb/risk-rules`、应用列表风险分数变化和“风险规则”弹窗做完整闭环验证。
+
+### 16.158 2026-06-22 V1.2 P1 GKE/AKS Kubernetes 节点池信息第一阶段
+
+状态：已完成 GKE/AKS Kubernetes 节点池信息第一阶段；在 EKS/OKE 已有 K8S 信息页签基础上，把 AKS `agentPoolProfiles` 和 GKE `nodePools` 归一化为同一套 `nodePools/nodePoolCount` 属性，并补齐版本、Endpoint、VPC/VNet、子网和网络配置展示字段。
+
+已完成：
+
+- Azure AKS collector 增强：
+  - `azure_kubernetes_cluster` 写入 `endpoint/apiEndpoint`，并把 `fqdn/privateFQDN` 归一化到 `endpointConfig`。
+  - `agentPoolProfiles` 转换为 `attributes.nodePools`，包含名称、状态、模式、K8S 版本、VM 规格、节点数、伸缩配置、可用区、子网、OS 信息、标签/污点和升级配置。
+  - 从节点池和网络配置提取 `subnetIds`，并通过子网资源反查 `securityGroupIds`。
+  - 从子网 ID 推导 `vnetId`，资产详情可展示 VNet 归属。
+- GCP GKE collector 增强：
+  - `gcp_container_cluster` 写入 `kubernetesVersion/version`、`endpoint/apiEndpoint`、`network/vpcId/networkId`、`subnetIds/subnetworkIds`。
+  - GKE `nodePools` 转换为统一 `attributes.nodePools`，包含名称、状态、版本、机器规格、初始节点数、伸缩配置、可用区、实例组、节点配置、网络配置、管理配置和升级配置。
+  - 集群网络信息统一写入 `kubernetesNetwork`，包含 networkConfig、ipAllocationPolicy、privateClusterConfig、releaseChannel、cluster/service CIDR。
+- 前端云资产/CMDB 资产详情增强：
+  - K8S 信息页签的 VPC 字段扩展为 `VPC/VNet/VCN`，兼容 `vpcId/vnetId/vcnId/networkId/network`。
+  - 子网字段兼容 `subnetIds/subnetworkIds/subnetwork`。
+  - 网络配置兼容 `kubernetesNetwork/networkProfile/options`。
+  - 节点池规模列兼容 `nodeCount/initialNodeCount`。
+- CMDB PRD 和多云 PRD 已同步：
+  - GKE/AKS 节点池信息状态更新为“已完成第一阶段”。
+  - K8S 工作负载层后续在 16.160 完成第一阶段资产类型、展示和关系推演。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化 `backend/portal/apps/cmdb_collect_azure.go` 和 `backend/portal/apps/cmdb_collect_gcp.go`。
+- `docker run --rm -v /Volumes/scrt-sfx-923-2829osx_x64/workspace/cloudiac/backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated 和 webpack bundle size warning。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理数据，本阶段先完成编译级验证，不重新启动服务做浏览器点击回归。
+- 本阶段不接入 kubeconfig/Agent，不实时采集 Namespace、Node、Pod、Deployment、Service、Ingress 等工作负载对象；资产属性/导入数据展示和关系推演已在 16.160 补齐第一阶段。
+- 真实 AKS/GKE 账号的 API 响应字段差异、权限不足、分页和错误码映射仍需在真实环境继续补测。
+
+### 16.159 2026-06-22 V1.2 P1 CMDB/云资产编辑导出权限细分第一阶段
+
+状态：已完成 CMDB/云资产编辑导出权限细分第一阶段；组织管理员和平台管理员可执行全组织资产导入、导出、治理、风险规则和采集同步，项目负责人、审批员和操作员可在项目范围内执行资产归属治理和项目资产导出，敏感治理字段收敛到项目负责人/审批员或组织级管理员。
+
+已完成：
+
+- 后端权限模型：
+  - 新增 `GET /api/v1/cmdb/assets/permissions` 和 `GET /api/v1/cloud/assets/permissions`，返回当前用户组织角色、项目角色和导出、导入、归属编辑、批量治理、应用依赖维护、风险规则配置、IaC 同步等权限位。
+  - 资产导出接口按筛选范围校验项目角色；未绑定项目资产仅组织管理员/平台管理员可导出。
+  - 资产导入接口限定组织管理员/平台管理员，避免普通用户创建或覆盖组织资产。
+  - 单资产归属编辑和批量治理按资产项目角色校验；合规风险、项目/环境绑定等敏感字段需要项目负责人/审批员或组织级管理员。
+  - 应用依赖维护需要组织级管理员，或用户对该应用绑定资产所在项目具备负责人/审批员/操作员角色。
+  - 风险规则配置限定组织管理员、平台管理员或合规管理员。
+  - IaC 回填、云采集启动和无需审批的失败任务直接重跑限定组织管理员/平台管理员；失败任务仍可通过“提交审批后再启动”保留自助申请路径。
+- 前端权限体验：
+  - 云资产/CMDB 页面加载权限摘要，并对导入预检、导入模板、CSV/JSON 导出、批量治理、同步 IaC、启动云采集、风险规则、应用依赖保存和归属保存做按钮禁用与提示。
+  - 导入预检、批量治理、风险规则和采集重跑弹窗增加 OK 按钮级禁用，避免弹窗内绕过主按钮禁用态。
+  - 重跑子周期按 `canSyncIac` 禁用；失败任务批量重跑在无直接启动权限时默认勾选并锁定“提交审批后再启动”。
+  - 批量重跑任务组审批按钮只对具备同步/审批权限的用户显示，后端仍保留组织/平台管理员审批校验。
+- PRD 状态同步：
+  - CMDB PRD 的安全章节和 P1 待开发清单已将“编辑/导出权限细分”标记为已完成第一阶段。
+  - 多云 PRD 的导入导出和权限差距表已补充权限门禁状态。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化本轮新增/修改的 CMDB 权限、同步、handler、route 和响应结构文件。
+- `docker run --rm -v /Volumes/scrt-sfx-923-2829osx_x64/workspace/cloudiac/backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated、webpack bundle size 和 swagger 重复路由提示。
+- 当前部署服务已按要求删除并清理数据，本阶段不重新启动服务做浏览器点击回归。
+
+验证限制：
+
+- 尚未接入真实组织角色矩阵和多项目用户端到端浏览器回归；后续恢复服务后需分别用组织管理员、项目负责人、项目操作员、普通成员账号验证按钮禁用和接口拒绝。
+- 响应层敏感字段脱敏已在 16.168 完成第一阶段；标签级授权、云账号级授权和资源类型级授权仍需继续开发。
+
+### 16.160 2026-06-22 V1.2 P1 K8S 工作负载层信息第一阶段
+
+状态：已完成 K8S 工作负载层信息第一阶段；在不引入 kubeconfig/Agent 的前提下，先支持 Kubernetes Namespace、Node、Workload、Pod、Service、Ingress 作为标准 CMDB 资产类型、导入/离线 inventory 属性展示和关系推演，让资产详情能够看到集群以下对象。
+
+已完成：
+
+- 后端资产标准化：
+  - 新增 `kubernetes_namespace`、`kubernetes_node`、`kubernetes_workload`、`kubernetes_pod`、`kubernetes_service`、`kubernetes_ingress` 标准资产类型。
+  - `NormalizeCmdbAssetType` 可识别 `kubernetes_*` 和 `k8s_*` 的 Namespace、Node、Pod、Service、Ingress、Deployment、StatefulSet、DaemonSet、ReplicaSet、Job、CronJob、Workload 原生类型。
+- 后端关系推演：
+  - 集群可根据 `namespaces/nodes/workloads/pods/services/ingresses` 或对应 ID 列表推演包含关系。
+  - Namespace 可推演 Workload、Pod、Service、Ingress 的包含关系。
+  - Workload 可推演 Pod 包含关系。
+  - Pod 可根据 `ownerUid/ownerName/workloadId/workloadName` 推演所属 Workload，并根据 `nodeId/nodeName` 推演依赖节点。
+  - Service 可根据目标 Workload/Pod 字段推演依赖关系，Ingress 可根据后端 Service 字段推演依赖关系。
+  - 关系索引补充 `uid/name/clusterId/namespace/ownerUid/nodeName/serviceName` 等 Kubernetes 常用引用键。
+- 前端资产详情：
+  - 资产类型字典新增 K8S Namespace、Node、Workload、Pod、Service、Ingress。
+  - K8S 信息页签不再只对集群展示，所有 `kubernetes_*` / `k8s_*` 资产都可展示。
+  - 页签新增工作负载层摘要：Namespace、Node、Workload、Pod、Service、Ingress 计数。
+  - 页签新增对象明细表，支持展示类型、命名空间、名称、状态、副本/可用副本、Service 类型/ClusterIP、PodIP、节点、Ingress Host、镜像和端口摘要。
+  - 当资产属性带 `workloadCollectError` 或 `kubernetesWorkloadCollectError` 时展示工作负载层采集告警。
+- PRD 状态同步：
+  - CMDB PRD 已将“K8S 工作负载层信息”标记为已完成第一阶段。
+  - 多云 PRD 的 Kubernetes 集群信息状态已补充工作负载层第一阶段范围。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化 `backend/portal/models/cmdb.go`、`backend/portal/apps/cmdb.go` 和 `backend/portal/apps/cmdb_relations_cloud.go`。
+- `docker run --rm -v /Volumes/scrt-sfx-923-2829osx_x64/workspace/cloudiac/backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated、webpack bundle size 和 swagger 重复路由提示。
+- 当前部署服务已按要求删除并清理数据，本阶段不重新启动服务做浏览器点击回归。
+
+验证限制：
+
+- 本阶段不直连 Kubernetes API Server，不读取 kubeconfig，不部署 Agent；真实 Namespace/Pod/Workload 采集需要后续接入受控采集器。
+- 当前工作负载数据来自资产属性、导入 JSON 或离线 inventory；真实 EKS/OKE/AKS/GKE 工作负载权限、分页、资源版本和 watch 机制仍待后续阶段。
+
+### 16.161 2026-06-22 V1.2 P2 CMDB 成本、合规和生命周期治理报表第一阶段
+
+状态：已完成 CMDB/云资产成本、合规和生命周期治理报表第一阶段；多云资产页不再只展示覆盖率，还能按治理维度识别高成本资产、高风险资产、生命周期分布和归属缺口。
+
+已完成：
+
+- 后端只读报表 API：
+  - 新增 `GET /api/v1/cmdb/assets/governance-report`。
+  - 新增 `GET /api/v1/cloud/assets/governance-report`，复用 CMDB 报表聚合能力。
+  - 报表执行前复用 IaC 资源回填和治理字段刷新，避免只读取旧归属字段。
+  - 权限范围复用 CMDB 资产查询边界，组织管理员可看全量，项目角色按可见项目资产和未绑定项目资产查看。
+- 报表指标：
+  - 汇总资产总数、总成本、平均风险分、无负责人、未绑定应用、未设置业务线、未设置成本中心、未分类生命周期、未绑定项目、高风险和严重风险资产数量。
+  - 按 provider、业务线、应用、负责人聚合成本。
+  - 按生命周期和合规风险聚合资产数量与成本。
+  - 输出高成本资产 Top 10 和高风险资产 Top 10，包含 provider、区域、资产类型、资源 ID、归属、生命周期、合规风险、成本、风险分和纳管状态。
+- 前端云资产页：
+  - `多云管理 -> 云资产` 顶部新增“治理报表”面板。
+  - 面板展示总成本、平均风险分、高/严重风险、负责人缺口、应用绑定缺口和缺口进度条。
+  - 新增生命周期分布、合规风险分布、高成本资产和高风险资产四张紧凑表格。
+  - 高成本资产和高风险资产支持点击资产名进入资产详情，继续使用现有详情抽屉治理链路。
+- PRD 状态同步：
+  - CMDB PRD 已将“成本、合规、生命周期报表”从待开发标记为已完成第一阶段。
+  - 多云 PRD 的 CMDB/云资产总览已补充“资产治理报表”能力。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化新增和修改的 Go 文件。
+- `docker run --rm -v /Volumes/scrt-sfx-923-2829osx_x64/workspace/cloudiac/backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal iac-web` 通过；仅存在既有 `DOCKER_REGISTRY` 未设置、npm deprecated、webpack bundle size 和 swagger 重复路由提示。
+- 当前部署服务已按要求删除并清理数据，本阶段不重新启动服务做浏览器点击回归。
+
+验证限制：
+
+- 本阶段是组织/可见资产范围的聚合报表；按筛选条件动态联动、报表导出、趋势环比和按账期成本对账仍待后续增强。
+- 高成本和风险 Top 列表来自 CMDB 资产当前成本与风险分字段；真实多账期账单、成本摊销和更细合规规则仍需继续接入成本中心与风险中心数据。
+
+### 16.162 2026-06-22 V1.2 P2 CMDB 关系图性能优化和大规模压测支撑第一阶段
+
+状态：已完成 CMDB/云资产关系图性能优化第一阶段；资产详情不再无上限聚合完整关系图，新增专用关系查询接口、返回数量保护、摘要指标和应用推演关系局部聚合，为后续真实大规模压测和图谱渐进加载打底。
+
+已完成：
+
+- 后端关系查询 API：
+  - 新增 `GET /api/v1/cmdb/assets/:id/relations`。
+  - 新增 `GET /api/v1/cloud/assets/:id/relations`，复用 CMDB 资产关系查询能力。
+  - 查询参数支持 `limit` 和 `includeApplication`；默认返回 200 条，最大限制 1000 条，避免大规模关系一次性撑爆详情接口。
+- 关系摘要：
+  - 响应返回 `totalRelations`、`returnedRelations`、`directRelations`、`applicationInferredRelations`、`incomingRelations`、`outgoingRelations` 和 `truncated`。
+  - 按关系来源、关系类型和方向输出 Top 摘要，用于前端在图谱截断时提示用户。
+- 应用推演关系优化：
+  - 资产详情关系不再为了单个资产调用完整 `buildCmdbApplications` 聚合全部应用图谱。
+  - 改为围绕当前资产所属应用做局部上游/下游应用聚合，再按当前用户可见资产范围取必要候选资源。
+  - 人工应用依赖和资产直接关系继续合并去重，保留 `application_inferred` 来源标识。
+- 索引和数据模型：
+  - `iac_cmdb_asset_relation` 增加 `org_id + source_asset_id`、`org_id + target_asset_id` 组合索引，支撑单资产入向/出向关系查询。
+  - 资产详情响应补充 `relationSummary`，前端可在关系页签展示截断和摘要。
+- 前端云资产/CMDB 资产详情：
+  - “关系”页签增加关系摘要提示，展示已返回/总关系数、直接关系、应用推演关系、入向和出向数量。
+  - 当关系被上限截断时提示用户当前为性能保护后的可视范围。
+- PRD 状态同步：
+  - CMDB PRD 已将“图谱性能优化和大规模资产压测”从待开发推进为“已完成第一阶段，真实压测待验证”。
+
+验证：
+
+- 使用 Docker Go 镜像通过 `gofmt` 格式化新增和修改的 Go 文件。
+- `docker run --rm -v /Volumes/scrt-sfx-923-2829osx_x64/workspace/cloudiac/backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `git diff --check` 通过。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段完成查询保护、索引和局部聚合；真实百万级资产/关系数据压测、图谱渐进加载和前端虚拟化仍需在恢复测试环境后继续验证。
+
+### 16.163 2026-06-22 V1.2 P1 EKS/OKE K8S 信息入口可发现性增强
+
+状态：已完成 EKS/OKE K8S 信息入口可发现性增强；在已有“K8S信息”页签和工作负载层展示基础上，继续补齐云资产首页的 Kubernetes 概览与快速入口，避免用户需要先手工筛选 `kubernetes_cluster` 才能看到 EKS/OKE/AKS/GKE 相关信息。
+
+已完成：
+
+- Kubernetes 资产识别增强：
+  - 前端详情识别不再只依赖标准资产类型和少量原生类型。
+  - 兼容 `aws_eks`、`oci_containerengine`、`oke_cluster`、`aks_cluster`、`azure_kubernetes`、`gke_cluster`、`gcp_container`、`alicloud_cs_kubernetes`、`tencentcloud_kubernetes`、`huawei_cce` 等原生类型特征。
+  - 兼容 `clusterEndpoint`、`apiEndpoint`、`endpointConfig`、`kubernetesNetwork` 等常见 Kubernetes 字段。
+- 云资产首页可见性增强：
+  - 在资产覆盖率与治理报表之间新增“Kubernetes 集群”概览区。
+  - 展示集群数、工作负载对象数、K8S 资产总数、云采集数量和治理缺口。
+  - 新增 EKS、OKE、AKS、GKE 快速筛选按钮，以及“查看K8S资产”入口。
+  - 展示 K8S 类型覆盖表，可直接下钻到 Kubernetes 集群、Namespace、Node、Workload、Pod、Service、Ingress。
+- PRD 状态同步：
+  - CMDB PRD 已将 K8S 信息标记为“已完成第一阶段，可见性已增强”。
+
+验证：
+
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过；仅存在既有 npm deprecated、webpack bundle size 和 `DOCKER_REGISTRY` 未设置提示。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段增强前端入口与识别兜底；真实 EKS/OKE 账号的采集结果仍需在恢复测试环境后继续做端到端回归。
+
+### 16.164 2026-06-22 V1.2 P0 ITSM 自助申请连接器兜底体验增强
+
+状态：已完成 ITSM 自助申请连接器兜底体验增强；在后端已有 `CloudIaC 本地工单` 默认连接器兜底的基础上，前端弹窗不再强制要求选择外部连接器，避免连接器列表为空或异步刷新未返回时阻塞自助申请。
+
+已完成：
+
+- 自助申请弹窗：
+  - `ITSM 连接器` 改为可选，支持清空。
+  - 占位提示调整为“可选，留空使用 CloudIaC 本地工单”。
+  - 当连接器列表异步返回启用连接器后，自动回填第一个启用连接器；用户仍可清空并使用本地工单。
+  - 新增弹窗提示：无启用外部连接器时使用 `CloudIaC 本地工单` 兜底；有外部连接器时，未选择仍使用本地工单。
+- 前后端一致性：
+  - 前端可留空 `connectorId`。
+  - 后端 `CreateCloudItsmSelfServiceTicket` 继续在 `connectorId` 为空时调用 `ensureDefaultCloudItsmConfig`，自动创建/启用默认连接器。
+- 代码整洁：
+  - 清理 `cloud-itsm/index.jsx` 中本次触达区域的制表符缩进。
+
+验证：
+
+- `git diff --check -- frontend/app/containers/org/cloud-itsm/index.jsx` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过；仅存在既有 npm deprecated、webpack bundle size 和 `DOCKER_REGISTRY` 未设置提示。
+- `docker compose -f backend/docker/docker-compose.yml ps -a` 确认仍无运行容器。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 后续恢复服务后，应在 `/m-cloud-itsm` 页面实际点击“发起自助申请”，验证无外部连接器、有外部连接器、清空连接器三种提交路径。
+
+### 16.165 2026-06-22 V1.2 P2 CMDB 关系图筛选第一阶段
+
+状态：已完成 CMDB/云资产详情关系图筛选第一阶段；在 16.162 已完成关系查询保护和摘要的基础上，前端支持对已返回关系集合按关键词、关系来源、关系类型和方向进行局部筛选，让大规模关系图在截断返回后仍可快速定位关键依赖。
+
+已完成：
+
+- 资产详情“关系”页签新增筛选工具条：
+  - 支持按关联资产名称、资产 ID、资产类型、关系来源、关系类型和元数据关键词搜索。
+  - 支持按关系来源多选过滤，例如 IaC 依赖、云推断、应用依赖推演、人工应用关系。
+  - 支持按关系类型多选过滤，例如依赖、包含。
+  - 支持按方向过滤：全部方向、上游、下游。
+  - 支持重置筛选，并显示当前筛选后数量 / 已返回关系数量。
+- 图谱和表格联动：
+  - `RelationGraph` 使用筛选后的关系集合。
+  - 关系明细表使用同一份筛选结果，避免图谱和表格结果不一致。
+  - 切换资产详情时自动重置关系筛选。
+- PRD 状态同步：
+  - CMDB PRD 已将“关系搜索和按关系类型筛选”标记为已完成第一阶段。
+
+验证：
+
+- `git diff --check` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过；仅存在既有 npm deprecated、webpack bundle size 和 `DOCKER_REGISTRY` 未设置提示。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段是前端对已返回关系集合的局部筛选；后端按筛选条件分页查询、图谱渐进加载、前端虚拟化和真实百万级关系压测仍待后续阶段。
+
+### 16.166 2026-06-22 V1.2 P2 CMDB 关系图服务端筛选第一阶段
+
+状态：已完成 CMDB/云资产关系查询接口服务端筛选第一阶段；在 16.165 前端局部筛选基础上，关系页签会按当前筛选条件重新请求 `/relations` 接口，并使用后端返回的关系集合和摘要刷新图谱、表格和截断提示。
+
+已完成：
+
+- 后端关系查询参数：
+  - `GET /api/v1/cmdb/assets/:id/relations` 和 `GET /api/v1/cloud/assets/:id/relations` 支持 `sources`、`relationTypes`、`direction`、`keyword`、`limit`、`includeApplication`。
+  - `direction` 支持 `all`、`incoming`、`outgoing`，与前端“全部方向/上游/下游”保持一致。
+- 直接关系服务端筛选：
+  - 直接关系查询统一通过带资产 join 的查询构造器执行 count、来源分组、类型分组和列表返回。
+  - 支持按关系来源、关系类型、方向、关联资产 ID、资产名称、nativeId、资产类型、provider、来源和关系类型关键词筛选。
+  - 返回摘要中的直接关系总数、入向、出向、来源分布和类型分布与筛选条件保持同一口径。
+- 应用推演关系筛选：
+  - 应用推演关系按来源、关系类型、方向过滤聚合候选。
+  - 有关键词时基于已生成候选关系的资产名称、资产 ID、资产类型和元数据做匹配，避免筛选后摘要明显误报。
+- 前端关系页签联动：
+  - 打开资产详情或调整关系筛选条件时，自动调用关系查询接口并传递筛选条件。
+  - 图谱、关系表和顶部摘要优先使用服务端返回结果；异步响应通过 `assetId` 校验，避免串到其他资产详情。
+  - 打开或关闭资产详情会清理上一资产的关系响应和筛选状态。
+- 单元测试：
+  - 补充关系筛选匹配测试，覆盖来源、关系类型、方向、关键词和应用聚合方向过滤。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt`，格式化 `backend/portal/models/forms/cmdb.go`、`backend/portal/apps/cmdb.go`、`backend/portal/apps/cmdb_relation_perf_test.go`。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段尚未实现图谱按视口渐进展开和前端虚拟化；关系分页和加载更多已在 16.167 完成第一阶段。关键词筛选下的应用推演关系统计以已加载候选关系为准，后续大规模压测阶段再补精确全量统计。
+
+### 16.167 2026-06-22 V1.2 P2 CMDB 关系图分页和渐进加载第一阶段
+
+状态：已完成 CMDB/云资产关系查询分页和详情页渐进加载第一阶段；在 16.166 服务端筛选基础上，关系查询接口支持 cursor/offset 分页，前端关系页签默认按页加载并提供“加载更多关系”，避免大规模关系图一次性拉取最大数量。
+
+已完成：
+
+- 后端关系分页参数：
+  - `GET /api/v1/cmdb/assets/:id/relations` 和 `GET /api/v1/cloud/assets/:id/relations` 新增 `cursor` 与 `offset`。
+  - `cursor` 优先于 `offset`；当前第一阶段 cursor 为 offset-backed token，后续可替换为更稳定的排序游标而不改变前端调用字段。
+  - `limit` 仍保留 1-1000 的保护范围，默认资产详情仍使用 200 条首屏关系保护。
+- 关系摘要分页元信息：
+  - `summary` 新增 `offset`、`nextOffset`、`cursor`、`nextCursor`、`hasMore`。
+  - `returnedRelationCount` 表示本页返回数量；前端累计展示使用已加载关系数量。
+  - `truncated` 与 `hasMore` 保持兼容，便于旧前端继续识别是否还有更多关系。
+- 直接关系分页：
+  - 直接关系列表查询在统一筛选 query 上追加 `Offset` 和 `Limit`。
+  - 直接关系总数、入向/出向数量、来源分布和类型分布仍按完整筛选条件统计，不受当前页影响。
+- 应用推演关系分页：
+  - 直接关系不足一页时继续用应用推演关系补齐剩余页。
+  - offset 超过直接关系总数后，会落到应用推演关系候选集合继续分页。
+  - 无关键词时通过应用关系聚合数量快速跳过候选；有关键词时按匹配候选逐条计数和跳过。
+- 前端渐进加载：
+  - 关系页签首屏请求从 1000 条降为 200 条。
+  - 顶部提示改为“已加载 x / y”，同时展示本次返回数量和每页上限。
+  - 当后端返回 `hasMore=true` 时展示“加载更多关系”按钮，点击后用 `nextCursor` 获取下一页并合并到当前关系集合。
+  - 调整筛选条件或切换资产时清空旧关系页，避免不同资产或不同筛选条件的分页结果串联。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt`，格式化 `backend/portal/models/forms/cmdb.go`、`backend/portal/models/resps/cmdb.go`、`backend/portal/apps/cmdb.go`、`backend/portal/apps/cmdb_relation_perf_test.go`。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段 cursor 仍是 offset-backed token，尚未实现基于 `updated_at/id` 的稳定排序游标；图谱按视口展开和表格虚拟化仍待真实大规模数据压测后继续增强。
+
+### 16.168 2026-06-22 V1.2 P1 CMDB/云资产响应层敏感字段脱敏第一阶段
+
+状态：已完成 CMDB/云资产响应层敏感字段脱敏第一阶段；云账号凭证脱敏已在 16.109 完成，本阶段继续覆盖 CMDB 资产详情、资产列表、JSON/CSV 导出、关系元数据和安全规则 Raw 字段，避免采集属性或导入数据中的私钥、Token、Password、Secret、AccessKey 等敏感值通过资产接口或导出文件明文暴露。
+
+已完成：
+
+- 响应层脱敏：
+  - 资产列表 `SearchCmdbAssets` 返回前会递归脱敏 `tags`、`attributes`、`rawData`。
+  - 资产详情 `CmdbAssetDetail` 返回前会递归脱敏 `tags`、`attributes`、`rawData` 和内嵌关系元数据。
+  - 独立关系查询 `/relations` 返回前会递归脱敏关系 `metadata`。
+  - 安全规则接口中的 `Raw` 字段会返回脱敏副本，不影响规则展示字段和公网暴露判断。
+- 导出脱敏：
+  - JSON 导出使用脱敏后的资产集合，避免导出文件暴露 `attributes/rawData/tags` 中的敏感值。
+  - CSV 导出的标签列使用同一套脱敏结果；CSV 行字段数量与表头保持一致。
+- 敏感字段识别：
+  - 字段名大小写不敏感，并忽略 `-`、`_`、`.` 和空格。
+  - 覆盖 `accessKey`、`accountKey`、`apiSecret`、`authorization`、`authToken`、`clientSecret`、`credential`、`password`、`passphrase`、`privateKey`、`secretAccessKey`、`sessionToken`、`signature`、`token` 等常见字段。
+  - 命中字段响应值统一替换为 `<masked>`，不改变数据库中真实数据，也不影响 provider adapter 使用解密后的凭证。
+- 单元测试：
+  - 覆盖嵌套 `map/list` 脱敏、大小写和分隔符差异、非敏感字段保留、资产关系元数据脱敏。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt`，格式化 `backend/portal/apps/cmdb.go`、`backend/portal/apps/cloud_asset_security.go`、`backend/portal/apps/cmdb_relation_perf_test.go`。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+
+验证限制：
+
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 本阶段是保守字段名规则，后续接入新 provider 的特殊敏感字段时仍需继续扩展关键字或引入 provider schema。
+- 标签级授权、云账号级授权、资源类型级授权和真实组织角色矩阵回归仍待后续增强。
+
+### 16.169 2026-06-22 V1.2 P0 云账号权限验证结果持久化第一阶段
+
+状态：已完成云账号权限验证结果持久化第一阶段；`GET /api/v1/cloud/accounts/:id/permissions` 继续兼容原有响应，同时可优先返回最近一次验证落库的权限快照，避免权限结果只存在于即时计算和页面提示中。
+
+已完成：
+
+- 数据模型：
+  - 新增 `iac_cloud_account_permission` 模型并纳入自动迁移。
+  - 每个云账号、每个权限检查项保存一条记录，唯一键为 `org_id + cloud_account_id + permission_key`。
+  - 记录 provider、accountId、resource、action、status、message、source、checkedAt 和 evidence，为后续 `provider_api` 主动权限校验预留审计字段。
+- 验证落库：
+  - `POST /api/v1/cloud/accounts/:id/validate` 在更新账号验证状态后，会把账号状态、凭证完整性、区域范围、资产采集和操作授权策略检查结果写入权限快照。
+  - 账号删除时同步清理权限快照，避免孤儿权限记录。
+- 查询兼容：
+  - `GET /api/v1/cloud/accounts/:id/permissions` 优先使用不早于账号最近验证时间的快照。
+  - 快照缺失或过期时仍按当前账号配置实时计算，并标记来源为 `computed`，旧账号首次访问不会出现空结果。
+- 前端体验：
+  - 云账号“区域与权限”抽屉新增权限检查时间展示。
+  - 权限表新增“来源”和“检查时间”列，区分本地预检、云端验证和实时计算。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt`，格式化云账号模型、响应、应用逻辑、服务和测试文件。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过。
+
+验证限制：
+
+- 本阶段仍是本地预检快照，不直接调用 AWS/OCI/AliCloud 等云端 API 做主动权限验证。
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+- 云账号 `regions` 字段仍保留用于兼容旧逻辑；独立区域表已在 16.170 完成第一阶段。
+
+### 16.170 2026-06-22 V1.2 P0 云账号区域独立表第一阶段
+
+状态：已完成云账号区域独立表第一阶段；保留云账号 `regions` JSON 字段兼容旧逻辑，同时新增 `iac_cloud_account_region` 作为区域明细表，支撑默认区域、启用状态、同步开关、区域状态、资源类型范围和最近同步时间展示。
+
+已完成：
+
+- 数据模型：
+  - 新增 `iac_cloud_account_region` 模型并纳入自动迁移。
+  - 唯一键为 `org_id + cloud_account_id + region`。
+  - 字段覆盖 provider、accountId、region、enabled、isDefault、syncEnabled、source、status、message、resourceTypes、lastSyncAt 和 metadata。
+- 生命周期同步：
+  - 创建云账号后写入区域快照。
+  - 更新 provider、regions、credentials、accountId、tenantId 或 status 后刷新区域快照。
+  - `POST /api/v1/cloud/accounts/:id/validate` 完成账号验证后刷新区域快照。
+  - 删除云账号时同步清理区域快照。
+  - CMDB 云采集成功更新账号 `lastSyncAt` 时，同步更新启用区域的 `lastSyncAt/status/message`。
+- API 兼容：
+  - `GET /api/v1/cloud/accounts/:id/regions` 优先读取区域快照。
+  - 没有快照时仍按账号配置或凭证推断区域，旧账号不会出现空结果。
+  - `PUT /api/v1/cloud/accounts/:id/regions` 继续更新账号 `regions` 字段，同时刷新区域表；被移除的旧区域保留为 disabled，不再参与同步。
+- 前端体验：
+  - 云账号“区域与权限”抽屉的区域表新增启用、同步和状态列。
+  - 区域来源继续区分手动配置和自动推断。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt`，格式化云账号模型、响应、应用逻辑、同步逻辑、服务和测试文件。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal` 通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 通过。
+
+验证限制：
+
+- 本阶段仍以本地账号配置和已有同步任务结果维护区域状态，不直接调用云厂商 API 探测区域可用性。
+- 当前部署服务已按要求删除并清理运行数据，本阶段不重新启动服务做浏览器点击回归。
+
+### 16.171 2026-06-22 V1.2 P0 AWS LB Listener/Target Group/Target Health 采集第一阶段
+
+状态：已完成 AWS ELBv2 Listener、Target Group 和 Target Health 采集第一阶段；ALB/NLB/GWLB 负载均衡器资产不再只保留主体、VPC、Subnet 和安全组信息，还会保存监听端口、协议、证书、转发目标组、目标实例/IP 和健康状态摘要，并接入云侧关系推演。
+
+已完成：
+
+- AWS ELBv2 Query API 采集增强：
+  - `DescribeListeners` 按 LoadBalancerArn 分页采集 listener，归一化 listenerArn、port、protocol、sslPolicy、certificate、defaultActions 和转发目标组。
+  - `DescribeTargetGroups` 按 LoadBalancerArn 分页采集 target group，归一化 targetGroupArn、protocol、port、targetType、vpcId、healthCheck 和 matcher。
+  - `DescribeTargetHealth` 按 TargetGroupArn 采集目标健康，归一化 targetId、port、availabilityZone、state、reason 和 description。
+- 资产属性增强：
+  - `listeners`、`listenerCount`、`listenerPorts`、`listenerProtocols`、`listenerTargetGroupArns`。
+  - `targetGroups`、`targetGroupCount`、`targetGroupArns`、`targetIds`、`targetInstanceIds`、`targetIpAddresses`。
+  - `healthyTargetCount`、`unhealthyTargetCount`。
+- 失败隔离：
+  - Listener 或 Target Group 细节采集失败时，不阻断负载均衡器主体资产入库。
+  - 细节失败会写入 `listenerCollectError`、`targetGroupCollectError` 或 `targetHealthCollectError`，方便任务详情排障。
+- 云侧关系推演增强：
+  - Load Balancer 继续通过 VPC/Subnet 归属网络资源。
+  - Load Balancer 通过 `securityGroupIds/securityGroupId/networkSecurityGroupId` 推演依赖安全组，`inferredBy=lb_security`。
+  - Load Balancer 通过 `targetInstanceIds/targetIds/targetIpAddresses` 推演依赖计算实例，`inferredBy=lb_targets`。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 AWS collector、云侧关系推演和新增测试文件。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- 新增单元测试覆盖 listener 证书和目标组提取、target health 目标引用提取，以及 LB 到安全组/计算实例的推演关系。
+
+验证限制：
+
+- 本阶段未连接真实 AWS 账号做端到端采集验证。
+- Listener Rule `DescribeRules` 已在 16.172 完成第一阶段；认证类 Action 已在 16.173 完成第一阶段，跨账号/跨 VPC target 解析仍待后续增强。
+- LB 细节暂未接入成本、合规和风险规则映射。
+
+### 16.172 2026-06-22 V1.2 P0 AWS LB Listener Rule 采集第一阶段
+
+状态：已完成 AWS ELBv2 Listener Rule 采集第一阶段；ALB/NLB/GWLB 负载均衡器资产会在 Listener 维度补充 Rule 条件、动作和转发目标组，并在 LB 维度汇总 Rule 数量与 Rule 引用的 Target Group ARN，支撑后续按域名、路径、Header、Query 和来源 IP 分析流量入口。
+
+已完成：
+
+- AWS ELBv2 Query API 采集增强：
+  - `DescribeRules` 按 ListenerArn 分页采集 rule。
+  - Rule 采集失败时不阻断 Listener、Target Group、Target Health 和 LB 主体资产入库。
+  - Rule 失败明细写入 `listenerRuleCollectErrors`，包含 listenerArn、port、protocol 和 error。
+- Rule 属性归一化：
+  - `listenerRules`：LB 级扁平 Rule 列表。
+  - `listenerRuleCount`：LB 级 Rule 数量。
+  - `ruleTargetGroupArns`：Rule action 引用的 Target Group ARN 汇总。
+  - Listener 级 `rules`、`ruleCount`、`ruleTargetGroupArns`。
+- Rule 条件归一化：
+  - 支持 `host-header`、`path-pattern`、`http-header`、`query-string`、`http-request-method`、`source-ip`。
+  - 条件字段统一保留为 `conditions[].field`、`values`、`hostHeaderValues`、`pathPatternValues`、`httpHeaderName`、`httpHeaderValues`、`queryStringValues`、`httpRequestMethods`、`sourceIpValues`。
+- Rule action 归一化：
+  - 复用 Listener action 结构，支持 `forward`、`redirect`、`fixed-response`。
+  - `forward` 同时保留单 TargetGroupArn 和 ForwardConfig 中的加权 TargetGroups。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 AWS collector 和新增测试。
+- `docker run --rm -v .../backend:/workspace -w /workspace golang:1.26.4-alpine go test -vet=off ./portal/apps` 通过。
+- 新增单元测试使用 `DescribeRulesResponse` XML 样例验证 Rule 响应标签解析、条件归一化、目标组 ARN 提取和 Listener 内嵌 Rule 汇总。
+
+验证限制：
+
+- 本阶段未连接真实 AWS 账号做端到端采集验证。
+- `authenticate-oidc`、`authenticate-cognito`、`jwt-validation` 认证类 Action 已在 16.173 完成第一阶段。
+- 跨账号、跨 VPC、Lambda target 和 IP target 的更细目标归属仍需结合真实 AWS 返回继续校准。
+
+### 16.173 2026-06-22 V1.2 P0 AWS LB 认证类 Action 采集第一阶段
+
+状态：已完成 AWS ELBv2 认证类 Action 采集第一阶段；Listener default action 和 Rule action 不再只支持转发、重定向和固定响应，也能展示 HTTPS Listener 的 OIDC、Cognito 和 JWT validation 配置，用于识别入口认证方式、认证失败策略、Session 配置和 JWT claim 校验要求。
+
+已完成：
+
+- AWS ELBv2 Action 结构增强：
+  - `AuthenticateOidcConfig`：归一化 issuer、authorizationEndpoint、tokenEndpoint、userInfoEndpoint、clientId、sessionCookieName、scope、sessionTimeout、authenticationRequestExtraParams、onUnauthenticatedRequest、useExistingClientSecret。
+  - `AuthenticateCognitoConfig`：归一化 userPoolArn、userPoolClientId、userPoolDomain、sessionCookieName、scope、sessionTimeout、authenticationRequestExtraParams、onUnauthenticatedRequest。
+  - `JwtValidationConfig`：归一化 issuer、jwksEndpoint 和 additionalClaims。
+- 敏感字段保护：
+  - OIDC `clientSecret` 不写入明文，统一写为 `<masked>`。
+  - 额外保留 `clientSecretConfigured`，便于判断规则是否配置了 secret。
+  - 资产响应层的通用敏感字段脱敏仍会继续兜底处理。
+- 适用范围：
+  - Listener default action 和 Listener Rule action 都复用同一套 action 归一化逻辑。
+  - Rule 级认证 action 会自然落入 `listenerRules[].actions[]`。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 AWS collector 和 LB 测试文件。
+- `docker compose -f backend/docker/docker-compose.yml build iac-portal` 通过，后端编译链路通过。
+- 使用临时 Dockerfile + BuildKit Go 缓存执行定向测试：
+  - `go test -vet=off ./portal/apps -run TestAwsV2ListenerActionsExtractsAuthenticationConfigs -count=1 -timeout=120s` 通过。
+
+验证限制：
+
+- 本阶段未连接真实 AWS 账号做端到端采集验证。
+- 跨账号、跨 VPC、Lambda target 和 IP target 的更细目标归属仍需结合真实 AWS 返回继续校准。
+- LB 认证配置暂未接入成本、合规和风险规则映射。
+
+### 16.174 2026-06-22 V1.2 P0 AWS S3 Bucket 配置采集第一阶段
+
+状态：已完成 AWS S3 Bucket 配置采集第一阶段；S3 bucket 资产不再只保存名称、创建时间和 region，还会补充标签、默认加密、版本控制、Public Access Block 和 Lifecycle 规则，为后续成本分摊、合规风险和对象存储治理打底。
+
+已完成：
+
+- S3 只读配置采集：
+  - `GetBucketTagging`：写入 `bucketTags`、`bucketTagList`、`bucketTagCount`，并同步到资产 `Tags`。
+  - `GetBucketEncryption`：写入 `encryption` 和 `encryptionEnabled`，包含 SSE 算法、KMS Key 和 BucketKeyEnabled。
+  - `GetBucketVersioning`：写入 `versioning`、`versioningStatus` 和 `mfaDelete`。
+  - `GetPublicAccessBlock`：写入 `publicAccessBlock` 和 `publicAccessBlockEnabled`。
+  - `GetBucketLifecycleConfiguration`：写入 `lifecycleRules` 和 `lifecycleRuleCount`，覆盖 Prefix/Tag/And filter、Transition、NoncurrentVersionTransition、Expiration、NoncurrentVersionExpiration 和 AbortIncompleteMultipartUpload。
+- 失败隔离：
+  - 子配置采集失败不阻断 bucket 主体资产入库。
+  - `NoSuchTagSet`、`ServerSideEncryptionConfigurationNotFoundError`、`NoSuchPublicAccessBlockConfiguration`、`NoSuchLifecycleConfiguration` 按“未配置”处理，不写失败噪音。
+  - 其他权限、签名、区域或网络错误写入对应 `*CollectError` 字段，方便任务详情排障。
+- Endpoint 与签名：
+  - Bucket 子资源按 bucket region 使用 S3 regional host。
+  - `us-east-1` 继续兼容 `s3.amazonaws.com`。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 AWS collector 和 S3 测试文件。
+- 使用临时 Dockerfile + BuildKit Go 缓存执行定向测试：
+  - `go test -vet=off ./portal/apps -run 'TestAwsS3.*' -count=1 -timeout=120s` 通过。
+- 单元测试覆盖 Tagging、Encryption、Versioning、PublicAccessBlock、Lifecycle XML 解析和未配置错误识别。
+
+验证限制：
+
+- 本阶段未连接真实 AWS 账号做端到端采集验证。
+- Bucket Policy、ACL、Object Lock、Replication、Logging、Notification、Website、Inventory 等更多 S3 配置已在 16.175 完成第一阶段。
+- S3 配置暂未接入成本、合规和风险规则映射。
+
+### 16.175 2026-06-22 V1.2 P0 AWS S3 Bucket 深层治理配置采集第一阶段
+
+状态：已完成 AWS S3 Bucket 深层治理配置采集第一阶段；在 16.174 基础配置采集之上，继续补齐 Bucket Policy、ACL、Object Lock、Replication、Logging、Notification、Website 和 Inventory，让对象存储资产可以支撑公开访问、保留策略、跨桶复制、审计日志、事件触发和清单治理。
+
+已完成：
+
+- S3 深层只读配置采集：
+  - `GetBucketPolicy`：写入 `bucketPolicy`，保留 JSON document、版本、ID、Statement 数量，并标识 `publicAllow`。
+  - `GetBucketAcl`：写入 `bucketAcl`、`bucketAclGrantCount` 和 `bucketAclPublic`，识别 `AllUsers` / `AuthenticatedUsers` 公开授权。
+  - `GetObjectLockConfiguration`：写入 `objectLock` 和 `objectLockEnabled`，保留默认保留模式、天数和年数。
+  - `GetBucketReplication`：写入 `replication`、`replicationRuleCount` 和 `replicationEnabledRuleCount`，保留目标桶、目标账号、KMS Key、Replication Time、Metrics 和 SourceSelectionCriteria。
+  - `GetBucketLogging`：写入 `logging` 和 `loggingEnabled`，保留日志目标桶、前缀和授权。
+  - `GetBucketNotificationConfiguration`：写入 `notifications`、`notificationRuleCount` 和 `eventBridgeEnabled`，覆盖 SNS Topic、SQS Queue、Lambda/CloudFunction 与 EventBridge。
+  - `GetBucketWebsite`：写入 `website` 和 `websiteEnabled`，保留 Index/Error Document、全量重定向和 RoutingRules。
+  - `ListBucketInventoryConfigurations`：写入 `inventoryConfigurations`、`inventoryConfigurationCount` 和 `inventoryEnabledCount`，支持 `NextContinuationToken` 分页。
+- 失败隔离：
+  - `NoSuchBucketPolicy`、`ObjectLockConfigurationNotFoundError`、`ReplicationConfigurationNotFoundError`、`NoSuchBucketWebsite`/`NoSuchWebsiteConfiguration` 按“未配置”处理。
+  - 权限、签名、区域或网络错误写入对应 `*CollectError` 字段，不阻断 bucket 主体资产。
+- 单元测试：
+  - 覆盖 Policy JSON、ACL XML、Object Lock、Replication、Logging、Notification、Website 和 Inventory XML 解析。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 AWS collector 和 S3 测试文件。
+- 使用临时 Dockerfile + BuildKit Go 缓存执行定向测试：
+  - `go test -vet=off ./portal/apps -run 'TestAwsS3.*' -count=1 -timeout=120s` 通过。
+
+验证限制：
+
+- 本阶段未连接真实 AWS 账号做端到端采集验证。
+- S3 深层配置风险规则映射已在 16.176 完成第一阶段；成本分摊和更完整合规规则映射仍待继续。
+
+### 16.176 2026-06-22 V1.2 P0 AWS S3 Bucket 风险规则映射第一阶段
+
+状态：已完成 AWS S3 Bucket 风险规则映射第一阶段；16.174/16.175 采集到的对象存储安全配置已经接入云风险发现派生，风险列表和风险合规页面可直接识别 S3 公开访问与基础合规缺口。
+
+已完成：
+
+- 风险派生规则：
+  - `s3_bucket_public_policy`：Bucket Policy 存在公开 Allow 时生成严重风险。
+  - `s3_bucket_public_acl`：Bucket ACL 对 `AllUsers` / `AuthenticatedUsers` 公开授权时生成严重风险。
+  - `s3_public_access_block_disabled`：Public Access Block 四项未完全开启时生成高风险。
+  - `s3_default_encryption_disabled`：默认加密未开启时生成高风险。
+  - `s3_versioning_disabled`：版本控制采集成功但未启用时生成中风险。
+  - `s3_access_logging_disabled`：访问日志采集成功但未启用时生成中风险。
+  - `s3_object_lock_disabled`：Object Lock 采集成功但未启用时生成中风险。
+- 风险摘要：
+  - `publicExposure` 统计扩展到 S3 公开 Policy 和公开 ACL。
+- 适配边界：
+  - 仅对 AWS S3 Bucket 或 `aws_s3_bucket` 原生类型生效，避免误伤 GCS/OSS/OBS/COS 等对象存储。
+  - 版本控制风险要求已存在版本控制采集证据，避免未采集字段导致误报。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化风险逻辑和测试文件。
+- 使用临时 Dockerfile + BuildKit Go 缓存执行定向测试：
+  - `go test -vet=off ./portal/apps -run 'Test(CloudRiskS3|AwsS3).*' -count=1 -timeout=120s` 通过。
+
+验证限制：
+
+- 本阶段为基于资产属性的风险派生单测验证，未连接真实 AWS 账号做风险端到端回归。
+- S3 成本分摊、数据分类、合规框架映射和组织级风险阈值配置仍待后续增强。
+
+### 16.177 2026-06-22 V1.2 P0 OCI 网络路由与网关采集第一阶段
+
+状态：已完成 OCI 网络路由与网关采集第一阶段；OCI collector 在既有 Compute、VCN/Subnet、Security List/NSG、Public IP、Block Volume、LB、Bucket、OKE、DB、Redis 基础上，补齐 Route Table、NAT Gateway、Internet Gateway、Service Gateway 和 DRG 标准资产，并接入云侧关系推演。
+
+已完成：
+
+- 标准资产类型：
+  - 新增 `network_service_gateway`：OCI Service Gateway。
+  - 新增 `network_drg`：OCI Dynamic Routing Gateway。
+  - `NormalizeCmdbAssetType` 识别 `service_gateway/servicegateway` 与 `drg/dynamic_routing_gateway/oci_core_drg`。
+- OCI collector：
+  - `collectOciRouteTables` 调用 Core `/routeTables`，写入 `vcnId`、`routeRules`、`destinationCidrBlocks`、`destinationServiceIds`、`gatewayIds`，并从 `networkEntityId` 推导 `natGatewayIds`、`internetGatewayIds`、`serviceGatewayIds`、`drgIds`。
+  - `collectOciNatGateways` 调用 Core `/natGateways`，归一化为 `network_nat_gateway / oci_core_nat_gateway`，保留 `vcnId` 和 `blockTraffic`。
+  - `collectOciInternetGateways` 调用 Core `/internetGateways`，归一化为 `network_internet_gateway / oci_core_internet_gateway`，保留 `vcnId` 和 `isEnabled`。
+  - `collectOciServiceGateways` 调用 Core `/serviceGateways`，归一化为 `network_service_gateway / oci_core_service_gateway`，保留 `vcnId`、`services`、`serviceIds` 和 `blockTraffic`。
+  - `collectOciDrgs` 调用 Core `/drgs`，归一化为 `network_drg / oci_core_drg`，保留默认 DRG route table 和导出 route distribution 引用。
+  - OCI 云账号 `supportedAssetTypes` 新增 NAT Gateway、Internet Gateway、Service Gateway 和 DRG；已有 Route Table 选择项现在有真实采集实现。
+- 关系推演：
+  - Route Table 归属 VCN，并依赖 Subnet、NAT Gateway、Internet Gateway、Service Gateway 和 DRG。
+  - NAT Gateway、Internet Gateway、Service Gateway 可按 `vcnId` 归属 VCN。
+  - Subnet、Security List/NSG、Compute、LB、Kubernetes、DB/Redis 的关系推演补充 `vcnId`、`securityListIds`、`nsgIds` 等 OCI 常见字段。
+- 前端展示：
+  - 云资产/CMDB 资源类型中文名新增 `network_service_gateway` 与 `network_drg`。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 OCI collector、关系推演、模型和测试文件。
+- 新增单元测试覆盖：
+  - `TestOciRouteRuleRefsExtractsGatewayRefs`：验证 OCI Route Rule 可解析 NAT/IGW/Service Gateway/DRG 引用和目标地址。
+  - `TestInferCloudRelationsAddsOciNetworkGatewayRefs`：验证 VCN、Subnet、Route Table、NAT/IGW/Service Gateway/DRG 的推演关系。
+- 使用带 `cloudiac-go-mod` / `cloudiac-go-build` 缓存卷的 Docker Go 镜像执行定向测试：
+  - `go test -vet=off ./portal/apps -run 'Test(OciRouteRuleRefs|InferCloudRelationsAddsOciNetworkGatewayRefs)$' -count=1 -timeout=120s` 通过。
+  - 测试仅运行一次性 Go 容器，未启动平台服务。
+
+验证限制：
+
+- 本阶段为代码路径和单元测试用例补齐，未连接真实 OCI 账号验证分页、权限错误、限流、跨 compartment 可见性和 provider 原始错误码。
+- DRG attachment、DRG route table、route distribution 等更深层网络资源仍可在后续阶段拆成独立资产或增强关系。
+- compartment/identity 归属映射已在 16.178 完成第一阶段；成本/合规风险映射仍待继续。
+
+### 16.178 2026-06-22 V1.2 P0 OCI compartment/identity 归属映射第一阶段
+
+状态：已完成 OCI compartment/identity 归属映射第一阶段；OCI 云采集不再只在资产上保存 `compartmentId`，而是把 tenancy、user、credential fingerprint、compartment 名称、父级和路径写入资产属性，并在同步任务 stats 中返回 compartment 明细，便于后续做组织归属、权限漂移和成本/合规分析。
+
+已完成：
+
+- Compartment 元数据：
+  - 新增 `ociCompartmentRef`，统一保存 `id/name/parentId/path/lifecycleState/description`。
+  - `ociCompartments` 支持从 `OCI_COMPARTMENT_OCIDS`、`OCI_COMPARTMENT_OCID` 或 `OCI_TENANCY_OCID` 构造采集范围。
+  - 开启 `OCI_INCLUDE_SUBCOMPARTMENTS` 或 `OCI_COMPARTMENT_IN_SUBTREE` 时，继续调用 Identity `/compartments` 获取可访问子 compartment，并按父子关系构建路径。
+  - 未开启子树采集或 Identity API 失败时，仍保留配置的 compartment ID 作为降级采集范围。
+- 资产归属字段：
+  - 每个 OCI 采集资产写入 `tenancyId`、`tenancyName`、`userId`、`credentialFingerprint`。
+  - 每个 OCI 采集资产写入 `compartmentId`、`compartmentName`、`compartmentPath`、`compartmentParentId`、`compartmentLifecycleState`。
+  - `rawData` 同步保存关键 tenancy/compartment 归属字段，方便排查原始来源。
+- 同步任务统计：
+  - `stats.compartments` 保留按 region 返回的 compartment ID 列表。
+  - 新增 `stats.compartmentDetails`，按 region 返回 compartment 名称、路径、父级和状态。
+
+验证：
+
+- 使用 Docker Go 镜像执行 `gofmt` 格式化 OCI collector 和 OCI 网络测试文件。
+- 使用带 `cloudiac-go-mod` / `cloudiac-go-build` 缓存卷的 Docker Go 镜像执行定向测试：
+  - `go test -vet=off ./portal/apps -run 'Test(OciRouteRuleRefs|InferCloudRelationsAddsOciNetworkGatewayRefs|BuildOciCompartmentRefs|AnnotateOciCompartmentAsset)$' -count=1 -timeout=120s` 通过。
+  - 测试仅运行一次性 Go 容器，未启动平台服务。
+
+验证限制：
+
+- 本阶段验证的是归属字段构建和资产注入逻辑，未连接真实 OCI 账号验证跨 tenancy/跨 compartment 权限边界。
+- Identity 权限漂移、用户/组/动态组/策略解析和 provider 原生错误码仍待真实环境继续补齐。
 
 ### 16.110 2026-06-21 V1.2 P1 云资产同步策略第一阶段
 
@@ -6425,8 +8648,8 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 验证限制：
 
-- 当前 scope 耗时在单 region + 单 assetType 任务中可精确映射；多 region + 多 assetType 任务第一阶段先返回 scope 数量统计，provider 内部单 API 子调用耗时仍待 collector adapter 继续上报。
-- 失败分类基于错误文本做第一阶段归类；云厂商原生错误码、分页游标和自动局部重试仍待真实 provider 联调后继续增强。
+- 当前 scope 耗时在单 region + 单 assetType 任务中可精确映射；多 region + 多 assetType 任务第一阶段先返回 scope 数量统计，OCI provider 内部单 API 子调用耗时已在 16.181 完成第一阶段，其他 provider 可继续按同一结构上报。
+- 失败分类基于错误文本做第一阶段归类；云厂商原生错误码、region/assetType 自动局部重试已完成第一阶段，分页游标、API 子调用级局部补偿仍待真实 provider 联调后继续增强。
 
 ### 16.123 2026-06-21 V1.2 P1 云账号健康接入同步失败分类第一阶段
 
@@ -6466,7 +8689,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 验证限制：
 
 - 本阶段消费同步任务已采集到的失败分类，用于账号健康推断；不会额外主动请求云厂商 API。
-- 失败分类仍以 16.122 的文本归类为主，云厂商原生错误码、区域级权限矩阵和自动局部重试仍待 provider adapter 继续增强。
+- 失败分类仍以 16.122 的文本归类为主，云厂商原生错误码和 region/assetType 自动局部重试已完成第一阶段，区域级权限矩阵和 API 子调用级局部补偿仍待 provider adapter 继续增强。
 - 云账号页面健康依据列已在 16.124 结构化展示 `failureImpact` 字段；本阶段后端仍只负责提供同步失败影响，不主动探测云厂商 API。
 
 ### 16.124 2026-06-21 V1.2 P1 云账号健康依据展示同步失败影响第一阶段
@@ -6885,7 +9108,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 验证限制：
 
-- 本阶段提供查询结果内的阈值判断和页面告警；事件中心记录、通知渠道投递、每个同步策略独立保存阈值和告警静默窗口仍待后续增强。
+- 本阶段提供查询结果内的阈值判断和页面告警；事件中心记录已在 16.184 完成第一阶段，每个同步策略独立保存阈值和告警静默窗口已在 16.185/16.187 完成第一阶段，负责人分派和通知路由元数据已在 16.189 完成第一阶段，按错误类型/云服务动态路由和失败次数升级已在 16.192 完成第一阶段；通知渠道真实投递和企业级值班升级仍待后续增强。
 
 ### 16.134 2026-06-21 V1.2 P1 云账号健康子周期任务趋势数据导出第一阶段
 
@@ -7768,8 +9991,8 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
   - 新增 GitOps/IaC 变更门禁和环境一致性保障提示。
   - 工单页新增“发起自助申请”按钮。
   - 新增“自助目录”页签，展示服务项、类别、处理方式、来源、风险和上架状态。
-  - 自助申请弹窗支持选择申请类型、ITSM 连接器、优先级、项目 ID、环境 ID、申请说明和补充参数 JSON。
-  - 自助申请弹窗打开时会刷新连接器并默认选中启用连接器；若请求尚未返回，后端仍可使用本地工单兜底。
+  - 自助申请弹窗支持选择申请类型、可选 ITSM 连接器、优先级、项目 ID、环境 ID、申请说明和补充参数 JSON。
+  - 自助申请弹窗打开时会刷新连接器并默认选中启用连接器；若请求尚未返回、没有启用外部连接器或用户清空连接器，后端仍可使用本地工单兜底。
 
 验证：
 
@@ -7794,13 +10017,13 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 - 本阶段先把公司目标落成平台可度量、可申请、可审计的闭环；GitLab/GitHub PR review 与外部流水线的真实状态回写仍需后续对接 VCS/CI API。
 - “IaC 代码化覆盖率”以 CMDB 资产 `source=iac_resource` 或 `iac_resource_id` 关联为准；历史资产需要继续通过 IaC 回填和资产治理补齐。
-- “工单自动化处理率”以本平台工单提交/处理中/已解决/关闭且有提交痕迹为准；外部 ITSM 的自动化关闭、SLA 和机器人处理标签仍需通过状态回调或同步任务补充。
+- “工单自动化处理率”已在 16.208 优先合并 `robotProcessed=true` 的机器人处理标签，并兼容本平台工单提交/处理中/已解决/关闭且有提交痕迹的历史口径；外部 ITSM 主动状态回调已在 16.197 完成第一阶段，外部状态周期拉取已在 16.198 完成第一阶段，漂移自动修复审批通知/SLA 升级已在 16.207 完成第一阶段，外部 ITSM 失败补偿队列已在 16.213 完成第一阶段。
 
 待继续：
 
-- 对接 GitLab/GitHub Merge Request、审批状态、Pipeline 结果和 GitOps Repo 变更记录，形成真正的 PR review 门禁。
-- 将漂移检测、自动修复、风险整改与 ITSM 自助申请进一步联动，支持一键从风险/漂移详情发起整改。
-- 引入自助目录权限策略和 SLA，按团队/项目统计 80% 自助覆盖目标和 60% 自动化处理目标的趋势。
+- GitOps/IaC 申请侧 PR review 和自动化流水线门禁已在 16.194 完成第一阶段，外部 callback 回写已在 16.214 完成第一阶段；继续对接 GitLab/GitHub/Jenkins 主动拉取、GitOps Repo diff 记录和更完整审批明细。
+- 风险/漂移到 ITSM 自助整改工单联动已在 16.195 完成第一阶段，ITSM 状态同步风险整改已在 16.196 完成第一阶段，外部 ITSM 主动回调和签名校验已在 16.197 完成第一阶段，外部状态周期拉取已在 16.198 完成第一阶段，漂移风险整改触发自动修复已在 16.199 完成第一阶段，漂移自动修复任务结果回写风险已在 16.200 完成第一阶段，风险详情页漂移自动修复入口已在 16.201 完成第一阶段，漂移自动修复失败后重试审批已在 16.202 完成第一阶段，漂移自动修复回滚策略记录已在 16.203 完成第一阶段，漂移自动修复审批策略配置已在 16.204 完成第一阶段，漂移自动修复完整任务时间线已在 16.205 完成第一阶段，漂移自动修复自动关联推荐已在 16.206 完成第一阶段，漂移自动修复审批通知/SLA 升级已在 16.207 完成第一阶段，机器人处理标签已在 16.208 完成第一阶段，推荐采纳确认流已在 16.209 完成第一阶段，自助目录权限策略和组织级 SLA 趋势已在 16.210 完成第一阶段，项目/申请类型维度目标趋势已在 16.211 完成第一阶段，外部 ITSM 专用字段映射已在 16.212 完成第一阶段，外部 ITSM 失败补偿队列已在 16.213 完成第一阶段。
+- 继续增强自助目录策略可配置能力、真实组织架构团队维度目标趋势、外部 ITSM 独立队列报表和死信重放页面。
 
 ### 16.150 2026-06-21 V1.2 P1 EKS/OKE Kubernetes 集群信息展示第一阶段
 
@@ -7833,7 +10056,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 待继续：
 
 - 在真实 EKS/OKE 账号上补充端到端采集验证，确认 NodeGroup/NodePool API 权限、分页和错误映射。
-- 将 GKE/AKS 的节点池信息补齐到同一 K8S 信息页签。
+- 在真实 GKE/AKS 账号上补充端到端采集验证，确认 NodePool 字段差异、权限、分页和错误映射。
 - 后续如进入多集群管理，需要继续扩展 Namespace、Node、Pod、Workload、Service/Ingress、事件和 kubeconfig/Agent 接入。
 
 ### 16.111 2026-06-21 V1.2 P1 云账号健康检查接入同步策略阈值
@@ -8373,7 +10596,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 待继续：
 
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
-- 继续增强成本计划通知模板、调度窗口、静默期和负责人分派。
+- 成本同步计划通知静默、通知窗口、负责人和路由已在 16.190 完成第一阶段，按错误类型路由和失败次数升级策略已在 16.191 完成第一阶段；继续增强真实通知通道端到端联调和更细的企业升级策略。
 - 扩展成本异常阈值配置、环比/同比突增规则和整改闭环。
 
 ### 16.103 2026-06-21 V1.2 P2 成本计划失败外部 Webhook 通知第一阶段
@@ -8416,11 +10639,11 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 验证限制：
 
 - 本阶段验证的是平台 Webhook 投递链路；邮件、钉钉、企业微信、Slack 等通知类型复用同一事件分发逻辑和通知模板，仍需按企业实际机器人/SMTP 配置做端到端联调。
-- 成本计划通知已支持事件类型订阅和模板配置；静默期、负责人分派、按错误类型路由和升级策略仍待继续。
+- 成本计划通知已支持事件类型订阅、模板配置、计划级静默期、通知窗口、负责人分派、按错误类型路由和失败次数升级第一阶段；真实通知通道联调和更细企业升级策略仍待继续。
 
 待继续：
 
-- 继续增强成本计划通知模板、调度窗口、静默期、负责人分派和按错误类型路由。
+- 继续增强成本计划真实通知通道端到端联调和更细的企业升级策略。
 - 扩展成本异常阈值配置、环比/同比突增规则和整改闭环。
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
 
@@ -8539,7 +10762,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 - 对象存储列表 API 继续补齐真实云环境联调、provider SDK/REST 错误映射、ETag 和更复杂目录规则。
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
-- 继续增强成本计划通知模板、调度窗口、静默期和负责人分派。
+- 成本同步计划通知静默、通知窗口、负责人和路由已在 16.190 完成第一阶段，按错误类型路由和失败次数升级策略已在 16.191 完成第一阶段；继续增强真实通知通道端到端联调和更细的企业升级策略。
 
 ### 16.99 2026-06-21 V1.2 P2 成本对象存储原生列表 API 第一阶段
 
@@ -8593,7 +10816,7 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 - 对象存储列表 API 继续补齐真实云环境联调、provider SDK/REST 错误映射、ETag 和更复杂目录规则。
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
-- 继续增强成本计划通知模板、调度窗口、静默期和负责人分派。
+- 成本同步计划通知静默、通知窗口、负责人和路由已在 16.190 完成第一阶段，按错误类型路由和失败次数升级策略已在 16.191 完成第一阶段；继续增强真实通知通道端到端联调和更细的企业升级策略。
 
 ### 16.100 2026-06-21 V1.2 P2 成本同步计划失败退避、通知事件与自动暂停第一阶段
 
@@ -8651,4 +10874,590 @@ CloudIaC 当前定位是基础设施即代码管理平台，核心链路围绕�
 
 - 对象存储列表 API 继续补齐真实云环境联调、provider SDK/REST 错误映射、ETag 和更复杂目录规则。
 - 在真实腾讯云/华为云账单环境补充端到端联调，并扩展 CSV 字段差异、Parquet/Excel、分区目录和 provider 错误码映射。
-- 继续增强成本计划通知模板、调度窗口、静默期和负责人分派。
+- 成本同步计划通知静默、通知窗口、负责人和路由已在 16.190 完成第一阶段，按错误类型路由和失败次数升级策略已在 16.191 完成第一阶段；继续增强真实通知通道端到端联调和更细的企业升级策略。
+
+### 16.216 2026-06-23 V1.2 P0 ITSM 自助目录策略组织级配置第一阶段
+
+状态：已完成 ITSM 自助目录策略组织级配置第一阶段；自助目录从固定内置策略升级为可由组织级系统配置覆盖的策略模型，支撑自助运维目录上架状态、允许角色、适用范围和 SLA 的按组织调整。
+
+已完成：
+
+- 后端新增组织级自助目录策略配置能力：
+  - 策略配置存储在 `iac_system_cfg`，使用组织维度 key 前缀 `CLOUD_ITSM_CATALOG_POLICY_<orgId>`。
+  - 新增 `PUT /api/v1/cloud/itsm/catalog-policies/:key`，支持按服务项 key 更新或恢复默认策略。
+  - 后端校验目录 key、启用状态、SLA 分钟、允许角色和适用范围，保存前做去重和规范化。
+- 自助目录响应增强：
+  - 返回 `policyConfigured`、`policySource`、`enabled`、`available` 等字段，前端可区分默认策略和组织级覆盖策略。
+  - 当组织级策略停用服务项时，目录状态展示为不可用，并给出“策略已停用”原因。
+  - 自助工单提交时快照当前策略名称、说明、角色、范围和 SLA，已创建工单不受后续策略调整影响。
+- 前端 ITSM 自助目录增强：
+  - “自助目录”表格展示策略来源、上架状态、允许角色、适用范围和 SLA。
+  - 每个服务项新增“策略”入口，可打开“配置自助目录策略”弹窗。
+  - 策略弹窗支持启停、SLA 分钟、策略名称、策略说明、允许角色、适用范围和恢复默认。
+- 测试补齐：
+  - 修复已有 ITSM 自助目录测试中的策略函数调用签名。
+  - 新增 `TestCloudItsmCatalogPolicyOverride`，覆盖组织级策略覆盖、停用、SLA、角色/范围规范化和策略来源标记。
+  - 修复 `cloud_cost.go` 中 Go 1.26 vet 对动态 `fmt.Errorf` 格式串的报错，不改变业务行为。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(CatalogPolicyForSelfService|CatalogPolicyOverride|SelfServicePolicyPayload)|TestCloudEventItsm"`。
+- `git diff --check` 覆盖本阶段相关后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal` 成功，后端 Go 编译通过。
+- `docker compose up -d iac-portal` 成功，`/api/v1/check` 返回 `success=true`。
+- 内置浏览器验证 ITSM 页面：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 正常加载。
+  - “自助目录”页签展示 14 个“策略”入口。
+  - 点击 `refresh_metadata` 服务项策略入口后，弹窗展示“配置自助目录策略”“策略状态”“SLA 分钟”“恢复默认”“策略名称”“策略说明”“允许角色”“适用范围”。
+
+验证限制：
+
+- 第一阶段采用组织级 `iac_system_cfg` JSON 覆盖策略，尚未拆分为独立策略表、版本历史和审计差异。
+- 团队/组织架构维度目标趋势仍待继续，当前以项目、环境、资源和角色范围为主。
+- 外部 ITSM 真实系统端到端联调、独立队列报表细分和更多死信重放操作仍需继续增强。
+
+待继续：
+
+- 补齐真实组织架构团队维度目标趋势，并把自助覆盖率、自动化处理率和 SLA 达成率细化到团队。
+- 扩展自助目录策略的版本历史、审批变更留痕和差异审计。
+- 继续对接外部 ITSM 真实系统联调、独立队列报表和死信重放页面。
+
+### 16.217 2026-06-23 V1.2 P0 ITSM 团队维度目标趋势第一阶段
+
+状态：已完成 ITSM 团队维度目标趋势第一阶段；自助运维 80% 覆盖、工单自动化 60% 和 SLA 达成率不再只按项目/申请类型展示，也可按团队维度展示，支撑业务团队自助化目标跟踪。
+
+已完成：
+
+- 后端 `CloudItsmOverview` 响应新增 `teamTrends`。
+- 团队维度复用 `CloudItsmDimensionMetricResp`，与项目/申请类型保持一致口径：
+  - `ticketTotal`：近 30 天团队相关工单总数。
+  - `selfServiceTicketTotal` / `selfServiceCoverageRate`：团队自助工单数和自助占比。
+  - `automatedTicketTotal` / `ticketAutomationRate`：团队自动化处理工单数和自动化处理率。
+  - `selfServiceSlaTicketTotal` / `selfServiceSlaMetRate`：团队 SLA 工单数和 SLA 达成率。
+- 团队归属提取顺序：
+  - 优先读取工单 payload、operation params、requester、externalPayload 中的 `team`、`teamId`、`teamName`、`businessTeam`、`businessUnit`、`department`、`ownerTeam`、`requestTeam`、`oncallTeam`、`costCenter` 等字段。
+  - 其次读取项目 LDAP OU 授权记录 `iac_ldap_ou_project` 的 `OU/DN`，用于真实组织架构映射。
+  - 再次读取申请人 `iac_user.company` 作为团队/部门归属。
+  - 最后按项目名称兜底；无项目且无团队字段时归入“未标记团队”。
+- 前端 ITSM “自助目录”页签新增“团队目标趋势”表，与“项目目标趋势”“申请类型趋势”并列展示。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(DimensionMetricAddTicket|TicketTeamDimension|CatalogPolicyForSelfService|CatalogPolicyOverride|SelfServicePolicyPayload)|TestCloudEventItsm"`。
+- 新增 `TestCloudItsmTicketTeamDimension`，覆盖显式团队对象、requester 部门、项目兜底和未标记团队兜底。
+- `git diff --check` 覆盖本阶段相关后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功，`/api/v1/check` 返回 `success=true`。
+- 内置浏览器验证 ITSM 页面：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 正常加载。
+  - “自助目录”页签展示“团队目标趋势”“项目目标趋势”“申请类型趋势”。
+  - 当前验证组织暂无工单，团队趋势表显示空数据，但页面结构和后端构建链路已验证。
+
+验证限制：
+
+- 第一阶段不新增独立团队主数据表，团队来自工单扩展字段、项目 LDAP OU、申请人公司字段和项目兜底。
+- 真实企业组织架构、团队层级、人员多团队归属和值班组映射仍需要根据目标系统继续接入。
+- 当前本地验证组织没有真实团队工单数据，非空团队趋势已通过单元测试覆盖聚合输入路径，生产仍需接入真实 ITSM/LDAP 数据做端到端验证。
+
+待继续：
+
+- 接入企业组织架构团队主数据或 LDAP/IdP 团队同步，把团队维度从启发式提取升级为强归属。
+- 扩展团队层级钻取、团队负责人和通知/升级路由。
+- 扩展自助目录策略的版本历史、审批变更留痕和差异审计。
+- 继续对接外部 ITSM 真实系统联调、独立队列报表和死信重放页面。
+
+### 16.218 2026-06-23 V1.2 P0 ITSM 自助目录策略版本历史/差异审计第一阶段
+
+状态：已完成 ITSM 自助目录策略版本历史和差异审计第一阶段；组织级自助目录策略不再只是覆盖当前配置，而是每次更新/恢复默认都会形成版本、操作人、时间、字段级差异和事件中心审计记录。
+
+已完成：
+
+- 后端新增自助目录策略历史存储：
+  - 历史记录存储在 `iac_system_cfg`，使用组织维度 key 前缀 `CLOUD_ITSM_CATALOG_POLICY_HISTORY_<orgId>`。
+  - 每个服务项最多保留最近 50 条历史记录，避免无限增长。
+  - 历史记录包含 `version`、`action`、`key`、`policyName`、`updatedAt`、`updatedBy`、`beforeSnapshot`、`afterSnapshot` 和 `diff`。
+- 后端新增字段级差异审计：
+  - 差异字段覆盖 `enabled`、`policyName`、`policyDescription`、`requiredRoles`、`allowedScopes` 和 `slaMinutes`。
+  - 组织级策略覆盖会在当前策略响应中返回 `policyVersion`、`policyUpdatedAt`、`policyUpdatedBy` 和 `policyLastDiff`。
+  - 恢复默认也会写入历史版本，返回本次 reset 的版本和差异。
+- 后端新增查询接口：
+  - 新增 `GET /api/v1/cloud/itsm/catalog-policies/:key/history`。
+  - 支持 `limit` 参数，默认返回 20 条，最大 100 条，按最新版本优先返回。
+- 事件中心审计：
+  - 策略更新写入 `itsm.catalog_policy.updated`。
+  - 恢复默认写入 `itsm.catalog_policy.reset`。
+  - 事件 payload 复用历史记录，便于后续通知订阅、审批留痕和外部审计。
+- 前端 ITSM 自助目录增强：
+  - 自助目录策略列展示当前策略版本号。
+  - “配置自助目录策略”弹窗新增“策略变更历史”表。
+  - 历史表展示版本、动作、变更人、变更时间和差异字段。
+  - 事件类型中文文案新增“ITSM自助目录策略更新”和“ITSM自助目录策略恢复默认”。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(CatalogPolicyForSelfService|CatalogPolicyOverride|CatalogPolicyHistoryDiff|SelfServicePolicyPayload)|TestCloudEventItsm"`。
+- 新增/扩展测试：
+  - `TestCloudItsmCatalogPolicyOverride` 覆盖策略版本、更新时间、操作人和最近差异回填。
+  - `TestCloudItsmCatalogPolicyHistoryDiff` 覆盖历史 entry、字段级差异、响应转换和版本递增。
+- `git diff --check` 覆盖本阶段相关后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功，`/api/v1/check` 返回 `success=true`。
+- 内置浏览器验证 ITSM 页面：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 正常加载。
+  - “自助目录”页签展示 14 个“策略”入口。
+  - 点击 `refresh_metadata` 服务项策略入口后，弹窗展示“策略变更历史”表；当前验证组织暂无历史记录时展示空态。
+
+验证限制：
+
+- 第一阶段历史存储仍沿用 `iac_system_cfg` JSON；后续如需强查询、强审计和审批链路，可拆分为独立策略版本表。
+- 字段级 diff 已覆盖核心策略字段，尚未扩展到审批人、审批规则、通知路由和团队例外策略。
+- 本地浏览器验证未创建样例历史记录，避免在验证组织留下额外审计数据；写入链路由目标单测和容器构建覆盖。
+
+待继续：
+
+- 将自助目录策略变更接入审批流，支持策略变更前审批、审批意见和 PR/工单证据留痕。
+- 扩展自助目录策略的团队/项目例外规则、通知/升级路由和策略版本对比视图。
+- 继续对接外部 ITSM 真实系统联调、独立队列报表和死信重放页面。
+
+### 16.219 2026-06-23 V1.2 P0 ITSM 失败补偿队列报表细分第一阶段
+
+状态：已完成 ITSM 失败补偿队列报表细分第一阶段；失败提交补偿不再只提供总数和明细列表，而是新增按连接器、失败原因、失败年龄和最近死信的独立报表视图，支撑外部 ITSM 联调期间快速定位补偿积压来源。
+
+已完成：
+
+- 后端新增失败补偿队列报表接口：
+  - 新增 `GET /api/v1/cloud/itsm/tickets/retry-queue/report`。
+  - 报表返回 `connectorBreakdown`、`reasonBreakdown`、`ageBuckets` 和 `recentDeadLetters`。
+  - 连接器维度展示连接器 ID、名称、provider、失败总数、到期可重试、等待退避、死信、跳过和下一次重试时间。
+  - 失败原因维度覆盖 `due`、`not_due`、`max_attempts_reached`、`connector_missing`、`connector_disabled`、`disabled`、`no_endpoint`、`missing_request_payload`、`external_identity_present`、`dead_letter`、`status_not_failed` 和 `unknown`。
+  - 失败年龄维度按 `<1h`、`1-6h`、`6-24h`、`>24h` 和 `unknown` 聚合。
+  - 最近死信保留最新 8 条，便于页面直接查看和重放。
+- 后端队列 item 构造增强：
+  - `cloudItsmSubmitRetryQueueItem` 在测试聚合路径下支持 nil `ServiceContext`，避免单元测试依赖数据库 lookup。
+  - 线上路径仍保留连接器、操作任务、项目、环境和创建人的名称回填。
+- 前端 ITSM “失败补偿队列”页签增强：
+  - 新增“按连接器”“按失败原因”“按失败年龄”三张细分报表。
+  - 新增“最近死信”表，展示标题、连接器、原因、尝试次数、更新时间，并支持直接重放。
+  - 批量重试、单条重放、自助申请、连接器保存/删除和刷新操作后同步刷新队列 summary、报表和列表。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(SubmitRetryQueueStatus|SubmitRetryQueueReportBreakdown|ForcedDeadLetterReplayEligibility|CatalogPolicyHistoryDiff|CatalogPolicyOverride)|TestCloudEventItsm"`。
+- 新增 `TestCloudItsmSubmitRetryQueueReportBreakdown`，覆盖到期可重试、等待退避、达到最大尝试次数死信、连接器缺失跳过、连接器维度统计、失败原因统计、失败年龄桶顺序和最近死信列表。
+- `git diff --check` 覆盖本阶段相关后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功，`/api/v1/check` 返回 `success=true`。
+- 内置浏览器验证 ITSM 页面：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 正常加载。
+  - “失败补偿队列”页签展示“按连接器”“按失败原因”“按失败年龄”“最近死信”。
+  - 当前验证组织暂无失败队列数据，报表表格和死信表展示空态，页面无横向溢出。
+
+验证限制：
+
+- 第一阶段仍基于本地失败工单队列表做报表聚合，真实 Jira/ServiceNow 等外部 ITSM 端到端失败样本仍需接入后继续验证。
+- 最近死信支持单条重放，尚未扩展批量死信重放、死信关闭、人工确认和重放审批。
+- 报表维度暂按连接器、失败原因和失败年龄聚合，尚未扩展团队、项目、申请类型、错误码和外部系统响应码维度。
+
+待继续：
+
+- 对接真实外部 ITSM 系统，补充端到端提交失败、退避、死信、重放和状态同步样本。
+- 扩展死信批量重放、人工确认关闭、审批留痕和重放操作审计。
+- 将失败补偿队列报表继续扩展到团队、项目、申请类型、错误码和外部响应码维度。
+
+### 16.220 2026-06-23 V1.2 P0 ITSM 死信批量重放/人工关闭审计第一阶段
+
+状态：已完成 ITSM 死信批量重放、人工关闭和审计第一阶段；失败补偿队列中的死信不再只能单条重放，运维人员可以批量选择死信进行强制重放，或在业务确认无需继续提交时人工关闭并形成事件中心审计。
+
+已完成：
+
+- 后端新增死信批量处置接口：
+  - 新增 `POST /api/v1/cloud/itsm/tickets/retry-queue/dead-letters/action`。
+  - 单次最多处理 50 条死信，支持 `action=replay` 和 `action=close`。
+  - 仅允许处置 `dead_letter` 队列状态的工单，非死信、无权限或不存在的 ID 会进入 `skipped/errors` 明细。
+  - `replay` 会复用单条失败提交重放逻辑，并在死信场景下使用强制重放 eligibility。
+  - `close` 会把工单状态改为 `canceled`，写入 `closed_at`、`last_synced_at` 和 `responsePayload.submitRetry` 审计字段。
+- 死信人工关闭审计字段：
+  - `deadLetter=true`。
+  - `deadLetterClosed=true`。
+  - `deadLetterClosedAt`。
+  - `deadLetterClosedBy`。
+  - `deadLetterCloseReason`。
+  - `deadLetterAction=close`。
+- 连接器缺失/停用死信处置边界增强：
+  - `submitRetry.deadLetter=true` 现在优先作为死信状态信号。
+  - 当连接器已删除或停用时，队列仍识别为 `dead_letter`，人工关闭可以完成。
+  - 缺失或停用连接器的死信重放仍会被连接器校验拦截，避免误发外部请求。
+- 事件中心审计：
+  - 单条人工关闭写入 `itsm.ticket.dead_letter_closed`。
+  - 批量重放写入 `itsm.dead_letter.batch_replayed`。
+  - 批量关闭写入 `itsm.dead_letter.batch_closed`。
+  - 前端事件中心补充以上事件类型中文文案。
+- 前端 ITSM “失败补偿队列”页签增强：
+  - “最近死信”表支持多选。
+  - 最近死信区域新增“批量重放”“人工关闭”。
+  - 主队列表新增死信多选，并提供“批量重放死信”“人工关闭死信”。
+  - “人工关闭死信”弹窗要求填写关闭原因，提交后刷新队列列表、summary、报表和工单概览。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(SubmitRetryQueueStatus|SubmitRetryQueueReportBreakdown|DeadLetterClosePayload|DeadLetterActionResultErrors|ForcedDeadLetterReplayEligibility|CatalogPolicyHistoryDiff|CatalogPolicyOverride)|TestCloudEventItsm"`。
+- 新增/扩展测试：
+  - `TestCloudItsmDeadLetterClosePayload` 覆盖人工关闭 payload 审计字段和默认关闭原因。
+  - `TestCloudItsmDeadLetterActionResultErrors` 覆盖批量操作结果和 errors 明细。
+  - `TestCloudItsmSubmitRetryQueueStatus` 补充连接器缺失时 `deadLetter=true` 仍识别为 `dead_letter` 的边界。
+- `docker compose build iac-portal` 成功，后端完成 Swagger 生成和 Go 编译。
+- `docker compose up -d iac-portal` 成功；`/api/v1/check` 返回 `success=true`、`build=docker-compose`、`version=v1.3.5`。
+- API 端到端验证：
+  - 插入临时工单 `cit-codex-dl-miss-0623`，连接器 ID 指向不存在的 `citc-missing-codex`，但 `response_payload.submitRetry.deadLetter=true`。
+  - 调用批量人工关闭接口返回 `closed=1`、`failed=0`、`skipped=0`。
+  - 数据库确认工单 `status=canceled`，`deadLetterClosed=true`，`deadLetterCloseReason=codex missing connector close validation`，`deadLetterClosedBy` 为当前管理员用户，`closed_at` 已写入。
+  - 事件中心写入 `itsm.ticket.dead_letter_closed`，payload `ticketId` 指向该临时工单。
+  - 验证后已清理临时工单和事件，剩余临时数据计数均为 `0`。
+
+验证限制：
+
+- 第一阶段只做死信批量重放和人工关闭，不引入独立死信审批流。
+- 外部 Jira/ServiceNow/通用 HTTP 的真实失败样本仍需接入后继续做端到端重放验证。
+- 人工关闭原因已审计，但尚未扩展关闭原因字典、二次确认审批和关闭通知策略。
+
+待继续：
+
+- 将死信重放/关闭接入审批流，支持审批意见、审批人和外部证据留痕。
+- 扩展死信维度到团队、项目、申请类型、错误码和外部系统响应码。
+- 对接真实外部 ITSM 系统，补齐提交失败、退避、死信、重放、关闭和状态同步的完整样本。
+
+### 16.221 2026-06-23 V1.2 P0 云资产列表响应式排版修复
+
+状态：已完成云资产列表响应式排版修复；多云资产筛选项和宽表格在窄视口下不再把页面挤乱，表格横向宽度由自身滚动区域承接。
+
+已完成：
+
+- 云资产列表复用 `resource-query` 容器时新增云资产专用布局类。
+- 筛选栏从宽度平分的 flex 布局升级为云资产模式下的自适应 grid：
+  - 中窄视口下可稳定展示两列左右筛选控件，避免 150px 级别小格压缩输入框。
+  - 筛选控件宽度在 `807px` 视口下约 `276px`，操作按钮自然换行。
+- 资产表格增加外层宽度约束容器：
+  - 页面主体不再被 `2622px` 宽表格撑出横向滚动。
+  - 表格内部 `.ant-table-content` 保留横向滚动，继续支持所有资产列。
+- 样式约束仅作用于云资产列表，不改变普通 CMDB 资产查询页的行为。
+
+验证：
+
+- `git diff --check` 覆盖 `resource-query` 前端改动，通过。
+- `docker compose build iac-web` 成功，前端 production build 通过，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-web` 成功。
+- 内置浏览器验证 `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-assets`：
+  - 页面视口宽度 `807px` 时，document 宽度保持 `807px`，没有被宽表格撑出整页横向滚动。
+  - 筛选栏为 `grid`，两列宽度约 `276px`。
+  - 表格容器可视宽度约 `559px`，表格内容宽度约 `2622px`，横向滚动由 `.ant-table-content` 承接。
+  - 页面展示“资产列表 / 应用依赖 / 云采集”和资产覆盖、Kubernetes 集群、治理报表入口，无 JS 渲染异常。
+
+验证限制：
+
+- 本阶段修复的是现有宽列排版问题，不调整资产列字段数量和列宽策略。
+- 后续若资产列继续增加，可考虑列显隐配置、固定列和表格密度切换。
+
+### 16.222 2026-06-23 V1.2 P0 ITSM 死信处置审批留痕第一阶段
+
+状态：已完成 ITSM 死信重放/关闭接入操作任务审批流第一阶段；死信处置现在既可直接批量执行，也可先提交审批，审批通过后复用统一死信批量处置逻辑执行，并在操作任务、审计和事件中心留下审批人、审批意见、申请原因和外部证据链接。
+
+已完成：
+
+- 后端新增死信处置审批申请接口：
+  - `POST /api/v1/cloud/itsm/tickets/retry-queue/dead-letters/approval`。
+  - 支持 `action=replay` 和 `action=close`。
+  - 单次最多 50 条，创建审批前校验所选工单当前为 `dead_letter`。
+  - 支持 `reason` 和 `evidenceUrl`，写入 `operation.params.itsmDeadLetter.evidence`。
+- 审批流复用 `iac_cloud_operation`：
+  - 新增操作动作 `itsm_dead_letter`。
+  - 审批单状态为 `approving`，类型为 `self_service`。
+  - 审批通过后写入 `approval.approverId`、`approval.comment`、`approval.approvedAt`。
+  - 审批驳回写入 `rejected` 状态和操作任务审计。
+- 审批通过执行：
+  - `close` 会执行死信人工关闭逻辑，工单更新为 `canceled`。
+  - `replay` 会按死信强制重放路径执行。
+  - 执行结果写入 `operation.result`，包括 `closed/replayed/submitted/failed/skipped/errors`。
+- 事件中心审计：
+  - `itsm.dead_letter.approval_requested`。
+  - `itsm.dead_letter.approval_rejected`。
+  - `itsm.dead_letter.approval_executed`。
+  - `itsm.dead_letter.approval_execute_failed`。
+- 前端增强：
+  - ITSM “失败补偿队列”的“最近死信”区域新增“重放审批”“关闭审批”。
+  - 主队列工具栏新增“提交重放审批”“提交关闭审批”。
+  - 新增审批申请弹窗，要求填写申请原因，可选填写外部证据链接。
+  - 操作任务页补充 `itsm_dead_letter` 和 `self_service` 的中文展示。
+  - 事件中心和通知事件类型字典补充死信审批相关事件中文文案。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(SubmitRetryQueueStatus|SubmitRetryQueueReportBreakdown|DeadLetterClosePayload|DeadLetterActionResultErrors|DeadLetterApprovalPayloadHelpers|ForcedDeadLetterReplayEligibility|CatalogPolicyHistoryDiff|CatalogPolicyOverride)|TestCloudEventItsm"`。
+- 新增 `TestCloudItsmDeadLetterApprovalPayloadHelpers`，覆盖审批 payload 的 ticketIds JSON 往返解析、项目/环境作用域折叠和资源 ID 摘要。
+- `git diff --check` 通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功；`/api/v1/check` 返回 `success=true`。
+- API 端到端验证：
+  - 插入临时死信工单 `cit-codex-dlappr-0623`。
+  - 调用审批申请接口返回操作任务 `cop-d8t0btfcvpms73bhsc6g`，状态为 `approving`，params 中包含申请原因和 `https://example.com/change/codex-dead-letter` 外部证据链接。
+  - 调用 `POST /api/v1/cloud/operations/{id}/approve` 审批通过后，操作任务状态变为 `complete`，result 中 `action=close`、`closed=1`，审批意见为 `codex approval execution validation`。
+  - 数据库确认临时工单 `status=canceled`，`deadLetterClosed=true`，关闭原因为 `codex close approval validation`，关闭人为当前管理员用户。
+  - 操作审计包含创建审批、审批通过、开始执行和完成四段记录。
+  - 事件中心写入审批申请、死信关闭、操作完成和审批执行完成事件。
+  - 验证后已清理临时工单、操作任务、步骤、审计和事件，剩余临时数据计数均为 `0`。
+- 内置浏览器验证：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-assets` 在 `807px` 视口下 document 宽度保持 `807px`，宽表格由内部横向滚动承接。
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 的“失败补偿队列”页签可见“重放审批”“关闭审批”“提交重放审批”“提交关闭审批”。
+
+验证限制：
+
+- 当前审批执行复用平台内置操作任务审批，不对接外部审批系统。
+- 真实 Jira/ServiceNow/通用 HTTP 的重放成功路径仍需要外部系统样本继续验证。
+- 审批申请已支持外部证据链接；多证据、审批快照和通知策略元数据已在 16.224 完成第一阶段。
+
+### 16.223 2026-06-23 V1.2 P0 ITSM 失败补偿队列报表多维细分第一阶段
+
+状态：已完成 ITSM 失败补偿队列报表多维细分第一阶段；失败提交补偿报表在连接器、失败原因和失败年龄之外，新增团队、项目、申请类型、错误码和外部响应码维度，方便外部 ITSM 联调和死信治理按责任组织、业务上下文和外部系统反馈快速定位。
+
+已完成：
+
+- 后端 `GET /api/v1/cloud/itsm/tickets/retry-queue/report` 响应新增：
+  - `projectBreakdown`：按项目聚合失败补偿队列，未关联项目统一归入 `unassigned/未关联项目`。
+  - `teamBreakdown`：复用 ITSM overview 的团队推导逻辑，优先从 payload 中的 `team/businessTeam/requestTeam/ownerTeam` 等字段提取，无法识别时按项目或未标记团队兜底。
+  - `requestTypeBreakdown`：按自助目录/操作类型聚合，并复用目录中文名称，如 GitOps/IaC 变更申请、权限申请等。
+  - `errorCodeBreakdown`：从响应载荷中的 `errorCode/code/error.code/json.error.code/submitRetry.errorCode` 等路径提取外部错误码；无专用错误码时按 HTTP 状态码或重试原因兜底。
+  - `externalResponseCodeBreakdown`：从 `statusCode/httpStatus/response.statusCode/json.statusCode/submitRetry.lastStatusCode` 等路径提取外部 HTTP 响应码，统一展示为 `HTTP xxx`。
+- 报表聚合仍复用现有队列 item 构造和 due/future/dead_letter/skipped 计数逻辑：
+  - 新维度同时保留失败总数、到期可重试、等待退避、死信、跳过、最早到期时间和下次重试时间。
+  - 单测路径支持 `ServiceContext=nil`，项目名回退项目 ID，避免测试依赖数据库 lookup。
+- 前端 ITSM “失败补偿队列”页签增强：
+  - 新增“按项目”“按团队”“按申请类型”“按错误码”“按外部响应码”五张细分报表。
+  - 报表网格改为 `auto-fit + minmax(320px, 1fr)`，支持 8 个维度在不同屏幕宽度下自动排布。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(SubmitRetryQueueStatus|SubmitRetryQueueReportBreakdown|DeadLetterClosePayload|DeadLetterActionResultErrors|DeadLetterApprovalPayloadHelpers|ForcedDeadLetterReplayEligibility|CatalogPolicyHistoryDiff|CatalogPolicyOverride)|TestCloudEventItsm"`。
+- `TestCloudItsmSubmitRetryQueueReportBreakdown` 已扩展覆盖：
+  - 项目维度 `p-platform` 和 `unassigned`。
+  - 团队维度 `team-platform/平台团队`。
+  - 申请类型维度 `gitops_iac_change/GitOps/IaC 变更申请`。
+  - 错误码维度 `ITSM_TIMEOUT`、`RATE_LIMIT`、`MAX_ATTEMPTS`。
+  - 外部响应码维度 `HTTP 503` 和未返回响应码。
+- `git diff --check` 覆盖本阶段相关后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功；`/api/v1/check` 返回 `success=true`。
+- API 验证：
+  - 使用本地管理员登录 token 和 `IaC-Org-Id: org-d8sm0ghqn3ks73blu1ig` 请求 `/api/v1/cloud/itsm/tickets/retry-queue/report`。
+  - 响应中 `connectorBreakdown`、`reasonBreakdown`、`ageBuckets`、`projectBreakdown`、`teamBreakdown`、`requestTypeBreakdown`、`errorCodeBreakdown`、`externalResponseCodeBreakdown`、`recentDeadLetters` 均为数组字段。
+  - 当前验证组织暂无失败补偿队列数据，所有维度数组为空态。
+- 内置浏览器验证：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` 正常加载。
+  - “失败补偿队列”页签可见“按连接器”“按失败原因”“按失败年龄”“按项目”“按团队”“按申请类型”“按错误码”“按外部响应码”“最近死信”。
+  - `807px` 视口下 document 宽度保持 `807px`，没有页面级横向溢出。
+
+验证限制：
+
+- 错误码和响应码解析覆盖通用 HTTP/Jira/ServiceNow 常见 JSON 路径；真实外部系统若返回数组型错误结构或 provider 专用字段，还需要在真实样本接入后继续扩展映射。
+- 当前报表仍基于平台内失败工单队列聚合；真实外部 ITSM 端到端失败、重放成功和状态同步样本仍待继续补测。
+
+### 16.224 2026-06-23 V1.2 P0 ITSM 死信审批多证据、快照和通知策略第一阶段
+
+状态：已完成 ITSM 死信审批证据留痕增强第一阶段；死信重放/关闭审批不再只有单个外部链接，而是支持主证据链接、补充证据列表、审批时刻票据快照和通知策略元数据，审批驳回、审批执行和事件中心可继续复用同一份 payload。
+
+已完成：
+
+- 后端审批申请表单新增 `evidenceItems`：
+  - 每条证据支持 `type`、`label`、`url`、`note`。
+  - 兼容旧字段 `evidenceUrl`，会自动合并为第一条 `link` 证据。
+  - URL 统一校验 `http/https`，单次最多 10 条证据。
+- 审批 payload 增强：
+  - `operation.params.itsmDeadLetter.evidence.items` 保存证据列表。
+  - `operation.params.itsmDeadLetter.evidence.snapshot` 固化审批时刻的 action、reason、precheck 和票据快照。
+  - 票据快照包含工单 ID、连接器、项目/环境、外部单号、状态、重试状态、错误码和外部响应码。
+  - `snapshotVersion=v1`、`snapshotGeneratedAt` 用于后续审计兼容。
+- 通知策略元数据：
+  - `operation.params.itsmDeadLetter.notificationStrategy` 和顶层 `operation.params.notificationStrategy` 均写入。
+  - 包含事件类型、通知渠道、owner roles、证据快照开关、证据条数、票据数和消息模板。
+- 前端审批弹窗增强：
+  - `外部证据链接` 调整为 `主证据链接`。
+  - 新增“补充证据”列表，可添加证据标题、类型、链接和说明。
+  - 提交前过滤空证据行，并通过 `evidenceItems` 发送给后端。
+
+验证：
+
+- Docker Go 1.26 镜像内执行目标测试通过：
+  - `go test ./portal/apps -run "TestCloudItsm(SubmitRetryQueueStatus|SubmitRetryQueueReportBreakdown|DeadLetterClosePayload|DeadLetterActionResultErrors|DeadLetterApprovalPayloadHelpers|DeadLetterApprovalEvidencePayload|DeadLetterApprovalEvidenceRejectsInvalidURL|ForcedDeadLetterReplayEligibility|CatalogPolicyHistoryDiff|CatalogPolicyOverride)|TestCloudEventItsm"`。
+- 新增单元测试覆盖：
+  - 主证据链接和补充证据合并为 `evidence.items`。
+  - 非 `http/https` 证据链接被拒绝。
+  - 证据条数上限生效。
+  - 审批快照包含票据重试原因、HTTP 502 错误码和外部响应码。
+  - 通知策略包含 4 类死信审批事件和 `includeEvidenceSnapshot=true`。
+- `git diff --check` 覆盖本阶段后端、前端和 PRD 文件，通过。
+- `docker compose build iac-portal iac-web` 成功：
+  - 后端完成 Swagger 生成和 Go 编译。
+  - 前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-portal iac-web` 成功；`/api/v1/check` 返回 `{"success":true,"build":"docker-compose","version":"v1.3.5"}`。
+- 内置浏览器端到端验证：
+  - 插入临时死信工单 `cit-codex-evidence-0623`。
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-itsm` “失败补偿队列”出现死信记录，报表中错误码和外部响应码均显示 `HTTP 502`。
+  - 选中死信后“重放审批”可用。
+  - 审批弹窗展示“主证据链接”“补充证据”“添加证据”，可填写补充证据标题、链接和说明。
+  - 提交后生成操作任务 `approving`，数据库确认：
+    - `evidence.itemCount=2`。
+    - `evidence.url=https://gitlab.example.com/platform/iac/-/merge_requests/42`。
+    - `evidence.snapshot.ticketCount=1`。
+    - `evidence.snapshot.tickets[0].errorCode.id=http_502`。
+    - `notificationStrategy.includeEvidenceSnapshot=true`。
+    - `notificationStrategy.evidenceItemCount=2`。
+  - 验证后已清理临时死信工单、操作任务和相关事件，剩余临时数据计数为 `0`。
+
+验证限制：
+
+- 本阶段保存的是平台审批 payload 中的证据元数据和快照；外部 ITSM 系统原生附件上传、附件下载和附件生命周期管理仍待真实系统联调后继续扩展。
+- 通知策略元数据已写入操作参数，实际企业微信/钉钉/Slack/邮件路由仍复用后续通知策略能力配置。
+
+### 16.225 2026-06-23 V1.2 P0 操作任务死信审批审计展示第一阶段
+
+状态：已完成操作任务详情页的 ITSM 死信审批审计展示第一阶段；死信审批任务不再只依赖原始 JSON 参数排查，审批人和审计人员可以在操作任务详情中直接查看证据列表、审批快照、票据快照和通知策略。
+
+已完成：
+
+- 操作任务详情识别 `action=itsm_dead_letter` 的自助运维任务：
+  - 类型展示补充 `self_service=自助运维`。
+  - 动作展示补充 `itsm_dead_letter=ITSM 死信处置`。
+  - `approving` 状态的死信处置任务展示“审批通过”和“驳回任务”，与后端审批执行能力一致。
+- 新增“ITSM 死信审批留痕”展示区：
+  - 汇总处置动作、票据数、强制执行、申请人、申请时间、主证据和申请原因。
+  - 证据列表展示证据标题、类型、链接和说明，支持主证据链接、PR/评审、外部工单、变更记录等类型中文化。
+  - 审批快照展示快照版本、生成时间、预检查 JSON 和票据快照。
+  - 票据快照展示工单标题、状态、重试原因、错误码、外部响应码、外部单号和外部链接。
+  - 通知策略展示启用状态、级别、渠道、路由、Owner 角色、事件类型、证据快照开关、证据数、票据数和消息模板。
+- 前端样式增强：
+  - 证据链接支持长 URL 自动换行。
+  - 证据/票据宽表在抽屉内横向滚动，不撑开页面。
+  - 通知策略标签支持换行展示。
+
+验证：
+
+- `git diff --check` 覆盖操作任务前端组件和样式文件，通过。
+- `docker compose build iac-web` 成功，前端完成 vendor 和业务包构建，仅保留既有 webpack bundle size 警告。
+- `docker compose up -d iac-web` 成功，前端容器重启并运行。
+- 内置浏览器验证 `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-operations?operationId=cop-codex-audit0623`：
+  - 插入临时 `self_service/itsm_dead_letter/approving` 操作任务，params 中包含 2 条证据、审批快照、票据快照和通知策略。
+  - 详情抽屉可见“ITSM 死信审批留痕”“证据列表”“审批快照”“通知策略”。
+  - 详情抽屉可见“审批通过”和“驳回任务”。
+  - 证据链接 `https://gitlab.example.com/platform/iac/-/merge_requests/42`、错误码 `HTTP 502`、通知策略事件类型均在页面展示。
+  - 验证后已删除临时操作任务，剩余计数为 `0`。
+
+验证限制：
+
+- 本阶段只做平台操作任务详情页展示，不新增外部 ITSM 附件上传、下载或保留策略。
+- 临时样本验证覆盖前端展示与现有操作详情 API 返回结构；真实 Jira/ServiceNow 等外部系统仍需在端到端联调时补充真实 payload 样本回归。
+
+### 16.226 2026-06-23 V1.2 P0 前端 vendor 体积和 Docker 构建速度优化第一阶段
+
+状态：已完成前端 vendor 体积和 Docker 构建缓存优化第一阶段；在不改变页面业务逻辑的前提下，裁剪全量 locale 和未使用全局依赖，并让 Docker 构建能够复用 `npm ci` 层。
+
+已完成：
+
+- 裁剪 `vendor/react/vendors.js`：
+  - `webpack.vendor.babel.js` 改为遵循依赖包 `browser` 字段，避免 `react-intl/locale-data/index.js` 和 `intl-relativeformat/lib/locales.js` 的全量 locale 被打进 vendor。
+  - 将 `intl-relativeformat` 精确别名到 `intl-relativeformat/lib/main`，保留英文默认数据和运行时核心能力。
+  - 使用 `ContextReplacementPlugin` 将 `moment` locale 限定为 `zh-cn`。
+  - 从 `app/vendor.js` 移除未被源码使用的全量 `lodash` 全局导出；业务代码继续使用 `lodash/foo` 子模块导入。
+- 主应用 webpack 配置同步补充：
+  - `resolve.aliasFields=['browser']`、`mainFields=['browser','module','main']`。
+  - `intl-relativeformat` 精确别名和 `moment/locale` 裁剪在主包构建中同样生效。
+  - 移除 `lodash` 精确 external，避免未来误用 `import 'lodash'` 时依赖不存在的全局变量。
+- Dockerfile 构建缓存优化：
+  - 先复制 `package.json/package-lock.json` 并执行 `npm ci --legacy-peer-deps`。
+  - 再复制源码并执行 `npm run build:vendor && npm run build`。
+  - 源码小改但依赖不变时，`npm ci` 层可命中 Docker cache。
+
+验证：
+
+- `git diff --check` 覆盖 `frontend/Dockerfile`、`frontend/app/vendor.js`、`webpack.base.babel.js` 和 `webpack.vendor.babel.js`，通过。
+- `docker compose build iac-web` 成功：
+  - `vendor/react/vendors.js` 从最近一次构建日志中的 `2.54 MiB` 降至 `368 KiB`。
+  - copied `vendor/` 目录从最近一次构建日志中的 `3.45 MiB` 降至 `1.27 MiB`。
+  - 主包 `js/vendor` 从最近一次构建日志中的 `4.79 MiB` 降至 `4.48 MiB`。
+  - `app` 入口从 `85.2 KiB` 降至 `81.1 KiB`。
+  - vendor DLL 编译耗时从最近一次日志约 `22.6s` 降至约 `8.2s`。
+- 重复执行 `docker compose build iac-web` 命中缓存，耗时约 `3.6s`，`npm ci` 和前端 build 层均复用缓存。
+- `docker compose up -d iac-web` 成功，`iac-web` 运行正常。
+- `/api/v1/check` 返回 `{"success":true,"build":"docker-compose","version":"v1.3.5"}`。
+- 内置浏览器刷新 `/org/org-d8sm0ghqn3ks73blu1ig/m-org-ct`：
+  - 页面正常显示“组织/组织设置：云模板”“云模板”“新建云模板”等内容。
+  - 浏览器控制台未捕获 error。
+
+验证限制：
+
+- 本阶段优先做 vendor/locale/Docker 缓存优化，尚未重构路由级代码拆分、图表库按需加载、CodeMirror 按需加载或替换 `moment`。
+- `js/vendor` 仍有 `4.48 MiB`，后续可继续拆分 `@ant-design/icons`、`@antv/g6`、CodeMirror、ECharts 和 AntD 相关入口。
+
+### 16.227 2026-06-23 V1.2 P0 前端路由与生产代码分包优化第一阶段
+
+状态：已完成前端路由与生产代码分包优化第一阶段；在不改变业务页面和菜单路径的前提下，为所有页面级动态路由补充稳定 chunk 名，并移除生产构建中把所有依赖强制合并为单一 `vendor` 的配置。
+
+已完成：
+
+- 路由声明优化：
+  - `frontend/app/routes.js` 新增 `routeLoadable` helper，统一页面级懒加载兜底配置。
+  - 为组织选择、合规、组织壳层、项目环境、多云总览、云账号、云资产、操作任务、风险、成本、事件、ITSM、组织设置和系统/用户页面补充 `webpackChunkName`。
+  - `/org/:orgId/m-cloud-assets` 和 `/org/:orgId/m-other-resource` 继续复用同一 `route-cloud-assets` chunk，避免同一资源查询页面重复产物。
+- 生产分包策略优化：
+  - `webpack.prod.babel.js` 移除 `splitChunks.name='vendor'` 的单包聚合策略。
+  - 新增 `vendor-antd`、`vendor-common`、`vendor-async`、`vendor-graph`、`vendor-editor` 和 `route-common` 分组。
+  - 图谱库 `@antv/g6`/`d3`/`dagre`/`graphlib`、编辑器 `codemirror`/`react-codemirror2` 只在异步路由侧拆包。
+  - 初始入口保留运行时、AntD 公共依赖、初始公共依赖和 app 壳层，路由页面代码继续按需加载。
+
+验证：
+
+- `git diff --check` 覆盖 `frontend/app/routes.js` 和 `frontend/internals/webpack/webpack.prod.babel.js`，通过。
+- `docker compose -f backend/docker/docker-compose.yml build iac-web` 成功：
+  - Docker 依赖层命中缓存，`npm ci` 未重跑。
+  - vendor DLL 仍保持 `368 KiB`。
+  - 应用入口从上一阶段的单一 `js/vendor 4.48 MiB` 改为：
+    - `vendor-antd`：`1.36 MiB`。
+    - `vendor-common`：`275 KiB`。
+    - `app`：`93.8 KiB`。
+    - `runtime`：`4.97 KiB`。
+  - `Entrypoint app` 总计约 `1.73 MiB`，不再把 `vendor-graph`、`vendor-editor` 和其他异步依赖注入首屏。
+  - 典型异步路由 chunk：
+    - `route-cloud-assets`：约 `188 KiB`。
+    - `route-org-ct`：约 `24 KiB`。
+    - `route-cloud-operations`：约 `24 KiB`。
+  - 生产 webpack 编译通过，仅保留体积 warning；本次完整 web 镜像构建耗时约 `81s`。
+- `docker compose -f backend/docker/docker-compose.yml up -d iac-web` 成功，`iac-web` 运行正常。
+- `/api/v1/check` 返回 `{"success":true,"build":"docker-compose","version":"v1.3.5"}`。
+- 静态文件验证：
+  - `/index.html` 仅注入 `runtime`、`vendor-antd`、`vendor-common` 和 `app`。
+  - `/js/route-cloud-assets.*.chunk.js`、`/js/route-org-ct.*.chunk.js`、`/js/route-cloud-operations.*.chunk.js` 均返回 HTTP 200。
+- 内置浏览器验证：
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-org-ct` 正常渲染“云模板”“新建云模板”“导入”“导出”和表格列。
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-assets` 正常渲染“云资产”“资产列表”“应用依赖”“云采集”和资产表格列。
+  - `/org/org-d8sm0ghqn3ks73blu1ig/m-cloud-operations` 正常渲染“操作任务”“刷新”和任务表格列。
+  - 三个路由浏览器控制台均未捕获 error。
+
+验证限制：
+
+- 本阶段主要解决生产 `splitChunks` 单 vendor 聚合和路由产物可读性问题；AntD 本身仍是初始公共依赖，后续可继续推进 icon 按需、布局壳层 AntD 使用收敛和登录页独立依赖拆分。
+- 图谱和编辑器已被拆入异步 vendor chunk，但页面组件内部仍可以继续按交互动作做二级懒加载，例如资源详情图谱打开时再加载 G6，策略/模板编辑器打开时再加载 CodeMirror。
+- 当前仍保留全局 ECharts vendor 文件，后续若需要进一步压首屏，可评估把 ECharts 从静态 vendor 调整为按页面加载。
